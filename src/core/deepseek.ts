@@ -14,6 +14,19 @@ import { LIMITS } from './limits';
 export const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completions';
 export const DEEPSEEK_MODEL = 'deepseek-flash';
 
+/**
+ * A0 实测（2026-09-18，真实 Key）：
+ * - `deepseek-flash` 默认开启思考，每个分片同时带 reasoning_content 与 content；
+ *   思考文本会占用 max_tokens 预算，实测同一请求思考 1325～2697 字符。
+ * - 显式关闭思考被接受，且同一请求从 3.4s 降到 1.7s，摘要与气泡质量无可见下降。
+ * - `response_format: {"type":"json_object"}` 与流式同时可用。
+ * 因此首版固定关闭思考：本产品的三类请求都是短结构化输出，不需要长链推理。
+ */
+export const DEEPSEEK_BODY_DEFAULTS = {
+  response_format: { type: 'json_object' },
+  thinking: { type: 'disabled' },
+} as const;
+
 export type Message = { role: 'system' | 'user'; content: string };
 
 export type ChatOptions = {
@@ -29,23 +42,28 @@ export type ChatOptions = {
 /** 从 SSE 文本流中取出增量内容；跨 chunk 的半行由内部缓冲处理。 */
 export function createSseReader() {
   let buffer = '';
+  const state = { finishReason: '' };
   return {
     push(chunk: string): string[] {
       buffer += chunk;
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? '';
-      return readDeltas(lines);
+      return readDeltas(lines, state);
     },
     /** 流结束时处理残留的最后一行。 */
     flush(): string[] {
       const rest = buffer;
       buffer = '';
-      return readDeltas([rest]);
+      return readDeltas([rest], state);
+    },
+    /** 结束原因：'length' 表示被输出上限截断，不得当作完整结果（FR-018）。 */
+    finishReason(): string {
+      return state.finishReason;
     },
   };
 }
 
-function readDeltas(lines: string[]): string[] {
+function readDeltas(lines: string[], state: { finishReason: string }): string[] {
   const deltas: string[] = [];
   for (const line of lines) {
     const trimmed = line.trim();
@@ -56,6 +74,8 @@ function readDeltas(lines: string[]): string[] {
       const parsed: unknown = JSON.parse(data);
       const delta = pickString(parsed, ['choices', 0, 'delta', 'content']);
       if (delta) deltas.push(delta);
+      const finish = pickString(parsed, ['choices', 0, 'finish_reason']);
+      if (finish) state.finishReason = finish;
     } catch {
       // 半行、保活帧或非 JSON 数据一律忽略；最终输出校验会兜底。
     }
@@ -116,7 +136,7 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
         messages,
         stream: true,
         max_tokens: options.maxTokens ?? LIMITS.maxOutputTokens,
-        response_format: { type: 'json_object' },
+        ...DEEPSEEK_BODY_DEFAULTS,
       }),
       signal: combined,
     });
@@ -164,6 +184,14 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
   }
 
   onProgress?.(text.length);
+  if (sse.finishReason() === 'length') {
+    // 截断必须如实说明，不能把半截 JSON 当成完整结果（FR-018）。
+    throw appError(
+      'BAD_OUTPUT',
+      '模型输出达到长度上限被截断，本次结果未采用，也没有当作完整结果展示。可重试，或在设置中改用更短的页面。',
+      true,
+    );
+  }
   const parsed = parseJsonLoose(text);
   if (parsed === undefined) {
     throw appError('BAD_OUTPUT', '模型返回的内容不是可用的结构化结果，本次结果未采用。可重试。', true);

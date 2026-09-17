@@ -24,7 +24,8 @@ export const GuideSchema = z.object({
   bubbles: z.array(
     z.object({
       question: z.string().min(1),
-      kind: z.enum(BUBBLE_KINDS),
+      // kind 只是内部分类：取到未知值时归一化，而不是让整个首屏失败（用户可见的只有问题文本）。
+      kind: z.string(),
     }),
   ),
 });

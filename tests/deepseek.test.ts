@@ -86,6 +86,31 @@ describe('chatJson', () => {
     });
   });
 
+  it('输出被长度上限截断时如实报错，不当作完整结果', async () => {
+    const truncated = `data: ${JSON.stringify({
+      choices: [{ delta: { content: '{"summary":"被截断的' }, finish_reason: null }],
+    })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`;
+    const fetchImpl = sseResponse([truncated]);
+    await expect(chatJson({ ...base, fetchImpl })).rejects.toMatchObject({ code: 'BAD_OUTPUT' });
+    await expect(chatJson({ ...base, fetchImpl })).rejects.toThrowError(/被截断/);
+  });
+
+  it('按 A0 实测固定请求体：关闭思考并限定 JSON 输出', async () => {
+    let sent: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: '{"ok":1}' } }] })}\n\n`, {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+    await chatJson({ ...base, fetchImpl });
+    expect(sent.model).toBe('deepseek-flash');
+    expect(sent.stream).toBe(true);
+    expect(sent.response_format).toEqual({ type: 'json_object' });
+    // 默认思考会占用 max_tokens 预算并让延迟翻倍（2026-09-18 实测）。
+    expect(sent.thinking).toEqual({ type: 'disabled' });
+  });
+
   it('输出不是 JSON 时判为无效输出，不猜测修补', async () => {
     const fetchImpl = sseResponse([delta('这是散文，不是 JSON。')]);
     await expect(chatJson({ ...base, fetchImpl })).rejects.toMatchObject({ code: 'BAD_OUTPUT' });

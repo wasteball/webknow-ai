@@ -28,15 +28,25 @@ pnpm test:e2e
 ```
 
 E2E 只做冒烟：后台启动、侧栏状态推导、Key 不进入会话存储。
-**真实 DeepSeek 调用不在自动化测试里**——那需要用户自己的 Key，属于 A0 的人工验证项。
+
+真实模型接入单独一条，默认跳过，需要显式提供 Key（会产生少量费用）：
+
+```bash
+DEEPSEEK_KEY=sk-... pnpm vitest run tests/live.deepseek.test.ts
+```
+
+它跑的是产品代码本身（`chatJson` + 三个校验器），不是 curl，可作为 A0/A2 的可重复证据。
 
 ## 当前状态（2026-09-18）
 
 - 本仓库是按新架构重建的首版：`core` 纯逻辑 + 后台流水线 + 内容脚本 + 侧栏界面。
 - 正文提取、唯一锚点、DOM 回跳沿用 2026-08-22 版本（`735171c`）并已重跑测试。
-- **尚未用真实 DeepSeek Key 跑通**：模型 ID（当前写死 `deepseek-flash`，`deepseek-chat` 已于 2026-07-24 停用）、
-  CORS 行为、错误映射与费用都还没有实测证据。`src/core/deepseek.ts` 的契约在实测前不算冻结。
-- 尚未在真实 Chrome 中完成人工验收。
+- **DeepSeek 接入已实测**（真实 Key，2026-09-18）：`deepseek-flash` 可用；流式 +
+  `response_format: json_object` 可用；实测延迟 0.6–1.5 秒；网页里的注入句被当作数据处理。
+  实测同时发现默认思考会占用输出预算并让延迟翻倍，因此请求固定 `thinking: {type:"disabled"}`。
+- **仍未验证**：扩展在真实 Chrome 中的 CORS 表现（DeepSeek 响应不带
+  `access-control-allow-origin`，扩展页依赖 host 权限豁免，只能在浏览器里证实）、
+  权限与启动流程的人工可用性、以及学习提问是否严格"一次只问一个主要问题"。
 
 ## 边界
 

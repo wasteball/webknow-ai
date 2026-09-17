@@ -2,9 +2,9 @@ import type { EvidenceBlock } from './blocks';
 import { appError, type AppError } from './errors';
 import { LIMITS } from './limits';
 import { AnswerSchema } from './prompts/answer';
-import { GuideSchema } from './prompts/guide';
+import { BUBBLE_KINDS, GuideSchema } from './prompts/guide';
 import { LearnSchema, type LearnMode } from './prompts/learn';
-import type { AnswerSource, Bubble, Citation, Verdict } from './session';
+import type { AnswerSource, Bubble, BubbleKind, Citation, Verdict } from './session';
 
 /**
  * 程序侧校验：模型输出只是候选，写入会话前必须通过结构与引用校验（FR-016/FR-029）。
@@ -36,7 +36,10 @@ export function cleanGuide(parsed: unknown): Clean<{ summary: string; bubbles: B
     const key = question.replace(/\s+/g, '').replace(/[？?。.!！]/g, '');
     if (seen.has(key)) continue;
     seen.add(key);
-    bubbles.push({ id: `bub_${index}`, question, kind: bubble.kind });
+    const kind = (BUBBLE_KINDS as readonly string[]).includes(bubble.kind)
+      ? (bubble.kind as BubbleKind)
+      : 'concept';
+    bubbles.push({ id: `bub_${index}`, question, kind });
     if (bubbles.length >= LIMITS.maxBubbles) break;
   }
 
