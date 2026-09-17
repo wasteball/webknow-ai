@@ -1,0 +1,284 @@
+:root {
+  color-scheme: light;
+  --ink: #1c1c1e;
+  --muted: #5c5c66;
+  --line: #d8d8de;
+  --accent: #8a3b12;
+  --accent-ink: #ffffff;
+  --bg-soft: #f6f5f2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 14px/1.6 system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--ink);
+  background: #fff;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  min-height: 100vh;
+}
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.panel-header h1 {
+  font-size: 15px;
+  margin: 0;
+}
+
+h2 {
+  font-size: 13px;
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.section,
+details.section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.scope,
+.hint,
+.phase {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+.page-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.summary {
+  white-space: pre-wrap;
+  margin: 0 0 8px;
+}
+
+.bubbles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button {
+  font: inherit;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+button.danger {
+  background: #fff;
+  color: #8a1c1c;
+  border-color: #c98a8a;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 2px 4px;
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 3px solid #1c4fd6;
+  outline-offset: 2px;
+}
+
+input,
+textarea {
+  font: inherit;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin: 4px 0;
+}
+
+.composer,
+.composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.composer {
+  flex-direction: column;
+  align-items: stretch;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.turn {
+  border-bottom: 1px dashed var(--line);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+
+.turn .question {
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.answer-text {
+  white-space: pre-wrap;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-right: 6px;
+  background: var(--bg-soft);
+  color: var(--muted);
+}
+
+.tag-original {
+  border-color: #6b8f5a;
+  color: #33501f;
+}
+
+.tag-unknown {
+  border-color: #b98a2a;
+  color: #6b4a00;
+}
+
+.citations,
+.unanswered {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entry {
+  border-left: 3px solid var(--line);
+  padding-left: 8px;
+  white-space: pre-wrap;
+}
+
+.entry-question {
+  border-left-color: var(--accent);
+  font-weight: 600;
+}
+
+.entry-feedback {
+  border-left-color: #6b8f5a;
+}
+
+.entry-summary {
+  border-left-color: #1c4fd6;
+  background: var(--bg-soft);
+  padding: 6px 8px;
+  border-radius: 0 6px 6px 0;
+}
+
+.busy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-soft);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+}
+
+.spinner {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.banner {
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.banner-error {
+  border: 1px solid #c98a8a;
+  background: #fdf3f3;
+}
+
+.banner-info {
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+}
+
+.banner ul {
+  padding-left: 18px;
+  margin: 6px 0;
+}
+
+.steps {
+  padding-left: 18px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

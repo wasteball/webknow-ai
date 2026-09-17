@@ -1,0 +1,36 @@
+{
+  "name": "webknow-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "面向普通读者的网页伴随式 AI：侧栏短摘要、探索气泡、自由问答与自愿的“AI 问我”",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "prepare": "wxt prepare",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "wxt build && playwright test",
+    "check": "pnpm typecheck && pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@mozilla/readability": "0.6.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@wxt-dev/module-react": "1.2.2",
+    "jsdom": "29.0.0",
+    "typescript": "5.9.3",
+    "vitest": "5.0.1",
+    "wxt": "0.21.4"
+  }
+}
