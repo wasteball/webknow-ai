@@ -90,7 +90,7 @@ export function App() {
       </header>
 
       {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
-      {state?.error && phase === 'ERROR' && <ErrorBanner error={state.error} />}
+      {state?.error && <ErrorBanner error={state.error} />}
 
       <p className="phase" role="status" aria-live="polite">
         {PHASE_TEXT[phase] ?? ''}
@@ -149,6 +149,31 @@ export function App() {
               chars={busy?.chars ?? 0}
               onStop={() => state.tabId !== null && void send({ type: 'stop', tabId: state.tabId })}
             />
+          )}
+
+          {phase === 'ERROR' && (
+            <Section title="重新开始">
+              <p className="hint">
+                上一页的首屏结果已经作废或生成失败。可以重新开始伴读，不会复用失败的结果。
+              </p>
+              <div className="composer-actions">
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void startReading()}
+                >
+                  重新开始伴读
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy !== null || state.tabId === null}
+                  onClick={() => state.tabId !== null && void send({ type: 'clearSession', tabId: state.tabId })}
+                >
+                  清除当前页会话
+                </button>
+              </div>
+            </Section>
           )}
 
           {phase === 'UNSUPPORTED' && (

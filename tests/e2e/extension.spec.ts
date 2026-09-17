@@ -9,6 +9,14 @@ import { chromium, expect, test, type BrowserContext } from '@playwright/test';
  * 这里不调用 DeepSeek：真实连接需要用户自己的 Key，属于 A0 的人工验证项。
  */
 
+/** 在 service worker 里求值时可用；这里只需要用到存储相关的两个方法。 */
+declare const chrome: {
+  storage: {
+    local: { set(items: Record<string, unknown>): Promise<void> };
+    session: { get(keys: null): Promise<Record<string, unknown>> };
+  };
+};
+
 const EXTENSION_PATH = resolve(process.cwd(), '.output/chrome-mv3');
 
 let context: BrowserContext;

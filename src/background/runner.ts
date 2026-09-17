@@ -13,6 +13,7 @@ import {
   markStale,
   newId,
   nextQuestionAllowed,
+  stateAfterFailure,
   stateAfterStop,
   type LearningState,
   type PageSession,
@@ -110,7 +111,7 @@ async function withRun(
       const stopped = failure.code === 'ABORTED';
       await putSession({
         ...endRun(fresh, begun.run.id),
-        state: stopped ? stateAfterStop(fresh, kind) : 'ERROR',
+        state: stopped ? stateAfterStop(fresh, kind) : stateAfterFailure(fresh, kind),
         error: stopped ? null : failure,
         updatedAt: Date.now(),
       });

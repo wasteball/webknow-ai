@@ -195,6 +195,16 @@ export function stateAfterStop(session: PageSession, kind: RequestKind): Session
   return 'READY';
 }
 
+/**
+ * 失败后的状态恢复（FR-035）：只有“还没有首屏”才需要用户重新开始，
+ * 问答或学习失败时保留已有会话与已完成记录，只显示可执行的错误信息。
+ */
+export function stateAfterFailure(session: PageSession, kind: RequestKind): SessionState {
+  if (kind === 'guide') return 'ERROR';
+  if (kind === 'learn') return session.learning ? 'LEARNING' : 'READY';
+  return 'READY';
+}
+
 export function canStartLearning(session: PageSession): AppError | null {
   if (session.state !== 'READY') {
     return appError('STALE_PAGE', '当前页面还没有可用的首屏内容，无法进入学习。', false);
