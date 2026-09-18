@@ -126,5 +126,11 @@ test('保存的 Key 留在扩展本地存储，且不进入页面会话', async 
   await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   // 有 Key、无站点权限：应停在“等待授权”，而不是继续外发。
   await expect(page.getByText('等你在浏览器里允许读取这个网站')).toBeVisible();
+
+  // 真实反馈回归：未确认外发时，“开始伴读”曾经是禁用且不说明原因，
+  // 用户点了没反应。现在的合同是：按钮始终可用，并用文案说明这一下会同时记下确认。
+  const startButton = page.getByRole('button', { name: /开始伴读/ });
+  await expect(startButton).toBeEnabled();
+  await expect(startButton).toHaveText(/我确认/);
   await page.close();
 });

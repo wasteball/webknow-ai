@@ -58,8 +58,14 @@ export function App() {
     return reply;
   }, []);
 
-  /** 授权必须在用户手势里作为第一个异步调用发出，前面不能有 await（Chrome 侧栏约束）。 */
-  const startReading = async () => {
+  /**
+   * 授权必须在用户手势里作为第一个异步调用发出，前面不能有 await（Chrome 侧栏约束）；
+   * 因此外发确认与开始伴读合并成一个按钮时，顺序必须是：授权 → 记录确认 → 开始。
+   *
+   * 合并的原因：分成两个按钮时，“开始伴读”处于禁用状态且不说明原因，
+   * 真实用户点了没反应，不知道要先点上面那个确认。
+   */
+  const startReading = async (options?: { confirm?: boolean }) => {
     if (!state || state.tabId === null) return;
     const origin = state.pageUrl ? safeOrigin(state.pageUrl) : null;
     if (origin && state.permission !== 'granted') {
@@ -74,6 +80,10 @@ export function App() {
         setNotice('浏览器没有弹出授权窗口。请点击工具栏图标重新打开侧栏，再点一次开始伴读。');
         return;
       }
+    }
+    if (options?.confirm) {
+      const reply = await send({ type: 'confirmOutbound' });
+      if (!reply?.ok) return;
     }
     await send({ type: 'start', tabId: state.tabId });
   };
@@ -131,20 +141,18 @@ export function App() {
                 <p>你已经换了页面（或者这一页的内容变了）。上一页的结果作废了，不会拿来充数。</p>
               )}
               {!state.outboundConfirmed ? (
-                <OutboundNotice
-                  onConfirm={() => void send({ type: 'confirmOutbound' })}
-                  confirmed={false}
-                />
+                <OutboundNotice />
               ) : (
                 <p className="hint">你已经确认过：正文和你的问题会发给 DeepSeek，费用从你的账号扣。</p>
               )}
               <div className="composer-actions">
+                {/* 未确认时不做成禁用按钮：禁用而不说原因，用户会以为点了没反应。 */}
                 <button
                   type="button"
-                  disabled={!state.outboundConfirmed || busy !== null}
-                  onClick={() => void startReading()}
+                  disabled={busy !== null}
+                  onClick={() => void startReading({ confirm: !state.outboundConfirmed })}
                 >
-                  {START_LABEL[phase] ?? '开始伴读'}
+                  {state.outboundConfirmed ? (START_LABEL[phase] ?? '开始伴读') : '我确认，开始伴读'}
                 </button>
               </div>
             </Section>
@@ -167,7 +175,7 @@ export function App() {
                 <button
                   type="button"
                   disabled={busy !== null}
-                  onClick={() => void startReading()}
+                  onClick={() => void startReading({ confirm: !state.outboundConfirmed })}
                 >
                   重新开始
                 </button>
@@ -217,7 +225,7 @@ function ClosedLearning({ state }: { state: PanelState }) {
 }
 
 /** 首次外发前的告知与确认；接收方或范围变化后需要重新确认（FR-022）。 */
-function OutboundNotice({ onConfirm, confirmed }: { onConfirm: () => void; confirmed: boolean }) {
+function OutboundNotice() {
   return (
     <div className="banner banner-info">
       <p>开始之前，请先确认这几件事：</p>
@@ -230,11 +238,6 @@ function OutboundNotice({ onConfirm, confirmed }: { onConfirm: () => void; confi
       <p className="hint">
         DeepSeek 收到内容后怎么保存，由它自己的规则决定，我们没法替你保证它不留存。
       </p>
-      {!confirmed && (
-        <button type="button" onClick={onConfirm}>
-          我确认：这一页可以发给 DeepSeek
-        </button>
-      )}
     </div>
   );
 }
