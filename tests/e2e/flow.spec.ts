@@ -139,6 +139,8 @@ test.describe('主路径', () => {
    * 不应该再要求用户点一次工具栏图标——后台可以直接向浏览器查当前标签页地址。
    */
   test('已授权站点上，清掉会话后仍可直接开始', async () => {
+    // 这条要走到首屏，需要真实模型调用；CI 没有 Key，必须跳过而不是失败。
+    test.skip(!liveKey, '需要 DEEPSEEK_KEY 才能验证首屏');
     const worker = context.serviceWorkers()[0];
     if (!worker) throw new Error('缺少 service worker');
 
