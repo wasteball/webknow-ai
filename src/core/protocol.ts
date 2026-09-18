@@ -48,7 +48,6 @@ export type Command =
   | { type: 'learnAnswer'; tabId: number; text: string }
   | { type: 'learnAssist'; tabId: number; action: 'hint' | 'explain' | 'skip' }
   | { type: 'learnEnd'; tabId: number }
-  | { type: 'learnExit'; tabId: number }
   | { type: 'jump'; tabId: number; blockId: string }
   | { type: 'clearSession'; tabId: number }
   | { type: 'clearAllSessions' }

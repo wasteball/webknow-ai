@@ -181,8 +181,8 @@ test('READY 视图在三种宽度下排版正确', async () => {
 
 test('LEARNING 视图在宽面板下排版正确', async () => {
   test.setTimeout(120_000);
-  const { panel, article } = await openPanel(720);
-  const tabId = await panel.evaluate(async () => {
+  const { panel: _panel, article } = await openPanel(720);
+  const tabId = await _panel.evaluate(async () => {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     return tabs[0]?.id ?? null;
   });
@@ -196,9 +196,30 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
     },
     [tabId, LEARNING] as const,
   );
-  await refreshPanel(panel, article);
-  await expect(panel.locator('.entry-question').first()).toBeVisible();
-  await panel.screenshot({ path: join(OUTPUT_DIR, 'learning-720.png'), fullPage: true });
-  await panel.close();
+  await refreshPanel(_panel, article);
+  await expect(_panel.locator('.entry-question').first()).toBeVisible();
+  await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-720.png'), fullPage: true });
+
+  // F4 的核心场景：学习进行中切回问答，摘要、对话与输入都还在，学习不被打断。
+  await _panel.getByRole('tab', { name: /问答/ }).click();
+  await expect(_panel.getByRole('button', { name: '发送' })).toBeVisible();
+  await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-qa-tab-720.png'), fullPage: true });
+
+  // 空闲形态：收束后回到 READY，“AI 问我”Tab 显示新一轮的出题表单。
+  await context.serviceWorkers()[0]!.evaluate(async (id) => {
+    const stored = await chrome.storage.session.get(`sess:${id}`);
+    const session = stored[`sess:${id}`] as Record<string, unknown>;
+    const learning = session.learning as Record<string, unknown>;
+    learning.status = 'closed';
+    session.state = 'READY';
+    await chrome.storage.session.set({ [`sess:${id}`]: session });
+  }, tabId);
+  await refreshPanel(_panel, article);
+  // 视图尊重用户所在的位置：收束后不会强行切走，需要自己回到“AI 问我”Tab。
+  await _panel.getByRole('tab', { name: /AI 问我/ }).click();
+  await expect(_panel.getByRole('button', { name: '再来一轮' })).toBeVisible();
+  await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-closed-720.png'), fullPage: true });
+
+  await _panel.close();
   await article.close();
 });

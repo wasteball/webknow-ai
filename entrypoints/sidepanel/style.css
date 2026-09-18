@@ -464,6 +464,48 @@ button.link:hover:not(:disabled) {
   border-radius: var(--radius-sm);
 }
 
+/* ── 功能切换：下划线式 Tab，学习进行中也不挡住去问答的路 ───────── */
+
+.tabs {
+  display: flex;
+  gap: var(--space-5);
+  border-bottom: 1px solid var(--line);
+}
+
+.tab {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 500;
+  padding: var(--space-2) 0;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color 120ms ease, box-shadow 120ms ease;
+}
+
+.tab:hover:not(:disabled) {
+  color: var(--ink-2);
+  opacity: 1;
+}
+
+.tab[aria-selected='true'] {
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--ink);
+}
+
+/* 这个能力正在后台干活时的低调提示；状态不只靠颜色表达，Tab 内还有转圈与按钮态。 */
+.tab .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: var(--space-2);
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 2px;
+}
+
 /* ── 状态与提示 ─────────────────────────────────────────── */
 
 .busy {

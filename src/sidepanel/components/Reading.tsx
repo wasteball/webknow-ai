@@ -25,29 +25,6 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <>
-      {state.guide && (
-        <Section title="这篇文章讲了什么">
-          <p className="summary">{state.guide.summary}</p>
-          {state.guide.bubbles.length > 0 && (
-            <div className="bubbles">
-              {state.guide.bubbles.map((bubble) => (
-                <button
-                  key={bubble.id}
-                  type="button"
-                  className="bubble"
-                  disabled={busy}
-                  onClick={() => {
-                    if (tabId) void send({ type: 'explore', tabId, bubbleId: bubble.id });
-                  }}
-                >
-                  {bubble.question}
-                </button>
-              ))}
-            </div>
-          )}
-        </Section>
-      )}
-
       <Section title="问答">
         {state.chat.length === 0 && !busy && (
           <p className="hint">可以点上面的话题，也可以自己在下面提问。</p>

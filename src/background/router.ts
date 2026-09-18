@@ -254,15 +254,6 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       case 'learnEnd':
         return finish(await handleIntent({ kind: 'learnEnd', tabId: command.tabId }, hooks));
 
-      case 'learnExit': {
-        // 结束学习只回到 READY：正文、摘要与问答记录都保留（FR-011）。
-        const session = await getSession(command.tabId);
-        if (!session) return { ok: false, error: appError('STALE_PAGE', '这一页还没有开始读过。', true) };
-        await putSession({ ...session, state: 'READY', updatedAt: Date.now() });
-        await pushState(command.tabId);
-        return { ok: true };
-      }
-
       case 'jump': {
         const session = await getSession(command.tabId);
         const block = session?.blocks.find((item) => item.id === command.blockId);

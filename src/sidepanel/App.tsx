@@ -14,11 +14,19 @@ const START_LABEL: Record<string, string> = {
   STALE: '重新开始',
 };
 
+/**
+ * 已就绪后的两个能力（问答 / AI 问我）用 Tab 切换：摘要固定在 Tab 之上，
+ * 学习进行中也能随时切回问答（学习会话保留在后台，不因切换而中断）。
+ */
+type View = 'qa' | 'learn';
+
 export function App() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [state, setState] = useState<PanelState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [view, setView] = useState<View>('qa');
+  const learningWasActive = useRef(false);
   const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
@@ -50,6 +58,13 @@ export function App() {
     if (tabId === null) return;
     void clientRef.current?.send({ type: 'attach', tabId });
   }, [tabId]);
+
+  // 学习会话从无到有（或重新激活）时自动切到“AI 问我”；其余时候尊重用户所在的 Tab。
+  const learningActive = state?.learning?.status === 'active';
+  useEffect(() => {
+    if (learningActive && !learningWasActive.current) setView('learn');
+    learningWasActive.current = learningActive;
+  }, [learningActive]);
 
   const send = useCallback(async (command: Command): Promise<Reply | undefined> => {
     const reply = await clientRef.current?.send(command);
@@ -90,6 +105,8 @@ export function App() {
 
   const phase = state?.phase ?? 'READY_TO_START';
   const busy = state?.busy ?? null;
+  const readyShell = phase === 'READY' || phase === 'LEARNING';
+  const phaseText = readyShell ? null : PHASE_TEXT[phase];
 
   return (
     <div className="panel">
@@ -121,9 +138,11 @@ export function App() {
             </div>
           )}
 
-          <p className="phase" role="status" aria-live="polite">
-            {PHASE_TEXT[phase] ?? ''}
-          </p>
+          {phaseText && (
+            <p className="phase" role="status" aria-live="polite">
+              {phaseText}
+            </p>
+          )}
 
           {phase === 'UNCONFIGURED' && <Setup state={state} send={send} />}
 
@@ -203,29 +222,60 @@ export function App() {
             </Section>
           )}
 
-          {phase === 'READY' && (
+          {readyShell && (
             <>
-              {state.learning?.status === 'closed' && <ClosedLearning state={state} />}
-              <Reading state={state} send={send} />
+              {state.guide && (
+                <Section title="这篇文章讲了什么">
+                  <p className="summary">{state.guide.summary}</p>
+                  {state.guide.bubbles.length > 0 && (
+                    <div className="bubbles">
+                      {state.guide.bubbles.map((bubble) => (
+                        <button
+                          key={bubble.id}
+                          type="button"
+                          className="bubble"
+                          disabled={busy !== null}
+                          onClick={() => {
+                            if (state.tabId) void send({ type: 'explore', tabId: state.tabId, bubbleId: bubble.id });
+                          }}
+                        >
+                          {bubble.question}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </Section>
+              )}
+
+              <div className="tabs" role="tablist" aria-label="功能切换">
+                <button
+                  type="button"
+                  role="tab"
+                  className="tab"
+                  aria-selected={view === 'qa'}
+                  onClick={() => setView('qa')}
+                >
+                  问答
+                  {busy?.kind === 'answer' && <span className="dot" aria-hidden="true" />}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className="tab"
+                  aria-selected={view === 'learn'}
+                  onClick={() => setView('learn')}
+                >
+                  AI 问我
+                  {busy?.kind === 'learn' && <span className="dot" aria-hidden="true" />}
+                </button>
+              </div>
+
+              {view === 'qa' ? <Reading state={state} send={send} /> : <Learning state={state} send={send} />}
             </>
           )}
-
-          {phase === 'LEARNING' && <Learning state={state} send={send} />}
         </>
       )}
     </div>
-  );
-}
-
-function ClosedLearning({ state }: { state: PanelState }) {
-  const log = state.learning?.log ?? [];
-  const summary = [...log].reverse().find((entry) => entry.role === 'summary');
-  if (!summary) return null;
-  return (
-    <details className="section">
-      <summary>上一轮学习收束</summary>
-      <p className="summary">{summary.text}</p>
-    </details>
   );
 }
 
@@ -261,8 +311,6 @@ const PHASE_TEXT: Record<string, string> = {
   PERMISSION_REQUIRED: '等你在浏览器里允许读取这个网站。',
   READY_TO_START: '准备好了。你点开始，我才读这一页。',
   ANALYZING: '正在读这一页，马上给你摘要。',
-  READY: '摘要好了。可以点下面的话题，也可以直接提问。',
-  LEARNING: '正在一问一答，看看你理解到哪一步。',
   STALE: '页面换了，之前的内容已经作废。',
   UNSUPPORTED: '这一页暂时读不了。',
   ERROR: '上一步没成功。',

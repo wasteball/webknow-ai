@@ -311,7 +311,8 @@ async function runLearnStep(
       return writeBack(tabId, session, runId, (fresh) => ({
         ...fresh,
         learning: next,
-        state: 'LEARNING',
+        // 收束即回到 READY：问答 Tab 与“再来一轮”立即可用，不再需要一个退出动作（FR-011）。
+        state: next.status === 'closed' ? 'READY' : 'LEARNING',
         error: null,
         updatedAt: Date.now(),
       }));
