@@ -1,11 +1,62 @@
+/*
+ * 侧栏样式。设计原则（窄栏 + 阅读伴随场景）：
+ *
+ * 1. 内容优先：不用卡片边框和阴影划分区块，用留白、字阶和极细分隔线。
+ *    窄栏里每加一层框线就少一分可读空间。
+ * 2. 单一强调色：全屏只有一个主操作（黑色药丸），蓝色只用于链接与焦点。
+ *    颜色要能表达状态，但状态不能只靠颜色表达。
+ * 3. 中文排版：正文 15px / 行高 1.75；次级信息靠色阶区分而不是加框。
+ * 4. 动效只回应动作：不做入场动画，只让状态变化被看见。
+ * 5. 无障碍不打折：3px 焦点环、对比度、prefers-reduced-motion、深浅色都覆盖。
+ */
+
 :root {
-  color-scheme: light;
-  --ink: #1c1c1e;
-  --muted: #5c5c66;
-  --line: #d8d8de;
-  --accent: #8a3b12;
-  --accent-ink: #ffffff;
-  --bg-soft: #f6f5f2;
+  color-scheme: light dark;
+
+  --ink: #1d1d1f;
+  --ink-2: #56565c;
+  --ink-3: #86868b;
+  --paper: #ffffff;
+  --paper-2: #f5f5f7;
+  --paper-3: #ececee;
+  --line: #d2d2d7;
+  --accent: #0b6bcb;
+  --action: #1d1d1f;
+  --action-ink: #ffffff;
+  --danger: #b3261e;
+  --highlight: #c2410c;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f5f5f7;
+    --ink-2: #b8b8bd;
+    --ink-3: #8e8e93;
+    --paper: #1c1c1e;
+    --paper-2: #2c2c2e;
+    --paper-3: #3a3a3c;
+    --line: #3a3a3c;
+    --accent: #6cb0ff;
+    --action: #f5f5f7;
+    --action-ink: #1c1c1e;
+    --danger: #ff6961;
+    --highlight: #e8874f;
+  }
 }
 
 * {
@@ -14,195 +65,214 @@
 
 body {
   margin: 0;
-  font: 14px/1.6 system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.75;
   color: var(--ink);
-  background: #fff;
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
 }
 
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-6);
   min-height: 100vh;
 }
 
+/* ── 顶部：常驻，长对话回滚时仍知道在读哪一页 ───────────────── */
+
 .panel-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0 var(--space-3);
+  background: var(--paper);
   border-bottom: 1px solid var(--line);
-  padding-bottom: 8px;
 }
 
 .panel-header h1 {
-  font-size: 15px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
   margin: 0;
+}
+
+.page-title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0 0 var(--space-1);
+  text-wrap: pretty;
+}
+
+.scope {
+  font-size: 13px;
+  color: var(--ink-3);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── 区块：靠留白与小节标题分层，不用外框 ───────────────────── */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0;
+  border: 0;
+}
+
+.section + .section {
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line);
 }
 
 h2 {
   font-size: 13px;
-  margin: 0 0 6px;
-  color: var(--muted);
   font-weight: 600;
-}
-
-.section,
-details.section {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
-}
-
-.scope,
-.hint,
-.phase {
-  color: var(--muted);
-  font-size: 12px;
-  margin: 4px 0;
-}
-
-.page-title {
+  color: var(--ink-3);
   margin: 0;
-  font-weight: 600;
 }
 
-.summary {
-  white-space: pre-wrap;
-  margin: 0 0 8px;
-  line-height: 1.75;
-}
-
-.bubbles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-/* 话题按钮做成浅色卡片而不是实心按钮：它们是“可以点开看看”，不是要用户确认的动作。 */
-.bubble {
-  background: #fff;
-  color: var(--ink);
-  border: 1px solid var(--line);
-  text-align: left;
+details.section summary {
   font-size: 13px;
-  line-height: 1.5;
-  max-width: 100%;
-}
-
-.bubble:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--bg-soft);
-}
-
-button {
-  font: inherit;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-ink);
+  font-weight: 600;
+  color: var(--ink-2);
   cursor: pointer;
 }
 
-button.secondary {
-  background: #fff;
+/* ── 正文与摘要 ─────────────────────────────────────────── */
+
+.summary {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  text-wrap: pretty;
+}
+
+.hint,
+.phase {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink-3);
+  margin: 0;
+}
+
+/* ── 话题：浅色可点卡片，不是需要确认的动作 ─────────────────── */
+
+.bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.bubble {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
   color: var(--ink);
-  border-color: var(--line);
+  background: var(--paper-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
 }
 
-button.danger {
-  background: #fff;
-  color: #8a1c1c;
-  border-color: #c98a8a;
+.bubble:hover:not(:disabled) {
+  background: var(--paper-3);
 }
 
-button:disabled {
-  opacity: 0.55;
+.bubble:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-button.link {
-  border: none;
-  background: none;
-  color: var(--accent);
-  padding: 2px 4px;
-  text-decoration: underline;
-}
-
-:focus-visible {
-  outline: 3px solid #1c4fd6;
-  outline-offset: 2px;
-}
-
-input,
-textarea {
-  font: inherit;
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  margin: 4px 0;
-}
-
-.composer,
-.composer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.composer {
-  flex-direction: column;
-  align-items: stretch;
-  border-top: 1px solid var(--line);
-  padding-top: 8px;
-}
+/* ── 对话：问题靠右、回答靠左，一眼分清谁说的 ────────────────── */
 
 .turn {
-  border-bottom: 1px dashed var(--line);
-  padding-bottom: 8px;
-  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+}
+
+.turn + .turn {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
 }
 
 .turn .question {
-  font-weight: 600;
-  margin: 0 0 4px;
+  align-self: flex-end;
+  max-width: 88%;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--paper-2);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.answer {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  text-wrap: pretty;
 }
 
 .answer-text {
   white-space: pre-wrap;
 }
 
+.citations,
+.unanswered {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+.unanswered li::before {
+  content: "· ";
+}
+
+/* ── 来源标签：结构承载信息，不靠颜色单独表达 ────────────────── */
+
 .tag {
   display: inline-block;
   font-size: 11px;
+  line-height: 1.7;
+  color: var(--ink-3);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0 4px;
-  margin-right: 6px;
-  background: var(--bg-soft);
-  color: var(--muted);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  margin-right: var(--space-2);
+  vertical-align: 1px;
+  white-space: nowrap;
 }
 
+/* 只有"原文里说的"是最强主张，给它唯一的强调；其余保持中性。 */
 .tag-original {
-  border-color: #6b8f5a;
-  color: #33501f;
+  color: var(--ink);
+  border-color: var(--ink-3);
+  font-weight: 600;
 }
 
-.tag-unknown {
-  border-color: #b98a2a;
-  color: #6b4a00;
-}
-
-.citations,
-.unanswered {
-  font-size: 12px;
-  color: var(--muted);
-  margin: 4px 0 0;
-  padding-left: 16px;
-}
+/* ── 学习时间线 ─────────────────────────────────────────── */
 
 .timeline {
   list-style: none;
@@ -210,54 +280,191 @@ textarea {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .entry {
-  border-left: 3px solid var(--line);
-  padding-left: 8px;
+  font-size: 15px;
+  line-height: 1.8;
   white-space: pre-wrap;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--paper-3);
 }
 
 .entry-question {
-  border-left-color: var(--accent);
+  font-size: 16px;
   font-weight: 600;
+  line-height: 1.65;
+  border-left: 0;
+  padding-left: 0;
+  padding-bottom: var(--space-1);
+  color: var(--ink);
 }
 
 .entry-feedback {
-  border-left-color: #6b8f5a;
+  border-left-color: var(--line);
 }
 
 .entry-summary {
-  border-left-color: #1c4fd6;
-  background: var(--bg-soft);
-  padding: 6px 8px;
-  border-radius: 0 6px 6px 0;
+  border-left-color: var(--accent);
+  background: var(--paper-2);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: var(--space-3);
 }
+
+.entry-answer {
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+/* ── 输入与操作 ─────────────────────────────────────────── */
+
+.composer,
+.composer-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.composer {
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.composer-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+input,
+textarea {
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink);
+  width: 100%;
+  padding: var(--space-3);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  resize: none;
+  transition: border-color 120ms ease;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-3);
+}
+
+textarea:disabled,
+input:disabled {
+  background: var(--paper-2);
+  color: var(--ink-3);
+}
+
+button {
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--action-ink);
+  background: var(--action);
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+  transition: opacity 120ms ease, background-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  color: var(--ink);
+  background: transparent;
+  border-color: var(--line);
+}
+
+button.secondary:hover:not(:disabled) {
+  background: var(--paper-2);
+  opacity: 1;
+}
+
+button.danger {
+  color: var(--danger);
+  background: transparent;
+  border-color: transparent;
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--paper-2);
+  opacity: 1;
+}
+
+/* 辅助操作（提示/讲解/跳过/结束）不与主操作抢注意力 */
+button.quiet {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink-2);
+  background: transparent;
+  border-color: transparent;
+  padding: var(--space-1) var(--space-2);
+}
+
+button.quiet:hover:not(:disabled) {
+  background: var(--paper-2);
+  opacity: 1;
+}
+
+button.link {
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 400;
+  text-decoration: none;
+}
+
+button.link:hover:not(:disabled) {
+  text-decoration: underline;
+  opacity: 1;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── 状态与提示 ─────────────────────────────────────────── */
 
 .busy {
   display: flex;
   align-items: center;
-  gap: 8px;
-  background: var(--bg-soft);
-  border-radius: 6px;
-  padding: 8px;
-  font-size: 12px;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--paper-2);
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--ink-2);
 }
 
 .spinner {
-  width: 10px;
-  height: 10px;
+  flex: none;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid var(--line);
-  border-top-color: var(--accent);
-  animation: spin 1s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation: none;
-  }
+  border-top-color: var(--ink-3);
+  animation: spin 900ms linear infinite;
 }
 
 @keyframes spin {
@@ -267,28 +474,55 @@ textarea {
 }
 
 .banner {
-  border-radius: 6px;
-  padding: 8px 10px;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  background: var(--paper-2);
+  color: var(--ink-2);
 }
 
-.banner-error {
-  border: 1px solid #c98a8a;
-  background: #fdf3f3;
+.banner p {
+  margin: 0 0 var(--space-2);
 }
 
-.banner-info {
-  border: 1px solid var(--line);
-  background: var(--bg-soft);
+.banner p:last-child {
+  margin-bottom: 0;
 }
 
 .banner ul {
-  padding-left: 18px;
-  margin: 6px 0;
+  margin: 0 0 var(--space-2);
+  padding-left: 1.2em;
+}
+
+.banner-error {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.banner-info button {
+  margin-top: var(--space-3);
 }
 
 .steps {
-  padding-left: 18px;
+  margin: 0;
+  padding-left: 1.4em;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.steps li {
+  margin-bottom: var(--space-1);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
 }
 
 .sr-only {
@@ -298,4 +532,14 @@ textarea {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -30,8 +30,8 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
     <>
       <Section title="AI 问我">
         <p className="hint">
-          这次要弄清楚：{learning.goal}｜已经问了 {state.budget.used}/{state.budget.total} 个问题
-          {remaining === 0 ? '（问题次数用完了，先给你一个小结）' : ''}
+          这次要弄清楚「{learning.goal}」。已经问了 {state.budget.used}/{state.budget.total} 个问题
+          {remaining === 0 ? '——问题次数用完了，先给你一个小结。' : '。'}
         </p>
 
         <ol className="timeline">
@@ -105,7 +105,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
           <div className="composer-actions" role="group" aria-label="学习辅助">
             <button
               type="button"
-              className="secondary"
+              className="quiet"
               disabled={busy || !learning.current}
               onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'hint' })}
             >
@@ -113,7 +113,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
             </button>
             <button
               type="button"
-              className="secondary"
+              className="quiet"
               disabled={busy || !learning.current}
               onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'explain' })}
             >
@@ -121,7 +121,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
             </button>
             <button
               type="button"
-              className="secondary"
+              className="quiet"
               disabled={busy}
               onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'skip' })}
             >
@@ -129,7 +129,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
             </button>
             <button
               type="button"
-              className="secondary"
+              className="quiet"
               disabled={busy}
               onClick={() => tabId && void send({ type: 'learnEnd', tabId })}
             >

@@ -108,10 +108,6 @@ export function App() {
       {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
       {state?.error && <ErrorBanner error={state.error} />}
 
-      <p className="phase" role="status" aria-live="polite">
-        {PHASE_TEXT[phase] ?? ''}
-      </p>
-
       {showSettings ? (
         state && <Settings state={state} send={send} />
       ) : !state ? (
@@ -124,6 +120,10 @@ export function App() {
               <ScopeLine completeness={state.completeness} />
             </div>
           )}
+
+          <p className="phase" role="status" aria-live="polite">
+            {PHASE_TEXT[phase] ?? ''}
+          </p>
 
           {phase === 'UNCONFIGURED' && <Setup state={state} send={send} />}
 

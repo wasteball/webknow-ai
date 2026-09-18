@@ -21,7 +21,7 @@ export function Setup({ state, send }: { state: PanelState; send: Send }) {
   };
 
   return (
-    <Section title="还差一步：填入你自己的 DeepSeek 钥匙">
+    <Section title="这把钥匙怎么弄到">
       <p>
         这个插件自己不提供 AI，它是借你自己的 DeepSeek 账号来帮你读网页。所以要先用你的账号换一把“钥匙”，
         插件才能替你向 DeepSeek 提问。
