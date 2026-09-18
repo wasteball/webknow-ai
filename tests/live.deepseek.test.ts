@@ -107,7 +107,14 @@ live('A0 真实 DeepSeek 接入', () => {
 
   it('阅读导览：真实输出通过结构与去重校验', async () => {
     const { result, ms } = await call(
-      guideMessages({ title: '城市配送试点研究', url: 'https://example.com/a', contextJson, disclosure }),
+      guideMessages({
+        title: '城市配送试点研究',
+        url: 'https://example.com/a',
+        contextJson,
+        disclosure,
+        maxBubbles: 3,
+        summaryMaxChars: 240,
+      }),
       'guide',
     );
     const clean = cleanGuide(result);

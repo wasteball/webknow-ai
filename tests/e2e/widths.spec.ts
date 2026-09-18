@@ -223,3 +223,15 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
   await _panel.close();
   await article.close();
 });
+
+test('设置页在宽面板下排版正确', async () => {
+  test.setTimeout(120_000);
+  const panel = await context.newPage();
+  await panel.setViewportSize({ width: 720, height: 920 });
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await panel.getByRole('button', { name: '设置' }).click();
+  await expect(panel.getByText('模型与钥匙')).toBeVisible();
+  await expect(panel.getByText('提示词')).toBeVisible();
+  await panel.screenshot({ path: join(OUTPUT_DIR, 'settings-720.png'), fullPage: true });
+  await panel.close();
+});

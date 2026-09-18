@@ -14,6 +14,9 @@ import { LIMITS } from './limits';
 export const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completions';
 export const DEEPSEEK_MODEL = 'deepseek-flash';
 
+/** 模型列表拉取失败时设置页的回退选项（2026-09-18 /models 实测）。 */
+export const KNOWN_MODELS = [DEEPSEEK_MODEL, 'deepseek-v4-pro'];
+
 /**
  * A0 实测（2026-09-18，真实 Key）：
  * - `deepseek-flash` 默认开启思考，每个分片同时带 reasoning_content 与 content；
@@ -31,6 +34,8 @@ export type Message = { role: 'system' | 'user'; content: string };
 
 export type ChatOptions = {
   apiKey: string;
+  /** 模型 ID；缺省用内置默认。设置里选择的模型在这里生效。 */
+  model?: string;
   messages: Message[];
   signal: AbortSignal;
   /** 已生成字符数，用于让界面与 service worker 保持活跃；不含正文内容。 */
@@ -132,7 +137,7 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: DEEPSEEK_MODEL,
+        model: options.model?.trim() || DEEPSEEK_MODEL,
         messages,
         stream: true,
         max_tokens: options.maxTokens ?? LIMITS.maxOutputTokens,

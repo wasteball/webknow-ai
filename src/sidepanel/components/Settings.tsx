@@ -1,30 +1,151 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { browser } from 'wxt/browser';
 
+import { KNOWN_MODELS } from '../../core/deepseek';
+import { ANSWER_DEFAULT_POLICY } from '../../core/prompts/answer';
+import { GUIDE_DEFAULT_POLICY, summaryCharsFor } from '../../core/prompts/guide';
+import { LEARN_DEFAULT_POLICY } from '../../core/prompts/learn';
 import type { Command, PanelState, Reply } from '../../core/protocol';
+import type { PromptTarget } from '../../core/settings';
 import { Section } from './bits';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
- * 设置只做三件事：钥匙管理、教学提问方式的覆盖与恢复、内容清理。
- * 清除这一页、清除全部、删掉钥匙、恢复默认提问方式，是四个互不牵连的操作（FR-033）。
+ * 设置页（产品化改造 F2）：分区展示——模型与钥匙、提示词、行为偏好、外观、内容清理、关于。
+ * 非敏感设置统一走 saveSettings；Key 仍是独立命令与独立校验。
+ * 清除这一页、清除全部、删掉钥匙、恢复默认提示词，互不牵连（FR-033）。
  */
+
+const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string; defaultText: () => string }[] = [
+  {
+    key: 'guide',
+    title: '导读摘要',
+    hint: '决定“这篇文章讲了什么”怎么写、给几个话题。',
+    defaultText: () => '',
+  },
+  {
+    key: 'answer',
+    title: '自由问答',
+    hint: '决定回答的口径与风格。',
+    defaultText: () => '',
+  },
+  {
+    key: 'learn',
+    title: '“AI 问我”怎么提问',
+    hint: '决定它出什么题、怎么回应你的回答。',
+    defaultText: () => '',
+  },
+];
+
 export function Settings({ state, send }: { state: PanelState; send: Send }) {
+  const { settings } = state;
+  return (
+    <>
+      <ModelAndKey state={state} send={send} />
+      <Prompts state={state} send={send} />
+      <Behavior state={state} send={send} />
+      <Appearance state={state} send={send} />
+      <Cleanup state={state} send={send} />
+      <About />
+    </>
+  );
+}
+
+function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
+  const { settings } = state;
+  const [models, setModels] = useState<string[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
+  const [customModel, setCustomModel] = useState('');
   const [key, setKey] = useState('');
-  const [prompt, setPrompt] = useState(state.teachingPrompt);
   const [busy, setBusy] = useState(false);
 
   const run = async (command: Command) => {
     setBusy(true);
-    await send(command);
+    const reply = await send(command);
     setBusy(false);
+    return reply;
   };
 
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const reply = await send({ type: 'listModels' });
+      if (!alive) return;
+      if (reply?.ok && reply.data?.models?.length) setModels(reply.data.models);
+      else setLoadFailed(true);
+    })();
+    return () => {
+      alive = false;
+    };
+    // 只在进入设置页时拉一次模型列表。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const known = models ?? KNOWN_MODELS;
+  const modelInList = known.includes(settings.model);
+
   return (
-    <>
-      <Section title="DeepSeek 钥匙">
-        <p className="hint">{state.hasKey ? '已经保存了一把钥匙。' : '还没有填钥匙。'}</p>
-        <label htmlFor="replace-key">换一把新钥匙</label>
+    <Section title="模型与钥匙">
+      <p className="hint">
+        这个插件用你自己的 DeepSeek 账号干活。钥匙只存在这个浏览器里，不会同步，也发不给我们。
+      </p>
+
+      <div className="field">
+        <label htmlFor="model-select">模型</label>
+        {customMode ? (
+          <>
+            <input
+              id="model-select"
+              type="text"
+              spellCheck={false}
+              placeholder={settings.model}
+              value={customModel}
+              onChange={(event) => setCustomModel(event.target.value)}
+            />
+            <div className="composer-actions">
+              <button
+                type="button"
+                disabled={busy || !customModel.trim()}
+                onClick={() =>
+                  void run({ type: 'saveSettings', patch: { model: customModel.trim() } }).then(() => {
+                    setCustomModel('');
+                    setCustomMode(false);
+                  })
+                }
+              >
+                保存模型
+              </button>
+              <button type="button" className="secondary" onClick={() => setCustomMode(false)}>
+                取消
+              </button>
+            </div>
+          </>
+        ) : (
+          <select
+            id="model-select"
+            value={modelInList ? settings.model : '__custom__'}
+            disabled={busy}
+            onChange={(event) => {
+              if (event.target.value === '__custom__') setCustomMode(true);
+              else void run({ type: 'saveSettings', patch: { model: event.target.value } });
+            }}
+          >
+            {!modelInList && <option value={settings.model}>{settings.model}（当前）</option>}
+            {known.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+            <option value="__custom__">手动填写…</option>
+          </select>
+        )}
+        {loadFailed && <p className="hint">没能取得完整模型列表，可以手动填写模型 ID。</p>}
+      </div>
+
+      <div className="field">
+        <label htmlFor="replace-key">{state.hasKey ? '换一把新钥匙' : 'DeepSeek 钥匙'}</label>
         <input
           id="replace-key"
           type="password"
@@ -58,74 +179,230 @@ export function Settings({ state, send }: { state: PanelState; send: Send }) {
             删掉钥匙
           </button>
         </div>
-        <p className="hint">删掉钥匙不会清掉你读过的内容，也不会把下面的提问方式恢复默认。</p>
-      </Section>
+        <p className="hint">
+          {state.hasKey ? '已经保存了一把钥匙。' : '还没有填钥匙。'}
+          删掉钥匙不会清掉你读过的内容，也不会动下面的设置。
+        </p>
+      </div>
+    </Section>
+  );
+}
 
-      <Section title="“AI 问我”用什么方式提问">
-        <p className="hint">
-          只有这一项可以改。摘要、话题建议和普通问答由我们维护，没有开放修改。
-          你写的内容只在“AI 问我”里生效，也改不了费用上限、权限或内容的去向。
-        </p>
-        <label htmlFor="teaching-prompt">你希望它怎么问你</label>
-        <textarea
-          id="teaching-prompt"
-          rows={8}
-          maxLength={8000}
-          value={prompt}
-          placeholder="留空就用我们默认的提问方式。"
-          onChange={(event) => setPrompt(event.target.value)}
-        />
-        <div className="composer-actions">
-          <button
-            type="button"
-            disabled={busy || !prompt.trim()}
-            onClick={() => void run({ type: 'saveTeachingPrompt', text: prompt })}
-          >
-            保存
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={() => {
-              setPrompt('');
-              void run({ type: 'resetTeachingPrompt' });
-            }}
-          >
-            恢复默认
-          </button>
-        </div>
-        <p className="hint">
-          保存后从下一次“AI 问我”开始生效，正在进行的那一轮不受影响。
-          {state.teachingPromptIsCustom ? '当前用的是你写的版本。' : '当前用的是默认版本。'}
-        </p>
-      </Section>
+function Prompts({ state, send }: { state: PanelState; send: Send }) {
+  const { settings } = state;
+  const [drafts, setDrafts] = useState<Record<PromptTarget, string>>({
+    guide: settings.prompts.guide ?? '',
+    answer: settings.prompts.answer ?? '',
+    learn: settings.prompts.learn ?? '',
+  });
+  const [busy, setBusy] = useState(false);
 
-      <Section title="内容保留与清理">
-        <p className="hint">
-          你读过的网页文字、摘要、对话和学习记录，只在这次浏览器开着的时候保留：
-          关掉标签页就清掉那一页，关掉浏览器就全部清掉。钥匙和上面的设置不受影响。
-        </p>
-        <div className="composer-actions">
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy || state.tabId === null}
-            onClick={() => state.tabId !== null && void run({ type: 'clearSession', tabId: state.tabId })}
-          >
-            清掉这一页的内容
-          </button>
-          <button
-            type="button"
-            className="danger"
-            disabled={busy}
-            onClick={() => void run({ type: 'clearAllSessions' })}
-          >
-            清掉所有页面的内容
-          </button>
+  const run = async (command: Command) => {
+    setBusy(true);
+    await send(command);
+    setBusy(false);
+  };
+
+  const defaults: Record<PromptTarget, string> = {
+    guide: GUIDE_DEFAULT_POLICY({ maxBubbles: settings.maxBubbles, summaryMaxChars: summaryCharsFor(settings.summaryLength) }),
+    answer: ANSWER_DEFAULT_POLICY,
+    learn: LEARN_DEFAULT_POLICY,
+  };
+
+  return (
+    <Section title="提示词">
+      <p className="hint">
+        每个板块都有一套默认写法，也可以换成你自己的。你写的内容只影响你自己这台浏览器的效果，
+        也改不了安全边界：内容的去向、费用上限和输出格式仍然由程序控制。
+      </p>
+      {PROMPT_TARGETS.map(({ key, title, hint }) => (
+        <div className="field" key={key}>
+          <label htmlFor={`prompt-${key}`}>{title}</label>
+          <p className="hint">{hint}</p>
+          <textarea
+            id={`prompt-${key}`}
+            rows={6}
+            maxLength={8000}
+            value={drafts[key]}
+            placeholder="留空就用默认写法。"
+            onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
+          />
+          <div className="composer-actions">
+            <button
+              type="button"
+              disabled={busy || drafts[key].trim() === (settings.prompts[key] ?? '')}
+              onClick={() =>
+                void run({ type: 'saveSettings', patch: { prompts: { [key]: drafts[key] } } })
+              }
+            >
+              保存
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || !settings.prompts[key]}
+              onClick={() => {
+                setDrafts((current) => ({ ...current, [key]: '' }));
+                void run({ type: 'saveSettings', patch: { prompts: { [key]: '' } } });
+              }}
+            >
+              恢复默认
+            </button>
+          </div>
+          <details>
+            <summary className="link">看看默认写法</summary>
+            <p className="hint">{defaults[key]}</p>
+          </details>
+          <p className="hint">
+            {settings.prompts[key] ? '当前用的是你写的版本。' : '当前用的是默认版本。'}
+            保存后从下一次该板块请求开始生效。
+          </p>
         </div>
-        <p className="hint">这两个操作都不会删掉钥匙，也不会恢复默认提问方式。</p>
-      </Section>
-    </>
+      ))}
+    </Section>
+  );
+}
+
+function Behavior({ state, send }: { state: PanelState; send: Send }) {
+  const { settings } = state;
+  const [busy, setBusy] = useState(false);
+
+  const change = (patch: Parameters<typeof send>[0]) => {
+    if (patch.type !== 'saveSettings') return;
+    setBusy(true);
+    void send(patch).finally(() => setBusy(false));
+  };
+
+  return (
+    <Section title="行为偏好">
+      <p className="hint">这些只影响你的使用体验，改动立即生效并保存。</p>
+      <div className="field">
+        <label htmlFor="learning-budget">“AI 问我”一轮最多问几个问题</label>
+        <select
+          id="learning-budget"
+          value={String(settings.learningBudget)}
+          disabled={busy}
+          onChange={(event) => change({ type: 'saveSettings', patch: { learningBudget: Number(event.target.value) } })}
+        >
+          {Array.from({ length: 10 }, (_, index) => index + 1).map((count) => (
+            <option key={count} value={String(count)}>
+              {count} 个
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="summary-length">摘要长度</label>
+        <select
+          id="summary-length"
+          value={settings.summaryLength}
+          disabled={busy}
+          onChange={(event) =>
+            change({
+              type: 'saveSettings',
+              patch: { summaryLength: event.target.value as 'short' | 'medium' | 'long' },
+            })
+          }
+        >
+          <option value="short">短（两三句话）</option>
+          <option value="medium">中（默认）</option>
+          <option value="long">长（多讲一些）</option>
+        </select>
+      </div>
+      <div className="field">
+        <label htmlFor="max-bubbles">话题卡片数量上限</label>
+        <select
+          id="max-bubbles"
+          value={String(settings.maxBubbles)}
+          disabled={busy}
+          onChange={(event) => change({ type: 'saveSettings', patch: { maxBubbles: Number(event.target.value) } })}
+        >
+          {Array.from({ length: 4 }, (_, index) => index).map((count) => (
+            <option key={count} value={String(count)}>
+              {count === 0 ? '不给话题卡片' : `最多 ${count} 个`}
+            </option>
+          ))}
+        </select>
+      </div>
+    </Section>
+  );
+}
+
+function Appearance({ state, send }: { state: PanelState; send: Send }) {
+  const { settings } = state;
+  const [busy, setBusy] = useState(false);
+  const change = (patch: Parameters<typeof send>[0]) => {
+    if (patch.type !== 'saveSettings') return;
+    setBusy(true);
+    void send(patch).finally(() => setBusy(false));
+  };
+  return (
+    <Section title="外观">
+      <div className="field">
+        <label htmlFor="font-size">文字大小</label>
+        <select
+          id="font-size"
+          value={settings.fontSize}
+          disabled={busy}
+          onChange={(event) =>
+            change({ type: 'saveSettings', patch: { fontSize: event.target.value as 'normal' | 'large' } })
+          }
+        >
+          <option value="normal">标准</option>
+          <option value="large">大</option>
+        </select>
+      </div>
+    </Section>
+  );
+}
+
+function Cleanup({ state, send }: { state: PanelState; send: Send }) {
+  const [busy, setBusy] = useState(false);
+  const run = async (command: Command) => {
+    setBusy(true);
+    await send(command);
+    setBusy(false);
+  };
+  return (
+    <Section title="内容保留与清理">
+      <p className="hint">
+        你读过的网页文字、摘要、对话和学习记录，只在这次浏览器开着的时候保留：
+        关掉标签页就清掉那一页，关掉浏览器就全部清掉。钥匙和上面的设置不受影响。
+      </p>
+      <div className="composer-actions">
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy || state.tabId === null}
+          onClick={() => state.tabId !== null && void run({ type: 'clearSession', tabId: state.tabId })}
+        >
+          清掉这一页的内容
+        </button>
+        <button
+          type="button"
+          className="danger"
+          disabled={busy}
+          onClick={() => void run({ type: 'clearAllSessions' })}
+        >
+          清掉所有页面的内容
+        </button>
+      </div>
+      <p className="hint">这两个操作都不会删掉钥匙，也不会改上面的设置。</p>
+    </Section>
+  );
+}
+
+function About() {
+  const version = browser.runtime.getManifest().version;
+  return (
+    <Section title="关于">
+      <p className="hint">
+        webknow-ai 版本 {version}。使用说明与常见问题见{' '}
+        <a href="https://github.com/wasteball/webknow-ai#readme" target="_blank" rel="noreferrer">
+          项目主页
+        </a>
+        。
+      </p>
+    </Section>
   );
 }

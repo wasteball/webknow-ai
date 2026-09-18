@@ -109,7 +109,10 @@ export function App() {
   const phaseText = readyShell ? null : PHASE_TEXT[phase];
 
   return (
-    <div className="panel">
+    <div
+      className="panel"
+      style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
+    >
       <header className="panel-header">
         <h1>webknow-ai</h1>
         <button

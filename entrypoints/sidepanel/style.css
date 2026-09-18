@@ -356,7 +356,8 @@ details.section summary {
 }
 
 input,
-textarea {
+textarea,
+select {
   font-family: var(--font);
   font-size: 15px;
   line-height: 1.6;
@@ -368,6 +369,23 @@ textarea {
   border-radius: var(--radius);
   resize: none;
   transition: border-color 120ms ease;
+}
+
+/* 设置页的表单行：标签 + 控件 + 说明，纵向排布适配窄栏。 */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field > label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+details .link {
+  font-size: 13px;
 }
 
 input::placeholder,

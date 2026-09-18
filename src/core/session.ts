@@ -57,6 +57,8 @@ export type LearningState = {
   goal: string;
   /** 启动时固定的教学提示词版本；进行中的会话不随覆盖变化（FR-028）。 */
   promptVersion: string;
+  /** 启动时固定的提问预算；旧会话可能没有此字段，此时用默认值。 */
+  budget?: number;
   /** 已用提问预算（按“提出问题”计数）。 */
   used: number;
   /** 当前待回答的问题。 */
@@ -217,7 +219,7 @@ export function canStartLearning(session: PageSession): AppError | null {
 }
 
 export function remainingBudget(learning: LearningState): number {
-  return Math.max(0, LIMITS.learningBudget - learning.used);
+  return Math.max(0, (learning.budget ?? LIMITS.learningBudget) - learning.used);
 }
 
 /** 预算用尽后不再提问，先收束，由用户明确决定是否续开（FR-012/FR-039）。 */

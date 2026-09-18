@@ -19,7 +19,10 @@ function badOutput(what: string): AppError {
   return appError('BAD_OUTPUT', `这次生成的内容格式不对，没有采用。可以再试一次。`, true);
 }
 
-export function cleanGuide(parsed: unknown): Clean<{ summary: string; bubbles: Bubble[] }> {
+export function cleanGuide(
+  parsed: unknown,
+  maxBubbles: number = LIMITS.maxBubbles,
+): Clean<{ summary: string; bubbles: Bubble[] }> {
   const result = GuideSchema.safeParse(parsed);
   if (!result.success) return { ok: false, error: badOutput('首屏结果') };
 
@@ -28,6 +31,7 @@ export function cleanGuide(parsed: unknown): Clean<{ summary: string; bubbles: B
     return { ok: false, error: badOutput('摘要') };
   }
 
+  const cap = Math.min(Math.max(0, Math.round(maxBubbles)), LIMITS.maxBubbles);
   const seen = new Set<string>();
   const bubbles: Bubble[] = [];
   for (const [index, bubble] of result.data.bubbles.entries()) {
@@ -40,7 +44,7 @@ export function cleanGuide(parsed: unknown): Clean<{ summary: string; bubbles: B
       ? (bubble.kind as BubbleKind)
       : 'concept';
     bubbles.push({ id: `bub_${index}`, question, kind });
-    if (bubbles.length >= LIMITS.maxBubbles) break;
+    if (bubbles.length >= cap) break;
   }
 
   return { ok: true, value: { summary, bubbles } };

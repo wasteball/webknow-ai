@@ -4,17 +4,17 @@ import { appError, fromThrown, type AppError } from '../core/errors';
 import { derivePhase } from '../core/phase';
 import type { Command, Event, PanelState, PortRequest, Reply } from '../core/protocol';
 import { LIMITS } from '../core/limits';
+import { effectiveSettings } from '../core/settings';
 import { createSession, emptySession, markStale } from '../core/session';
-import { validateTeachingPrompt } from '../core/validate';
-import { testConnection } from './model';
+import { listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
 import { abortRun, handleIntent, type RunnerHooks } from './runner';
 import {
   OUTBOUND_NOTICE_VERSION,
   OUTBOUND_RECEIVER,
+  applySettings,
   clearAllSessions,
   clearPending,
-  clearTeachingPrompt,
   deleteApiKey,
   dropSession,
   getPending,
@@ -58,6 +58,7 @@ async function permissionFor(url: string | null): Promise<'granted' | 'missing' 
 
 export async function buildPanelState(tabId: number | null): Promise<PanelState> {
   const config = await readConfig();
+  const settings = effectiveSettings(config);
   const hasKey = Boolean(config.apiKey?.trim());
   const outboundConfirmed = config.outbound?.version === OUTBOUND_NOTICE_VERSION;
 
@@ -70,8 +71,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       phase: derivePhase({ hasKey, permission: 'unknown', sessionState: null, unsupportedReason: null }),
       sessionState: null,
       hasKey,
-      teachingPromptIsCustom: Boolean(config.teachingPrompt?.trim()),
-      teachingPrompt: config.teachingPrompt ?? '',
+      settings,
       outboundConfirmed,
       completeness: null,
       guide: null,
@@ -79,7 +79,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       learning: null,
       busy: null,
       error: null,
-      budget: { used: 0, total: 0 },
+      budget: { used: 0, total: settings.learningBudget },
       unsupportedReason: '还没有取得当前页面的地址。请点击工具栏图标授权当前页面。',
     };
   }
@@ -107,8 +107,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     }),
     sessionState: session?.state ?? null,
     hasKey,
-    teachingPromptIsCustom: Boolean(config.teachingPrompt?.trim()),
-    teachingPrompt: config.teachingPrompt ?? '',
+    settings,
     outboundConfirmed,
     completeness: session?.completeness ?? null,
     guide: session?.guide ?? null,
@@ -118,7 +117,10 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       ? { kind: session.run.kind, chars: 0 }
       : null,
     error: session?.error ?? null,
-    budget: { used: session?.learning?.used ?? 0, total: LIMITS.learningBudget },
+    budget: {
+      used: session?.learning?.used ?? 0,
+      total: session?.learning?.budget ?? settings.learningBudget,
+    },
     unsupportedReason,
   };
 }
@@ -296,18 +298,22 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       case 'deleteKey':
         await deleteApiKey();
         await pushAllStates();
-        return { ok: true, message: '钥匙删掉了。页面内容和教学设置都没有动。' };
+        return { ok: true, message: '钥匙删掉了。页面内容和设置都没有动。' };
 
-      case 'saveTeachingPrompt': {
-        const clean = validateTeachingPrompt(command.text);
-        if (!clean.ok) return { ok: false, error: clean.error };
-        await writeConfig({ teachingPrompt: clean.value });
-        return { ok: true, message: '保存好了，下次开始“AI 问我”时生效。' };
+      case 'saveSettings': {
+        await applySettings(command.patch);
+        await pushAllStates();
+        return { ok: true, message: '设置已保存。' };
       }
 
-      case 'resetTeachingPrompt':
-        await clearTeachingPrompt();
-        return { ok: true, message: '已经恢复成默认设置，钥匙和其他设置都没有动。' };
+      case 'listModels': {
+        try {
+          const models = await listModels();
+          return { ok: true, data: { models } };
+        } catch (error) {
+          return { ok: false, error: fromThrown(error) };
+        }
+      }
 
       case 'confirmOutbound':
         await writeConfig({

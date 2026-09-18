@@ -26,6 +26,9 @@ export const LIMITS = {
 
   /** 引导学习预算：到限先收束，由用户明确决定是否续开（FR-012/FR-039）。 */
   learningBudget: 5,
+  /** 用户可在设置里调整的预算范围（产品化改造 F2）；硬上限仍由这里保护。 */
+  learningBudgetMin: 1,
+  learningBudgetMax: 10,
   /** 同一标签页会话保留的问答轮数上限（FR-039 硬上限）。 */
   maxChatTurns: 20,
   /** 发送给模型的历史轮数（多退少补的上下文窗口，不是留存上限）。 */
@@ -40,3 +43,12 @@ export const LIMITS = {
 } as const;
 
 export type Limits = typeof LIMITS;
+
+/** 摘要长度偏好（产品化改造 F2）：设置里选档，程序换算成字数写进策略提示词。 */
+export type SummaryLength = 'short' | 'medium' | 'long';
+
+export const SUMMARY_LENGTH_CHARS: Record<SummaryLength, number> = {
+  short: 120,
+  medium: 240,
+  long: 400,
+};

@@ -1,5 +1,7 @@
 import type { Completeness, DomAnchor } from './blocks';
 import type { AppError } from './errors';
+import type { SummaryLength } from './limits';
+import type { FontSize, PromptOverrides } from './settings';
 import type { Bubble, ChatTurn, LearningState, RequestKind, SessionState } from './session';
 
 /** 侧栏可见的页面状态（PRD 4.2）。由配置、权限与会话状态共同推导。 */
@@ -14,6 +16,16 @@ export type Phase =
   | 'UNSUPPORTED'
   | 'ERROR';
 
+/** 界面可见的生效设置（产品化改造 F2）。覆盖内容原样展示，空 = 用默认。 */
+export type PanelSettings = {
+  model: string;
+  prompts: PromptOverrides;
+  learningBudget: number;
+  maxBubbles: number;
+  summaryLength: SummaryLength;
+  fontSize: FontSize;
+};
+
 export type PanelState = {
   tabId: number | null;
   pageUrl: string | null;
@@ -23,9 +35,7 @@ export type PanelState = {
   phase: Phase;
   sessionState: SessionState | null;
   hasKey: boolean;
-  teachingPromptIsCustom: boolean;
-  /** 用户自己的教学提示词覆盖；没有覆盖时为空字符串。 */
-  teachingPrompt: string;
+  settings: PanelSettings;
   outboundConfirmed: boolean;
   completeness: Completeness | null;
   guide: { summary: string; bubbles: Bubble[] } | null;
@@ -54,11 +64,13 @@ export type Command =
   | { type: 'saveKey'; key: string }
   | { type: 'testKey'; key: string }
   | { type: 'deleteKey' }
-  | { type: 'saveTeachingPrompt'; text: string }
-  | { type: 'resetTeachingPrompt' }
+  | { type: 'saveSettings'; patch: import('./settings').SettingsPatch }
+  | { type: 'listModels' }
   | { type: 'confirmOutbound' };
 
-export type Reply = { ok: true; message?: string } | { ok: false; error: AppError };
+export type Reply =
+  | { ok: true; message?: string; data?: { models: string[] } }
+  | { ok: false; error: AppError };
 
 export type Event =
   | { type: 'state'; state: PanelState }
