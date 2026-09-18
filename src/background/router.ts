@@ -86,7 +86,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
 
   const session = await getSession(tabId);
   const pending = await getPending(tabId);
-  const url = session?.url ?? pending?.url ?? null;
+  const url = await urlForTab(tabId, session?.url ?? null, pending?.url ?? null);
   const permission = url ? await permissionFor(url) : 'missing';
   // 可可靠识别的“不支持页面”才给 UNSUPPORTED，其余失败仍走 ERROR（FR-003/FR-035）。
   const unsupportedReason =
@@ -121,6 +121,27 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     budget: { used: session?.learning?.used ?? 0, total: LIMITS.learningBudget },
     unsupportedReason,
   };
+}
+
+/**
+ * 页面地址的三个来源：本标签页的会话 → 工具栏点击留下的记录 → 已授权站点的标签页查询。
+ * 第三条是白送的：站点权限已授予时，`tabs.get` 直接就能给出地址，用户不必再点工具栏图标。
+ */
+async function urlForTab(tabId: number, sessionUrl: string | null, pendingUrl: string | null): Promise<string | null> {
+  if (sessionUrl) return sessionUrl;
+  if (pendingUrl) return pendingUrl;
+  try {
+    const tab = await browser.tabs.get(tabId);
+    return tab.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 扩展安装或更新后：清掉旧会话并刷新所有已打开的面板。 */
+export async function resetAfterUpdate(): Promise<void> {
+  await clearAllSessions();
+  await pushAllStates();
 }
 
 async function pushAllStates(): Promise<void> {
@@ -329,8 +350,16 @@ async function startSession(tabId: number): Promise<Reply> {
 
   try {
     const pending = await getPending(tabId);
-    const expectedOrigin =
-      pending?.origin ?? (existing?.url ? originOf(existing.url) : null);
+    const knownUrl = await urlForTab(tabId, existing?.url ?? null, pending?.url ?? null);
+    const expectedOrigin = knownUrl ? originOf(knownUrl) : null;
+    // 连地址都不知道就没法申请权限，也不该去尝试读取再报一个误导人的“这类页面读不了”。
+    if (!expectedOrigin) {
+      throw appError(
+        'PERMISSION_MISSING',
+        '还不知道你正在看哪个网站。请先点一下浏览器右上角的 webknow-ai 图标，再点下面的按钮。',
+        false,
+      );
+    }
     const payload = await extractPage(tabId, expectedOrigin);
     const session = createSession(tabId, payload);
     await putSession(session);

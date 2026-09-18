@@ -133,4 +133,32 @@ test.describe('主路径', () => {
     // 留一张首屏截图作为人工复核材料；无头容器若缺中文字体，截图里会显示为方块。
     await panel.screenshot({ path: 'test-results/panel-ready.png', fullPage: true });
   });
+
+  /**
+   * 恢复路径：站点权限已经在，但会话被清掉（更新扩展、或用户主动清除）之后，
+   * 不应该再要求用户点一次工具栏图标——后台可以直接向浏览器查当前标签页地址。
+   */
+  test('已授权站点上，清掉会话后仍可直接开始', async () => {
+    const worker = context.serviceWorkers()[0];
+    if (!worker) throw new Error('缺少 service worker');
+
+    const tabId = await panel.evaluate(async () => {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      return tabs[0]?.id ?? null;
+    });
+    if (tabId === null) throw new Error('缺少标签页');
+
+    // 清掉会话与工具栏点击记录，只留站点权限。
+    await worker.evaluate(async (id) => {
+      await chrome.storage.session.remove(`sess:${id}`);
+      await chrome.storage.session.remove(`pending:${id}`);
+    }, tabId);
+    await panel.reload();
+
+    const start = panel.getByRole('button', { name: /开始伴读/ });
+    await expect(start).toBeEnabled({ timeout: 10_000 });
+    await start.click();
+    // 不再需要工具栏点击：地址由已授权的标签页查询得到。
+    await expect(panel.getByText('这篇文章讲了什么')).toBeVisible({ timeout: 60_000 });
+  });
 });

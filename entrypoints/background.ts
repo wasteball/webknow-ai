@@ -6,6 +6,7 @@ import {
   onTabNavigating,
   onTabRemoved,
   registerPanelPort,
+  resetAfterUpdate,
 } from '../src/background/router';
 
 export default defineBackground(() => {
@@ -34,5 +35,12 @@ export default defineBackground(() => {
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.status === 'loading') void onTabNavigating(tabId);
+  });
+
+  // 安装或更新后清掉旧的会话数据。
+  // 真实故障：更新扩展后，面板仍在显示上一个版本存下来的报错文案，看起来像“修了没用”。
+  // 会话数据本来就只服务于当前浏览会话，更新即作废是符合合同的。
+  browser.runtime.onInstalled.addListener(() => {
+    void resetAfterUpdate();
   });
 });
