@@ -7,6 +7,7 @@ import { GUIDE_DEFAULT_POLICY, summaryCharsFor } from '../../core/prompts/guide'
 import { LEARN_DEFAULT_POLICY } from '../../core/prompts/learn';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { PromptTarget } from '../../core/settings';
+import { BUILTIN_SKILLS } from '../../core/skills';
 import { Section } from './bits';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
@@ -17,33 +18,36 @@ type Send = (command: Command) => Promise<Reply | undefined>;
  * 清除这一页、清除全部、删掉钥匙、恢复默认提示词，互不牵连（FR-033）。
  */
 
-const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string; defaultText: () => string }[] = [
+const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string }[] = [
   {
     key: 'guide',
     title: '导读摘要',
     hint: '决定“这篇文章讲了什么”怎么写、给几个话题。',
-    defaultText: () => '',
   },
   {
     key: 'answer',
     title: '自由问答',
     hint: '决定回答的口径与风格。',
-    defaultText: () => '',
   },
   {
     key: 'learn',
     title: '“AI 问我”怎么提问',
     hint: '决定它出什么题、怎么回应你的回答。',
-    defaultText: () => '',
   },
 ];
 
+const TARGET_LABEL: Record<PromptTarget, string> = {
+  guide: '导读摘要',
+  answer: '自由问答',
+  learn: 'AI 问我',
+};
+
 export function Settings({ state, send }: { state: PanelState; send: Send }) {
-  const { settings } = state;
   return (
     <>
       <ModelAndKey state={state} send={send} />
       <Prompts state={state} send={send} />
+      <Skills state={state} send={send} />
       <Behavior state={state} send={send} />
       <Appearance state={state} send={send} />
       <Cleanup state={state} send={send} />
@@ -209,56 +213,198 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
     learn: LEARN_DEFAULT_POLICY,
   };
 
+  const skillsFor = (target: PromptTarget) =>
+    [...BUILTIN_SKILLS, ...settings.customSkills].filter((skill) => skill.target === target);
+
   return (
     <Section title="提示词">
       <p className="hint">
-        每个板块都有一套默认写法，也可以换成你自己的。你写的内容只影响你自己这台浏览器的效果，
-        也改不了安全边界：内容的去向、费用上限和输出格式仍然由程序控制。
+        每个板块都可以选一套预设写法（技能），或完全自己写。自己写的内容优先于预设；
+        安全边界不受影响：内容的去向、费用上限和输出格式仍由程序控制。
       </p>
-      {PROMPT_TARGETS.map(({ key, title, hint }) => (
-        <div className="field" key={key}>
-          <label htmlFor={`prompt-${key}`}>{title}</label>
-          <p className="hint">{hint}</p>
-          <textarea
-            id={`prompt-${key}`}
-            rows={6}
-            maxLength={8000}
-            value={drafts[key]}
-            placeholder="留空就用默认写法。"
-            onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
-          />
-          <div className="composer-actions">
-            <button
-              type="button"
-              disabled={busy || drafts[key].trim() === (settings.prompts[key] ?? '')}
-              onClick={() =>
-                void run({ type: 'saveSettings', patch: { prompts: { [key]: drafts[key] } } })
-              }
-            >
-              保存
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy || !settings.prompts[key]}
-              onClick={() => {
-                setDrafts((current) => ({ ...current, [key]: '' }));
-                void run({ type: 'saveSettings', patch: { prompts: { [key]: '' } } });
+      {PROMPT_TARGETS.map(({ key, title, hint }) => {
+        const chosen = settings.skillChoices[key] ?? '';
+        const custom = settings.prompts[key] ?? '';
+        return (
+          <div className="field" key={key}>
+            <label htmlFor={`preset-${key}`}>{title}</label>
+            <p className="hint">{hint}</p>
+            <select
+              id={`preset-${key}`}
+              value={custom ? '__custom__' : chosen || '__default__'}
+              disabled={busy}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === '__custom__' || value === '__default__') {
+                  void run({ type: 'saveSettings', patch: { skillChoices: { [key]: '' } } });
+                } else {
+                  void run({ type: 'saveSettings', patch: { skillChoices: { [key]: value } } });
+                }
               }}
             >
-              恢复默认
+              <option value="__default__">默认写法</option>
+              {skillsFor(key).map((skill) => (
+                <option key={skill.id} value={skill.id}>
+                  技能：{skill.name}
+                </option>
+              ))}
+              <option value="__custom__">自己写（优先于预设）</option>
+            </select>
+            {custom && (
+              <>
+                <textarea
+                  id={`prompt-${key}`}
+                  rows={6}
+                  maxLength={8000}
+                  value={drafts[key]}
+                  placeholder="留空就用上面选的写法。"
+                  onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
+                />
+                <div className="composer-actions">
+                  <button
+                    type="button"
+                    disabled={busy || drafts[key].trim() === custom}
+                    onClick={() => void run({ type: 'saveSettings', patch: { prompts: { [key]: drafts[key] } } })}
+                  >
+                    保存我的写法
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      setDrafts((current) => ({ ...current, [key]: '' }));
+                      void run({ type: 'saveSettings', patch: { prompts: { [key]: '' } } });
+                    }}
+                  >
+                    清掉我的写法
+                  </button>
+                </div>
+              </>
+            )}
+            <details>
+              <summary className="link">看看当前生效的是什么</summary>
+              <p className="hint">{custom || defaults[key]}</p>
+            </details>
+          </div>
+        );
+      })}
+    </Section>
+  );
+}
+
+function Skills({ state, send }: { state: PanelState; send: Send }) {
+  const customs = state.settings.customSkills;
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [target, setTarget] = useState<PromptTarget>('learn');
+  const [description, setDescription] = useState('');
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const run = async (command: Command) => {
+    setBusy(true);
+    const reply = await send(command);
+    setBusy(false);
+    return reply;
+  };
+
+  const submit = async () => {
+    const reply = await run({ type: 'saveSkill', skill: { name, target, description, body } });
+    if (reply?.ok) {
+      setName('');
+      setDescription('');
+      setBody('');
+      setAdding(false);
+    }
+  };
+
+  return (
+    <Section title="技能">
+      <p className="hint">
+        技能是一套现成的写法。内置的随插件更新；下面的自定义技能可以把你自己的用法存成模板。
+      </p>
+      <ul className="skill-list">
+        {BUILTIN_SKILLS.map((skill) => (
+          <li key={skill.id}>
+            <p className="skill-name">
+              {skill.name}
+              <span className="tag">{TARGET_LABEL[skill.target]}</span>
+            </p>
+            <p className="hint">{skill.description}</p>
+          </li>
+        ))}
+        {customs.map((skill) => (
+          <li key={skill.id}>
+            <p className="skill-name">
+              {skill.name}
+              <span className="tag">{TARGET_LABEL[skill.target]}</span>
+              <button
+                type="button"
+                className="danger"
+                disabled={busy}
+                onClick={() => void run({ type: 'deleteSkill', id: skill.id })}
+              >
+                删除
+              </button>
+            </p>
+            <p className="hint">{skill.description || '（没有说明）'}</p>
+          </li>
+        ))}
+      </ul>
+      {adding ? (
+        <div className="field">
+          <label htmlFor="skill-name">技能名称</label>
+          <input
+            id="skill-name"
+            type="text"
+            maxLength={40}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+          <label htmlFor="skill-target">用在哪个板块</label>
+          <select
+            id="skill-target"
+            value={target}
+            onChange={(event) => setTarget(event.target.value as PromptTarget)}
+          >
+            <option value="guide">导读摘要</option>
+            <option value="answer">自由问答</option>
+            <option value="learn">AI 问我</option>
+          </select>
+          <label htmlFor="skill-description">一句话说明（可选）</label>
+          <input
+            id="skill-description"
+            type="text"
+            maxLength={200}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+          <label htmlFor="skill-body">技能内容（怎么干活的说明）</label>
+          <textarea
+            id="skill-body"
+            rows={8}
+            maxLength={8000}
+            value={body}
+            placeholder="像给一个能干的助手写工作守则一样写。输出格式不用写，程序会保证。"
+            onChange={(event) => setBody(event.target.value)}
+          />
+          <div className="composer-actions">
+            <button type="button" disabled={busy || !name.trim() || !body.trim()} onClick={() => void submit()}>
+              保存技能
+            </button>
+            <button type="button" className="secondary" onClick={() => setAdding(false)}>
+              取消
             </button>
           </div>
-          <details>
-            <summary className="link">看看默认写法</summary>
-            <p className="hint">{defaults[key]}</p>
-          </details>
-          <p className="hint">
-            {settings.prompts[key] ? '当前用的是你写的版本。' : '当前用的是默认版本。'}
-            保存后从下一次该板块请求开始生效。
-          </p>
         </div>
-      ))}
+      ) : (
+        <div className="composer-actions">
+          <button type="button" className="secondary" onClick={() => setAdding(true)}>
+            添加自定义技能
+          </button>
+        </div>
+      )}
     </Section>
   );
 }

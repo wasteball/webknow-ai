@@ -5,6 +5,7 @@ import { answerMessages } from '../core/prompts/answer';
 import { guideMessages, summaryCharsFor } from '../core/prompts/guide';
 import { LEARN_VERSION, learnMessages, type LearnMode } from '../core/prompts/learn';
 import { effectiveSettings } from '../core/settings';
+import { resolvePolicy } from '../core/skills';
 import {
   acceptsWriteBack,
   appendLearn,
@@ -155,6 +156,7 @@ function contextOf(session: PageSession) {
 
 async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | null> {
   const config = await readConfig();
+  const settings = effectiveSettings(config);
   return withRun(
     tabId,
     'guide',
@@ -166,14 +168,14 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
           url: session.url,
           contextJson: ctx.json,
           disclosure: describeCompleteness(session.completeness),
-          override: config.prompts?.guide,
-          maxBubbles: effectiveSettings(config).maxBubbles,
-          summaryMaxChars: summaryCharsFor(effectiveSettings(config).summaryLength),
+          override: resolvePolicy('guide', config),
+          maxBubbles: settings.maxBubbles,
+          summaryMaxChars: summaryCharsFor(settings.summaryLength),
         }),
         signal,
         progress(hooks, tabId),
       );
-      const clean = cleanGuide(parsed, effectiveSettings(config).maxBubbles);
+      const clean = cleanGuide(parsed, settings.maxBubbles);
       if (!clean.ok) throw clean.error;
       // 首屏结果只在页面身份与内容版本仍然一致时写回（FR-024）。
       return writeBack(tabId, session, runId, (fresh) => ({
@@ -208,7 +210,7 @@ async function runAsk(tabId: number, rawQuestion: string, hooks: RunnerHooks): P
             .slice(-LIMITS.maxHistoryTurns)
             .map((turn) => ({ question: turn.question, answer: turn.answer })),
           question,
-          override: config.prompts?.answer,
+          override: resolvePolicy('answer', config),
         }),
         signal,
         progress(hooks, tabId),
@@ -258,7 +260,7 @@ async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): P
   const learning: LearningState = {
     goal: goal.trim().slice(0, 200) || '理解这篇文章的核心内容',
     // 启动时固定提示词版本与预算：进行中的会话不随之后的设置变化（FR-028）。
-    promptVersion: config.prompts?.learn?.trim() ? 'custom' : LEARN_VERSION,
+    promptVersion: resolvePolicy('learn', config) ? 'custom' : LEARN_VERSION,
     budget: settings.learningBudget,
     used: 0,
     current: null,
@@ -311,10 +313,10 @@ async function runLearnStep(
       }
 
       const ctx = contextOf(session);
-      let next = await callLearn(session, learning, mode, input, ctx.json, signal, hooks, tabId, config.prompts?.learn);
+      let next = await callLearn(session, learning, mode, input, ctx.json, signal, hooks, tabId, resolvePolicy('learn', config));
       // 预算用尽或模型判断应当收束时，本轮直接补一次收束，不留给用户一个悬空状态（FR-012）。
       if (mode !== 'close' && !next.current && next.status === 'active') {
-        next = await callLearn(session, next, 'close', {}, ctx.json, signal, hooks, tabId, config.prompts?.learn);
+        next = await callLearn(session, next, 'close', {}, ctx.json, signal, hooks, tabId, resolvePolicy('learn', config));
       }
 
       return writeBack(tabId, session, runId, (fresh) => ({

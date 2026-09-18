@@ -2,7 +2,13 @@ import { storage } from 'wxt/utils/storage';
 
 import { appError } from '../core/errors';
 import type { SummaryLength } from '../core/limits';
-import { normalizeSettings, type FontSize, type PromptOverrides, type PromptTarget, type SettingsPatch } from '../core/settings';
+import {
+  normalizeSettings,
+  type FontSize,
+  type PromptOverrides,
+  type SettingsPatch,
+} from '../core/settings';
+import type { Skill, SkillChoice, SkillTarget } from '../core/skills';
 import type { PageSession } from '../core/session';
 
 /**
@@ -26,6 +32,10 @@ export type Config = {
   /** 模型 ID；缺省用内置默认（DEEPSEEK_MODEL）。 */
   model?: string;
   prompts?: PromptOverrides;
+  /** 每个板块选择的技能 ID（技能=提示词预设）。 */
+  skillChoices?: SkillChoice;
+  /** 用户自建的技能；内置技能在代码里，不进存储。 */
+  skills?: Skill[];
   /** 学习提问预算（1–10，默认 5），在开始学习时固定进会话。 */
   learningBudget?: number;
   /** 首屏探索气泡上限（0–3，默认 3）。 */
@@ -85,12 +95,36 @@ export async function deleteApiKey(): Promise<void> {
 }
 
 /** 清除单个板块的提示词覆盖（恢复默认）；不触碰 Key、会话与其他设置。 */
-export async function clearPromptOverride(target: PromptTarget): Promise<void> {
+export async function clearPromptOverride(target: SkillTarget): Promise<void> {
   const current = await readConfig();
   if (!current.prompts || !(target in current.prompts)) return;
   const { [target]: _removed, ...rest } = current.prompts;
   const prompts = Object.keys(rest).length ? rest : undefined;
   await storage.setItem(CONFIG_KEY, prompts ? { ...current, prompts } : { ...current, prompts: undefined });
+}
+
+/** 保存自定义技能：同 id 覆盖更新，其余技能不动。 */
+export async function saveCustomSkill(skill: Skill): Promise<void> {
+  const current = await readConfig();
+  const skills = (current.skills ?? []).filter((item) => item.id !== skill.id);
+  skills.push(skill);
+  await storage.setItem(CONFIG_KEY, { ...current, skills });
+}
+
+/** 删除自定义技能：同时取消各板块对该技能的选择。 */
+export async function deleteCustomSkill(id: string): Promise<void> {
+  const current = await readConfig();
+  const skills = (current.skills ?? []).filter((item) => item.id !== id);
+  const next: Config = { ...current, skills };
+  if (current.skillChoices) {
+    const choices = { ...current.skillChoices };
+    for (const target of Object.keys(choices) as SkillTarget[]) {
+      if (choices[target] === id) delete choices[target];
+    }
+    if (Object.keys(choices).length) next.skillChoices = choices;
+    else delete next.skillChoices;
+  }
+  await storage.setItem(CONFIG_KEY, next);
 }
 
 /**
@@ -119,6 +153,18 @@ export async function applySettings(patch: SettingsPatch): Promise<void> {
     }
     if (Object.keys(merged).length) next.prompts = merged;
     else delete next.prompts;
+  }
+
+  if (patch.skillChoices !== undefined) {
+    const merged: SkillChoice = { ...current.skillChoices };
+    for (const target of ['guide', 'answer', 'learn'] as const) {
+      if (typeof patch.skillChoices[target] !== 'string') continue;
+      const kept = clean.skillChoices?.[target];
+      if (kept) merged[target] = kept;
+      else delete merged[target];
+    }
+    if (Object.keys(merged).length) next.skillChoices = merged;
+    else delete next.skillChoices;
   }
 
   await storage.setItem(CONFIG_KEY, next);

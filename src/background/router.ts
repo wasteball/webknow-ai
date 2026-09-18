@@ -5,6 +5,7 @@ import { derivePhase } from '../core/phase';
 import type { Command, Event, PanelState, PortRequest, Reply } from '../core/protocol';
 import { LIMITS } from '../core/limits';
 import { effectiveSettings } from '../core/settings';
+import { validateCustomSkill } from '../core/skills';
 import { createSession, emptySession, markStale } from '../core/session';
 import { listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
@@ -16,12 +17,14 @@ import {
   clearAllSessions,
   clearPending,
   deleteApiKey,
+  deleteCustomSkill,
   dropSession,
   getPending,
   getSession,
   putSession,
   readConfig,
   saveApiKey,
+  saveCustomSkill,
   setPending,
   writeConfig,
 } from './store';
@@ -58,7 +61,7 @@ async function permissionFor(url: string | null): Promise<'granted' | 'missing' 
 
 export async function buildPanelState(tabId: number | null): Promise<PanelState> {
   const config = await readConfig();
-  const settings = effectiveSettings(config);
+  const settings = { ...effectiveSettings(config), customSkills: config.skills ?? [] };
   const hasKey = Boolean(config.apiKey?.trim());
   const outboundConfirmed = config.outbound?.version === OUTBOUND_NOTICE_VERSION;
 
@@ -304,6 +307,20 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         await applySettings(command.patch);
         await pushAllStates();
         return { ok: true, message: '设置已保存。' };
+      }
+
+      case 'saveSkill': {
+        const clean = validateCustomSkill(command.skill);
+        if (!clean.ok) return { ok: false, error: clean.error };
+        await saveCustomSkill(clean.value);
+        await pushAllStates();
+        return { ok: true, message: '技能已保存。' };
+      }
+
+      case 'deleteSkill': {
+        await deleteCustomSkill(command.id);
+        await pushAllStates();
+        return { ok: true, message: '技能已删除。' };
       }
 
       case 'listModels': {

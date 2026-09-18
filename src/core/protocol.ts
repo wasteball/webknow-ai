@@ -2,6 +2,7 @@ import type { Completeness, DomAnchor } from './blocks';
 import type { AppError } from './errors';
 import type { SummaryLength } from './limits';
 import type { FontSize, PromptOverrides } from './settings';
+import type { Skill, SkillChoice } from './skills';
 import type { Bubble, ChatTurn, LearningState, RequestKind, SessionState } from './session';
 
 /** 侧栏可见的页面状态（PRD 4.2）。由配置、权限与会话状态共同推导。 */
@@ -16,10 +17,13 @@ export type Phase =
   | 'UNSUPPORTED'
   | 'ERROR';
 
-/** 界面可见的生效设置（产品化改造 F2）。覆盖内容原样展示，空 = 用默认。 */
+/** 界面可见的生效设置（产品化改造 F2/F6）。覆盖内容原样展示，空 = 用默认。 */
 export type PanelSettings = {
   model: string;
   prompts: PromptOverrides;
+  skillChoices: SkillChoice;
+  /** 用户自建的技能；内置技能由界面直接从 core/skills 读取。 */
+  customSkills: Skill[];
   learningBudget: number;
   maxBubbles: number;
   summaryLength: SummaryLength;
@@ -65,6 +69,8 @@ export type Command =
   | { type: 'testKey'; key: string }
   | { type: 'deleteKey' }
   | { type: 'saveSettings'; patch: import('./settings').SettingsPatch }
+  | { type: 'saveSkill'; skill: { id?: string; name: string; description: string; target: 'guide' | 'answer' | 'learn'; body: string } }
+  | { type: 'deleteSkill'; id: string }
   | { type: 'listModels' }
   | { type: 'confirmOutbound' };
 

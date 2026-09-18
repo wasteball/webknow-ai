@@ -1,5 +1,6 @@
 import { DEEPSEEK_MODEL } from './deepseek';
 import { LIMITS, SUMMARY_LENGTH_CHARS, type SummaryLength } from './limits';
+import type { SkillChoice, SkillTarget } from './skills';
 
 /**
  * 用户设置（产品化改造 F2）：纯逻辑部分——类型、默认值、校验与归一化。
@@ -16,6 +17,8 @@ export type FontSize = 'normal' | 'large';
 export type SettingsPatch = {
   model?: string;
   prompts?: PromptOverrides;
+  /** 每个板块选择的技能 ID；空字符串 = 取消技能选择（回退到默认/自定义文本）。 */
+  skillChoices?: SkillChoice;
   learningBudget?: number;
   maxBubbles?: number;
   summaryLength?: SummaryLength;
@@ -25,6 +28,7 @@ export type SettingsPatch = {
 export type EffectiveSettings = {
   model: string;
   prompts: PromptOverrides;
+  skillChoices: SkillChoice;
   learningBudget: number;
   maxBubbles: number;
   summaryLength: SummaryLength;
@@ -34,6 +38,7 @@ export type EffectiveSettings = {
 export const DEFAULT_SETTINGS: EffectiveSettings = {
   model: DEEPSEEK_MODEL,
   prompts: {},
+  skillChoices: {},
   learningBudget: LIMITS.learningBudget,
   maxBubbles: LIMITS.maxBubbles,
   summaryLength: 'medium',
@@ -62,6 +67,16 @@ export function normalizeSettings(patch: SettingsPatch): SettingsPatch {
     }
     clean.prompts = prompts;
   }
+  if (patch.skillChoices !== undefined) {
+    const choices: SkillChoice = {};
+    for (const target of Object.keys(patch.skillChoices) as SkillTarget[]) {
+      const value = patch.skillChoices[target];
+      if (typeof value !== 'string') continue;
+      const trimmed = value.trim().slice(0, 100);
+      if (trimmed && /^[\w.-]+$/.test(trimmed)) choices[target] = trimmed;
+    }
+    clean.skillChoices = choices;
+  }
   if (patch.learningBudget !== undefined) {
     clean.learningBudget = clamp(Math.round(patch.learningBudget), LIMITS.learningBudgetMin, LIMITS.learningBudgetMax);
   }
@@ -85,6 +100,7 @@ function clamp(value: number, min: number, max: number): number {
 export function effectiveSettings(config: {
   model?: string;
   prompts?: PromptOverrides;
+  skillChoices?: SkillChoice;
   learningBudget?: number;
   maxBubbles?: number;
   summaryLength?: SummaryLength;
@@ -93,6 +109,7 @@ export function effectiveSettings(config: {
   return {
     model: config.model?.trim() || DEFAULT_SETTINGS.model,
     prompts: config.prompts ?? {},
+    skillChoices: config.skillChoices ?? {},
     learningBudget: clamp(
       config.learningBudget ?? DEFAULT_SETTINGS.learningBudget,
       LIMITS.learningBudgetMin,
