@@ -16,7 +16,7 @@ export type Clean<T> = { ok: true; value: T } | { ok: false; error: AppError };
 const BAD_OUTPUT_RUNAWAY = 4_000;
 
 function badOutput(what: string): AppError {
-  return appError('BAD_OUTPUT', `${what}结构不符合要求，本次结果未采用。可重试。`, true);
+  return appError('BAD_OUTPUT', `这次生成的内容格式不对，没有采用。可以再试一次。`, true);
 }
 
 export function cleanGuide(parsed: unknown): Clean<{ summary: string; bubbles: Bubble[] }> {
@@ -155,20 +155,20 @@ export function cleanLearn(parsed: unknown, mode: LearnMode): Clean<LearnResult>
 export function validateTeachingPrompt(text: string): Clean<string> {
   const value = text.trim();
   if (!value) {
-    return { ok: false, error: appError('BAD_OUTPUT', '教学提示词不能为空。', false) };
+    return { ok: false, error: appError('BAD_OUTPUT', '教学提示词不能是空的。', false) };
   }
   if (value.length > LIMITS.maxTeachingPromptChars) {
     return {
       ok: false,
       error: appError(
         'BAD_OUTPUT',
-        `教学提示词超过 ${LIMITS.maxTeachingPromptChars} 字符上限，已保留上一次有效内容。`,
+        `教学提示词太长了（超过 ${LIMITS.maxTeachingPromptChars} 字），已经保留你上一次保存的内容。`,
         false,
       ),
     };
   }
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)) {
-    return { ok: false, error: appError('BAD_OUTPUT', '教学提示词包含不可见控制字符。', false) };
+    return { ok: false, error: appError('BAD_OUTPUT', '教学提示词里有一些看不见的特殊字符，没法保存。', false) };
   }
   return { ok: true, value };
 }

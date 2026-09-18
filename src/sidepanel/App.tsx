@@ -11,7 +11,7 @@ import { Busy, ErrorBanner, Notice, ScopeLine, Section } from './components/bits
 
 const START_LABEL: Record<string, string> = {
   READY_TO_START: '开始伴读',
-  STALE: '重新开始伴读',
+  STALE: '重新开始',
 };
 
 export function App() {
@@ -108,24 +108,27 @@ export function App() {
         <p className="hint">正在连接后台…</p>
       ) : (
         <>
-          <div className="context">
-            <p className="page-title">{state.pageTitle || '当前页面'}</p>
-            <ScopeLine completeness={state.completeness} />
-          </div>
+          {(state.pageTitle || state.completeness) && (
+            <div className="context">
+              {state.pageTitle && <p className="page-title">{state.pageTitle}</p>}
+              <ScopeLine completeness={state.completeness} />
+            </div>
+          )}
 
           {phase === 'UNCONFIGURED' && <Setup state={state} send={send} />}
 
           {(phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE') && (
-            <Section title={phase === 'STALE' ? '页面已变化' : '准备伴读'}>
+            <Section title={phase === 'STALE' ? '页面换了' : '开始读这一页'}>
               {phase === 'PERMISSION_REQUIRED' && (
                 <p>
-                  需要读取当前页面的正文才能生成摘要与气泡。授权只针对
-                  {state.pageUrl ? ` ${safeOrigin(state.pageUrl) ?? '当前站点'} ` : '当前站点'}，
-                  不会读取其他网站。
+                  要读这一页的文字才能给你摘要。接下来浏览器会弹窗问你是否允许——
+                  只针对
+                  {state.pageUrl ? ` ${safeOrigin(state.pageUrl) ?? '这一个网站'} ` : '这一个网站'}
+                  ，其他网站读不到。
                 </p>
               )}
               {phase === 'STALE' && (
-                <p>页面已经导航或正文发生变化，上一页的结果已作废，没有写入当前页面。</p>
+                <p>你已经换了页面（或者这一页的内容变了）。上一页的结果作废了，不会拿来充数。</p>
               )}
               {!state.outboundConfirmed ? (
                 <OutboundNotice
@@ -133,9 +136,7 @@ export function App() {
                   confirmed={false}
                 />
               ) : (
-                <p className="hint">
-                  已确认外发范围：正文与你的问题会发送给 DeepSeek，费用由你的账号承担。
-                </p>
+                <p className="hint">你已经确认过：正文和你的问题会发给 DeepSeek，费用从你的账号扣。</p>
               )}
               <div className="composer-actions">
                 <button
@@ -158,9 +159,9 @@ export function App() {
           )}
 
           {phase === 'ERROR' && (
-            <Section title="重新开始">
+            <Section title="重新试一次">
               <p className="hint">
-                上一页的首屏结果已经作废或生成失败。可以重新开始伴读，不会复用失败的结果。
+                刚才那一步没成功，失败了的结果不会拿来充数。可以重新开始，页面内容还留着。
               </p>
               <div className="composer-actions">
                 <button
@@ -168,7 +169,7 @@ export function App() {
                   disabled={busy !== null}
                   onClick={() => void startReading()}
                 >
-                  重新开始伴读
+                  重新开始
                 </button>
                 <button
                   type="button"
@@ -176,16 +177,16 @@ export function App() {
                   disabled={busy !== null || state.tabId === null}
                   onClick={() => state.tabId !== null && void send({ type: 'clearSession', tabId: state.tabId })}
                 >
-                  清除当前页会话
+                  清掉这一页的内容
                 </button>
               </div>
             </Section>
           )}
 
           {phase === 'UNSUPPORTED' && (
-            <Section title="当前页面不受支持">
+            <Section title="这一页读不了">
               <p>{state.unsupportedReason}</p>
-              <p className="hint">首版只支持公开、可提取连续正文的 HTML 文章页面。</p>
+              <p className="hint">目前只支持公开的文章类网页。列表页、搜索结果、要登录才能看的页面都不行。</p>
             </Section>
           )}
 
@@ -219,16 +220,19 @@ function ClosedLearning({ state }: { state: PanelState }) {
 function OutboundNotice({ onConfirm, confirmed }: { onConfirm: () => void; confirmed: boolean }) {
   return (
     <div className="banner banner-info">
-      <p>开始前请确认：</p>
+      <p>开始之前，请先确认这几件事：</p>
       <ul>
-        <li>接收方是 DeepSeek（深度求索），不是本站或本产品方。</li>
-        <li>会发送当前页提取到的正文、你的问题以及必要的对话上下文。</li>
-        <li>调用费用由你自己的 DeepSeek 账号承担；本产品没有代理后端，但这不等于 DeepSeek 不留存数据。</li>
-        <li>请只在你确认页面公开、且自己有权这样处理时使用。</li>
+        <li>你正在看的这一页的文字，会发给 DeepSeek 这家公司（不是发给我们）。</li>
+        <li>发过去的是：这一页的正文、你提的问题，以及前面几轮对话。</li>
+        <li>费用从你自己的 DeepSeek 账号里扣。</li>
+        <li>请只在这一页是公开的、你有权这样使用的时候才用。</li>
       </ul>
+      <p className="hint">
+        DeepSeek 收到内容后怎么保存，由它自己的规则决定，我们没法替你保证它不留存。
+      </p>
       {!confirmed && (
         <button type="button" onClick={onConfirm}>
-          我已了解并确认
+          我确认：这一页可以发给 DeepSeek
         </button>
       )}
     </div>
@@ -245,13 +249,13 @@ function safeOrigin(url: string): string | null {
 }
 
 const PHASE_TEXT: Record<string, string> = {
-  UNCONFIGURED: '尚未配置 DeepSeek Key。',
-  PERMISSION_REQUIRED: '等待授权读取当前页面。',
-  READY_TO_START: '等待你点击开始伴读。',
-  ANALYZING: '正在生成首屏。',
-  READY: '首屏已就绪，可以探索或提问。',
-  LEARNING: '正在进行“AI 问我”。',
-  STALE: '页面已变化，旧结果已作废。',
-  UNSUPPORTED: '当前页面不受支持。',
-  ERROR: '上次操作没有完成。',
+  UNCONFIGURED: '还没有填 DeepSeek 钥匙。',
+  PERMISSION_REQUIRED: '等你在浏览器里允许读取这个网站。',
+  READY_TO_START: '准备好了。你点开始，我才读这一页。',
+  ANALYZING: '正在读这一页，马上给你摘要。',
+  READY: '摘要好了。可以点下面的话题，也可以直接提问。',
+  LEARNING: '正在一问一答，看看你理解到哪一步。',
+  STALE: '页面换了，之前的内容已经作废。',
+  UNSUPPORTED: '这一页暂时读不了。',
+  ERROR: '上一步没成功。',
 };

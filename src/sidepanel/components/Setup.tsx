@@ -5,7 +5,10 @@ import { Section } from './bits';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
-/** 首次配置：只提供 DeepSeek Key，不提供供应商、Base URL、模型名或采样参数（FR-019）。 */
+/**
+ * 首次配置。读者是普通用户，不是工程师：不使用 API、供应商、密钥、令牌这类词，
+ * 但仍然完整说清“谁收费、收什么、发给谁”（FR-019/FR-020/FR-022）。
+ */
 export function Setup({ state, send }: { state: PanelState; send: Send }) {
   const [key, setKey] = useState('');
   const [busy, setBusy] = useState(false);
@@ -18,26 +21,30 @@ export function Setup({ state, send }: { state: PanelState; send: Send }) {
   };
 
   return (
-    <Section title="配置 DeepSeek Key">
+    <Section title="还差一步：填入你自己的 DeepSeek 钥匙">
       <p>
-        webknow-ai 使用你自己的 DeepSeek API Key。调用费用由你的 DeepSeek 账号承担，
-        本产品不代付、不中转，也不提供其他模型供应商。
+        这个插件自己不提供 AI，它是借你自己的 DeepSeek 账号来帮你读网页。所以要先用你的账号换一把“钥匙”，
+        插件才能替你向 DeepSeek 提问。
+      </p>
+      <p>
+        费用由 DeepSeek 按你用掉多少收，从你自己的账号里扣。我们不收钱，也看不到你的钥匙。
       </p>
       <ol className="steps">
         <li>
-          到
+          打开
           <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
-            DeepSeek 开放平台
+            DeepSeek 的钥匙页面
           </a>
-          创建一个 API Key。
+          （会新开一个标签页）。
         </li>
-        <li>粘贴到下面并保存。保存前会执行一次固定的最小连接测试。</li>
+        <li>用手机号或邮箱登录。没有账号就先注册，并按页面提示充值一点金额。</li>
+        <li>点“创建 API key”，会出现一串以 sk- 开头的字符。复制它。</li>
+        <li>回到这里粘到下面，点保存。</li>
       </ol>
       <p className="hint">
-        连接测试不会发送网页正文，但可能产生少量费用。Key 只保存在本扩展的本地存储中，
-        不参与浏览器同步，也不会进入页面脚本、提示词、对话、日志或诊断数据。
+        保存时会先试连一次，确认这把钥匙能用。试连不会发送你正在看的网页，但会有极少量费用。
       </p>
-      <label htmlFor="deepseek-key">DeepSeek API Key</label>
+      <label htmlFor="deepseek-key">把以 sk- 开头的那串字符粘贴到这里</label>
       <input
         id="deepseek-key"
         type="password"
@@ -48,10 +55,10 @@ export function Setup({ state, send }: { state: PanelState; send: Send }) {
       />
       <div className="composer-actions">
         <button type="button" disabled={busy || !key.trim()} onClick={() => void save()}>
-          {busy ? '正在测试连接…' : '保存并测试连接'}
+          {busy ? '正在确认这把钥匙…' : '保存并确认能用'}
         </button>
       </div>
-      {state.hasKey && <p className="hint">当前已保存 Key。可以在设置里替换或删除。</p>}
+      {state.hasKey && <p className="hint">已经保存过一把钥匙了。想换可以到设置里替换。</p>}
     </Section>
   );
 }

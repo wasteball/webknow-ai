@@ -34,8 +34,10 @@ test('后台以 MV3 service worker 启动', async () => {
 test('未配置 Key 时侧栏进入配置状态', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await expect(page.getByRole('heading', { name: '配置 DeepSeek Key' })).toBeVisible();
-  await expect(page.getByText('尚未配置 DeepSeek Key')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /填入你自己的 DeepSeek 钥匙/ })).toBeVisible();
+  await expect(page.getByText('还没有填 DeepSeek 钥匙')).toBeVisible();
+  // 第一次打开的样子是普通读者看到的第一屏，留一张截图供人工复核文案。
+  await page.screenshot({ path: 'test-results/panel-first-run.png', fullPage: true });
   await page.close();
 });
 
@@ -109,6 +111,6 @@ test('保存的 Key 留在扩展本地存储，且不进入页面会话', async 
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   // 有 Key、无站点权限：应停在“等待授权”，而不是继续外发。
-  await expect(page.getByText('等待授权读取当前页面')).toBeVisible();
+  await expect(page.getByText('等你在浏览器里允许读取这个网站')).toBeVisible();
   await page.close();
 });

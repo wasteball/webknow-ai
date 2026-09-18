@@ -166,7 +166,7 @@ export function beginRun(session: PageSession, kind: RequestKind): BeginResult {
   if (session.run) {
     return {
       ok: false,
-      error: appError('BUSY', '当前页面仍有未结束的生成。请先停止，再发起新的请求。', true),
+      error: appError('BUSY', '上一步还在进行中。先点停止，再做别的。', true),
     };
   }
   const run: Run = { id: newId('r'), kind, startedAt: Date.now() };
@@ -207,10 +207,10 @@ export function stateAfterFailure(session: PageSession, kind: RequestKind): Sess
 
 export function canStartLearning(session: PageSession): AppError | null {
   if (session.state !== 'READY') {
-    return appError('STALE_PAGE', '当前页面还没有可用的首屏内容，无法进入学习。', false);
+    return appError('STALE_PAGE', '这一页还没有读，先点开始伴读。', false);
   }
   if (!session.blocks.length) {
-    return appError('EXTRACT_FAILED', '当前页面没有可用的正文块，无法进入学习。', false);
+    return appError('EXTRACT_FAILED', '这一页读不出内容，没法开始提问。', false);
   }
   return null;
 }

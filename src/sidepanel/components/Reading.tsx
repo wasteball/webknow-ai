@@ -50,7 +50,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
 
       <Section title="问答">
         {state.chat.length === 0 && !busy && (
-          <p className="hint">可以直接提问，也可以点上面的探索方向。</p>
+          <p className="hint">可以点上面的话题，也可以自己在下面提问。</p>
         )}
         {state.chat.map((turn) => (
           <Turn key={turn.id} turn={turn} tabId={tabId} send={send} />
@@ -80,7 +80,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
           value={draft}
           rows={2}
           maxLength={500}
-          placeholder="针对这篇文章提问…"
+          placeholder="想问什么，写在这里…"
           onChange={(event) => setDraft(event.target.value)}
         />
         <div className="composer-actions">
@@ -97,7 +97,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
               if (tabId) void send({ type: 'learnStart', tabId, goal });
             }}
           >
-            AI 问我
+            让 AI 问我
           </button>
         </div>
       </form>
@@ -122,7 +122,7 @@ function Turn({ turn, tabId, send }: { turn: ChatTurn; tabId: number | null; sen
               className="link"
               onClick={() => tabId && void send({ type: 'jump', tabId, blockId: citation.blockId })}
             >
-              回到原文{index + 1}
+              看看原文{index + 1}
             </button>
           ))}
         </p>

@@ -39,7 +39,7 @@ export function createClient(handlers: {
       for (const resolve of pending.values()) {
         resolve({
           ok: false,
-          error: appError('INTERNAL', '与后台的连接中断，正在重连；请重试刚才的操作。', true),
+          error: appError('INTERNAL', '连接断了一下，正在自动重连。请再试一次刚才的操作。', true),
         });
       }
       pending.clear();
@@ -54,7 +54,7 @@ export function createClient(handlers: {
       if (!port) {
         return Promise.resolve({
           ok: false,
-          error: appError('INTERNAL', '与后台的连接尚未恢复，请重试。', true),
+          error: appError('INTERNAL', '还没连上，请再试一次。', true),
         });
       }
       const id = nextId++;
@@ -64,7 +64,7 @@ export function createClient(handlers: {
           port?.postMessage({ id, command });
         } catch {
           pending.delete(id);
-          resolve({ ok: false, error: appError('INTERNAL', '消息未能送达后台。', true) });
+          resolve({ ok: false, error: appError('INTERNAL', '这条操作没送出去，请再试一次。', true) });
         }
       });
     },

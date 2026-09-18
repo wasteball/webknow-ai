@@ -206,7 +206,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       case 'stop':
         return abortRun(command.tabId)
           ? { ok: true }
-          : { ok: false, error: appError('INTERNAL', '当前没有正在进行的生成。', false) };
+          : { ok: false, error: appError('INTERNAL', '现在没有正在进行的事情。', false) };
 
       case 'ask':
         return finish(await handleIntent({ kind: 'ask', tabId: command.tabId, question: command.question }, hooks));
@@ -215,7 +215,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         const session = await getSession(command.tabId);
         const bubble = session?.guide?.bubbles.find((item) => item.id === command.bubbleId);
         if (!bubble) {
-          return { ok: false, error: appError('STALE_PAGE', '这个探索方向已失效，请重新开始伴读。', true) };
+          return { ok: false, error: appError('STALE_PAGE', '这个话题过期了（页面内容变了），重新开始伴读吧。', true) };
         }
         return finish(
           await handleIntent({ kind: 'ask', tabId: command.tabId, question: bubble.question }, hooks),
@@ -236,7 +236,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       case 'learnExit': {
         // 结束学习只回到 READY：正文、摘要与问答记录都保留（FR-011）。
         const session = await getSession(command.tabId);
-        if (!session) return { ok: false, error: appError('STALE_PAGE', '当前没有可用的页面会话。', true) };
+        if (!session) return { ok: false, error: appError('STALE_PAGE', '这一页还没有开始读过。', true) };
         await putSession({ ...session, state: 'READY', updatedAt: Date.now() });
         await pushState(command.tabId);
         return { ok: true };
@@ -246,11 +246,11 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         const session = await getSession(command.tabId);
         const block = session?.blocks.find((item) => item.id === command.blockId);
         if (!block) {
-          return { ok: false, error: appError('JUMP_FAILED', '这条原文依据已不在当前内容版本中。', false) };
+          return { ok: false, error: appError('JUMP_FAILED', '这段原文已经不在这一页上了。', false) };
         }
         const outcome = await jumpToOriginal(command.tabId, block.anchor);
         if (outcome.outcome === 'failed') {
-          return { ok: false, error: appError('JUMP_FAILED', `无法回到原文：${outcome.reason}`, false) };
+          return { ok: false, error: appError('JUMP_FAILED', `没能回到原文：${outcome.reason}`, false) };
         }
         return { ok: true, message: outcome.outcome === 'jumped' ? undefined : '原文位置已移动，已定位到新的对应位置。' };
       }
@@ -263,39 +263,39 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       case 'clearAllSessions': {
         const count = await clearAllSessions();
         await pushState(null);
-        return { ok: true, message: `已清除 ${count} 个标签页的会话数据，Key 与教学配置未改动。` };
+        return { ok: true, message: `已清掉 ${count} 个页面的内容。你的钥匙和设置都没有动。` };
       }
 
       case 'saveKey': {
         const key = command.key.trim();
-        if (!key) return { ok: false, error: appError('NO_KEY', '请先填写 DeepSeek Key。', false) };
+        if (!key) return { ok: false, error: appError('NO_KEY', '先填上 DeepSeek 钥匙。', false) };
         // 保存前执行固定的最小连接测试；测试不发送网页正文（FR-020）。
         await testConnection(key);
         await saveApiKey(key);
         await pushAllStates();
-        return { ok: true, message: '连接测试通过，Key 已保存在本扩展的本地存储中。' };
+        return { ok: true, message: '确认能用，钥匙已经存在这个浏览器里了。' };
       }
 
       case 'testKey': {
         await testConnection(command.key);
-        return { ok: true, message: '连接测试通过。本次测试没有发送网页正文，可能产生少量费用。' };
+        return { ok: true, message: '连得上。这次测试没有发送网页内容，只花极少的钱。' };
       }
 
       case 'deleteKey':
         await deleteApiKey();
         await pushAllStates();
-        return { ok: true, message: 'Key 已删除。会话内容与教学配置未改动。' };
+        return { ok: true, message: '钥匙删掉了。页面内容和教学设置都没有动。' };
 
       case 'saveTeachingPrompt': {
         const clean = validateTeachingPrompt(command.text);
         if (!clean.ok) return { ok: false, error: clean.error };
         await writeConfig({ teachingPrompt: clean.value });
-        return { ok: true, message: '教学提示词已保存，将用于之后新开始的学习会话。' };
+        return { ok: true, message: '保存好了，下次开始“AI 问我”时生效。' };
       }
 
       case 'resetTeachingPrompt':
         await clearTeachingPrompt();
-        return { ok: true, message: '已恢复内置默认教学提示词，Key 与其他设置未改动。' };
+        return { ok: true, message: '已经恢复成默认设置，钥匙和其他设置都没有动。' };
 
       case 'confirmOutbound':
         await writeConfig({
@@ -324,7 +324,7 @@ async function startSession(tabId: number): Promise<Reply> {
   const existing = await getSession(tabId);
   if (existing && (existing.state === 'READY' || existing.state === 'LEARNING')) {
     await pushState(tabId);
-    return { ok: true, message: '已复用本次浏览会话中仍然有效的首屏结果。' };
+    return { ok: true, message: '这一页刚才已经读过，直接用了上次的结果。' };
   }
 
   try {

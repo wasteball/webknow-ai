@@ -30,8 +30,8 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
     <>
       <Section title="AI 问我">
         <p className="hint">
-          检验目标：{learning.goal}｜已提问 {state.budget.used}/{state.budget.total}
-          {remaining === 0 ? '（预算已用完，先做本轮收束）' : ''}
+          这次要弄清楚：{learning.goal}｜已经问了 {state.budget.used}/{state.budget.total} 个问题
+          {remaining === 0 ? '（问题次数用完了，先给你一个小结）' : ''}
         </p>
 
         <ol className="timeline">
@@ -40,7 +40,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               {entry.role === 'question' && <p className="question">{entry.text}</p>}
               {entry.role === 'answer' && (
                 <p className="your-answer">
-                  <span className="tag">{entry.independent ? '无提示完成' : '经提示完成'}</span>
+                  <span className="tag">{entry.independent ? '自己答出来的' : '看了提示才答出来的'}</span>
                   {entry.text}
                 </p>
               )}
@@ -61,7 +61,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
 
         {busy && (
           <Busy
-            label={learning.current ? '正在看你的回答' : '正在提问'}
+            label={learning.current ? '正在看你的回答' : '正在想问题'}
             chars={state.busy?.chars ?? 0}
             onStop={() => tabId && void send({ type: 'stop', tabId })}
           />
@@ -92,13 +92,13 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               rows={2}
               maxLength={1000}
               value={draft}
-              placeholder={learning.current ? '用自己的话回答…' : '等待 AI 提问…'}
+              placeholder={learning.current ? '用自己的话说说看…' : '等一下，马上提问…'}
               disabled={!learning.current || busy}
               onChange={(event) => setDraft(event.target.value)}
             />
             <div className="composer-actions">
               <button type="submit" disabled={busy || !draft.trim() || !learning.current}>
-                发送回答
+                回答
               </button>
             </div>
           </form>

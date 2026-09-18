@@ -20,7 +20,7 @@ export async function ensureInjected(tabId: number): Promise<void> {
       ? error
       : appError(
           'PERMISSION_MISSING',
-          '无法读取当前页面：还没有授予该站点权限，或页面类型不受支持。请重新授权后重试。',
+          '读不到这一页：可能你还没允许我们读这个网站，也可能这类页面本来就读不了。再点一次开始伴读试试。',
           false,
         );
   }
@@ -30,7 +30,7 @@ async function send(tabId: number, request: ContentRequest): Promise<ContentRepl
   try {
     const reply = (await browser.tabs.sendMessage(tabId, request)) as ContentReply | undefined;
     if (!reply) {
-      return { ok: false, error: appError('STALE_PAGE', '当前页面没有可用的读取脚本。') };
+      return { ok: false, error: appError('STALE_PAGE', '这一页还没准备好被读取。') };
     }
     return reply;
   } catch (error) {
@@ -38,7 +38,7 @@ async function send(tabId: number, request: ContentRequest): Promise<ContentRepl
       ok: false,
       error: appError(
         'STALE_PAGE',
-        '无法在当前页面读取内容：页面可能已刷新、导航或关闭。请重新开始伴读。',
+        '这一页已经变了或者关掉了。重新点一次开始伴读。',
         true,
       ),
     };

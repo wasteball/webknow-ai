@@ -141,9 +141,9 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
       signal: combined,
     });
   } catch {
-    if (signal.aborted) throw appError('ABORTED', '已停止本次处理。');
+    if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
     if (timeout.aborted) {
-      throw appError('TIMEOUT', 'DeepSeek 在限定时间内没有返回结果，本次结果未采用。可重试。', true);
+      throw appError('TIMEOUT', '等太久了，DeepSeek 一直没回话。这次没有结果，可以再试一次。', true);
     }
     throw fromNetworkFailure(globalThis.navigator?.onLine === false ? 'offline' : 'unknown');
   }
@@ -152,7 +152,7 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
     throw fromHttpStatus(response.status);
   }
   if (!response.body) {
-    throw appError('SERVICE', 'DeepSeek 返回了空响应，本次结果未采用。可重试。', true);
+    throw appError('SERVICE', 'DeepSeek 没有回任何内容。这次没有结果，可以再试一次。', true);
   }
 
   const reader = response.body.getReader();
@@ -174,11 +174,11 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
     }
     for (const delta of sse.flush()) text += delta;
   } catch {
-    if (signal.aborted) throw appError('ABORTED', '已停止本次处理。');
+    if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
     if (timeout.aborted) {
-      throw appError('TIMEOUT', 'DeepSeek 响应中断，本次结果未采用。可重试。', true);
+      throw appError('TIMEOUT', 'DeepSeek 回到一半断了。这次没有结果，可以再试一次。', true);
     }
-    throw appError('SERVICE', '读取 DeepSeek 响应失败，本次结果未采用。可重试。', true);
+    throw appError('SERVICE', '读 DeepSeek 的回复时出错了。可以再试一次。', true);
   } finally {
     reader.releaseLock();
   }
@@ -188,13 +188,13 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
     // 截断必须如实说明，不能把半截 JSON 当成完整结果（FR-018）。
     throw appError(
       'BAD_OUTPUT',
-      '模型输出达到长度上限被截断，本次结果未采用，也没有当作完整结果展示。可重试，或在设置中改用更短的页面。',
+      '这一页的内容太多，回答写到一半就到上限了。我们没有把半截内容当成完整结果；换一篇短一点的文章再试。',
       true,
     );
   }
   const parsed = parseJsonLoose(text);
   if (parsed === undefined) {
-    throw appError('BAD_OUTPUT', '模型返回的内容不是可用的结构化结果，本次结果未采用。可重试。', true);
+    throw appError('BAD_OUTPUT', '这次生成的内容没法用，没有采用。可以再试一次。', true);
   }
   return parsed;
 }

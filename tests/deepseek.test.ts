@@ -92,7 +92,7 @@ describe('chatJson', () => {
     })}\n\ndata: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`;
     const fetchImpl = sseResponse([truncated]);
     await expect(chatJson({ ...base, fetchImpl })).rejects.toMatchObject({ code: 'BAD_OUTPUT' });
-    await expect(chatJson({ ...base, fetchImpl })).rejects.toThrowError(/被截断/);
+    await expect(chatJson({ ...base, fetchImpl })).rejects.toThrowError(/到上限|半截/);
   });
 
   it('按 A0 实测固定请求体：关闭思考并限定 JSON 输出', async () => {

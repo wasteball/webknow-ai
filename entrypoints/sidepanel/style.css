@@ -70,12 +70,29 @@ details.section {
 .summary {
   white-space: pre-wrap;
   margin: 0 0 8px;
+  line-height: 1.75;
 }
 
 .bubbles {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
+}
+
+/* 话题按钮做成浅色卡片而不是实心按钮：它们是“可以点开看看”，不是要用户确认的动作。 */
+.bubble {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 100%;
+}
+
+.bubble:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg-soft);
 }
 
 button {

@@ -46,7 +46,7 @@ describe('extractDocument', () => {
 
   it('正文不可提取时明确失败，不返回空结果', () => {
     install('<div><span>短</span></div>', 'https://example.com/empty');
-    expect(() => extractDocument()).toThrowError(/正文过短|没有在本页识别到/);
+    expect(() => extractDocument()).toThrowError(/文字太少|找不到成篇/);
   });
 });
 

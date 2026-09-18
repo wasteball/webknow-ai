@@ -71,7 +71,7 @@ export function buildContext(blocks: EvidenceBlock[]): ContextResult {
       ok: false,
       error: appError(
         'CONTENT_TOO_LARGE',
-        `本文正文块数量（${blocks.length}）超过当前可靠处理上限（${LIMITS.maxBlocks}）。未发送任何正文；请换用更短的文章或等待后续版本。`,
+        `这一页太长了，超过了目前能可靠处理的范围。我们没有偷偷截断，也没有把正文发出去。可以换一篇短一点的文章。`,
       ),
     };
   }
@@ -88,7 +88,7 @@ export function buildContext(blocks: EvidenceBlock[]): ContextResult {
       ok: false,
       error: appError(
         'CONTENT_TOO_LARGE',
-        `本文正文长度（${json.length} 字符）超过当前可靠处理上限（${LIMITS.maxContextChars}）。未发送任何正文，也未静默截断；请换用更短的文章或等待后续版本。`,
+        `这一页的文字太多了（超过约 ${Math.round(LIMITS.maxContextChars / 10000)} 万字），超出目前能可靠处理的范围。我们没有偷偷截断，也没有把正文发出去。可以换一篇短一点的文章。`,
       ),
     };
   }

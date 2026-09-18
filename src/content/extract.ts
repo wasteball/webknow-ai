@@ -139,7 +139,7 @@ function coverage(status: CoverageStatus, found: number, captured: number): Cove
 export function extractDocument(): BlocksPayload {
   const contentType = document.contentType ?? 'text/html';
   if (!contentType.includes('html')) {
-    throw appError('PAGE_UNSUPPORTED', '当前页面不是 HTML 文档，首版只支持公开的 HTML 文章页面。');
+    throw appError('PAGE_UNSUPPORTED', '这一页不是普通的网页文章（可能是文件或特殊页面），现在读不了。');
   }
 
   const runId = Math.random().toString(36).slice(2, 8);
@@ -151,7 +151,7 @@ export function extractDocument(): BlocksPayload {
     clearAnchors();
     throw appError(
       'EXTRACT_FAILED',
-      '没有在本页识别到可提取的连续正文。首版不支持列表页、搜索结果页、复杂网页应用和主要依赖图片的页面。',
+      '这一页找不到成篇的文字。目前只支持文章类网页；列表页、搜索结果、复杂的网页应用、主要靠图片说话的页面都读不了。',
     );
   }
 
@@ -201,7 +201,7 @@ export function extractDocument(): BlocksPayload {
     clearAnchors();
     throw appError(
       'EXTRACT_FAILED',
-      `本页正文过短或无法建立足够的唯一原文位置（已建立 ${blocks.length} 块、${capturedChars} 字符）。首版不处理这类页面。`,
+      `这一页的文字太少，凑不出完整的内容。换一篇正常文章试试。`,
     );
   }
 
@@ -315,7 +315,7 @@ export function jumpToAnchor(anchor: DomAnchor): JumpOutcome {
   if (!match) {
     return {
       outcome: 'failed',
-      reason: matches.length ? '原文中存在多个相同位置，无法安全定位。' : '原文位置已变化。',
+      reason: matches.length ? '这一页上有好几处一模一样的话，不敢乱跳。' : '这段原文已经找不到了。',
     };
   }
   highlight(match.element);

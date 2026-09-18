@@ -43,9 +43,9 @@ export function appError(code: ErrorCode, message: string, retryable = false): A
 export function fromThrown(error: unknown): AppError {
   if (isAppError(error)) return error;
   if (error instanceof DOMException && error.name === 'AbortError') {
-    return appError('ABORTED', '已停止本次处理。');
+    return appError('ABORTED', '已经按你的要求停下来了。');
   }
-  return appError('INTERNAL', '处理过程中出现未预期的问题，本次结果未采用。可重试或稍后再试。');
+  return appError('INTERNAL', '中间出了点我们没预料到的问题，这次结果没有采用。可以再试一次。');
 }
 
 export function isAppError(value: unknown): value is AppError {
@@ -61,40 +61,44 @@ export function isAppError(value: unknown): value is AppError {
 export function fromHttpStatus(status: number): AppError {
   switch (status) {
     case 401:
-      return appError('KEY_INVALID', 'DeepSeek 拒绝了当前 Key。请更新 Key 后重试。', false);
+      return appError('KEY_INVALID', 'DeepSeek 说这把钥匙不对，可能填错了或已经作废。到设置里换一把就行。', false);
     case 402:
       return appError(
         'INSUFFICIENT_BALANCE',
-        'DeepSeek 账户余额不足。请前往 DeepSeek 充值后重试；当前页面与会话内容仍保留。',
+        '你的 DeepSeek 账号余额不够了。去 DeepSeek 充值后就能继续；这一页的内容和刚才的对话都还在。',
         true,
       );
     case 429:
-      return appError('RATE_LIMITED', 'DeepSeek 当前限流。稍后重试即可，界面不会自动反复重试。', true);
+      return appError(
+        'RATE_LIMITED',
+        'DeepSeek 现在太忙了（同一时间用的人太多）。等一两分钟再试就行，我们不会背着你反复重试。',
+        true,
+      );
     case 400:
     case 404:
       return appError(
         'UNSUPPORTED_MODEL',
-        'DeepSeek 拒绝了本次请求的格式或模型名。这是产品配置问题，已保留当前内容，请反馈。',
+        'DeepSeek 不认我们发的请求格式。这是我们这边的问题，不是你的设置问题；内容都还在，麻烦反馈一下。',
         false,
       );
     case 422:
-      return appError('BAD_OUTPUT', 'DeepSeek 认为本次请求参数无效，未产生费用结果。请重试。', true);
+      return appError('BAD_OUTPUT', 'DeepSeek 说这次请求的参数不对，没有生成结果。重试一次通常就行。', true);
     default:
       if (status >= 500) {
-        return appError('SERVICE', 'DeepSeek 服务暂时不可用。已保留当前内容，可稍后重试。', true);
+        return appError('SERVICE', 'DeepSeek 那边暂时出故障了。你的内容都还在，过一会儿再试。', true);
       }
-      return appError('SERVICE', `DeepSeek 返回了未预期的状态（${status}）。本次结果未采用。`, true);
+      return appError('SERVICE', `DeepSeek 回了一个我们没见过的状态（${status}），结果没采用。可以稍后再试。`, true);
   }
 }
 
 /** 网络层失败（没有 HTTP 状态时）。 */
 export function fromNetworkFailure(reason: 'offline' | 'cors' | 'unknown'): AppError {
   if (reason === 'offline') {
-    return appError('NETWORK', '当前网络不可用，正文没有发送成功。恢复网络后可重试。', true);
+    return appError('NETWORK', '网络断了，这一页没有发出去。网络恢复后再试。', true);
   }
   return appError(
     'NETWORK',
-    '连接 DeepSeek 失败。可能是网络或拦截问题；本次没有产生可用结果，可稍后重试。',
+    '连不上 DeepSeek，可能是网络不通或被拦截。这次没有结果，稍后再试一次。',
     true,
   );
 }
