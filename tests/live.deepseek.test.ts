@@ -65,6 +65,7 @@ const completeness = {
   text: { status: 'parsed' as const, found: 4, captured: 4 },
   tables: { status: 'not-present' as const, found: 0, captured: 0 },
   images: { status: 'unavailable' as const, found: 2, captured: 0 },
+  frames: { status: 'not-present' as const, found: 0, captured: 0 },
   excludedBlocks: 0,
   truncated: false,
   warnings: [],

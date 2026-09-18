@@ -39,6 +39,7 @@ src/background/         唯一持有 Key 与唯一网络出口
 
 src/content/            只在被调用时读当前页
   extract.ts            正文提取 + 唯一锚点 + DOM 回跳（来自 735171c，已验证）
+  trees.ts              可读子树：开放 shadow root 与同源 iframe 的展开克隆
   text.ts               归一化、指纹、CSS 路径
 
 src/sidepanel/          界面 + 端口客户端
@@ -69,5 +70,7 @@ src/sidepanel/          界面 + 端口客户端
 
 - **不申请 `tabs` 权限**：导航检测靠内容脚本上报 + `tabs.onUpdated` 的 status，代价是新站点需要一次工具栏点击才能授权。
 - **模型请求走流式并累积**：SSE 分片既保活 service worker（30 秒空闲回收），也给出可停止的进度；解析仍在完整文本上做。
-- **读 React 原生 DOM 克隆**：Readability 会改动传入文档，因此永远传 `document.cloneNode(true)`。
+- **读 React 原生 DOM 克隆**：Readability 会改动传入文档，因此永远传克隆；克隆用 `cloneExpanded`
+  （主文档 + 展开后的 shadow/同源框架），不能直接 `cloneNode(true)`——那样会漏掉两类正文。
+- **不自动滚动加载懒内容**：副作用（改变阅读位置、触发页面发请求）大于收益；改为检测入口并披露。
 - **不预置扩展点**：PDF、多供应商、向量检索等都不做接口预留（`产品规划.md` 第 5.2 节）。

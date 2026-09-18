@@ -36,6 +36,8 @@ export type Completeness = {
   text: Coverage;
   tables: Coverage;
   images: Coverage;
+  /** 内嵌框架（iframe）：跨来源的读不到，必须披露。 */
+  frames: Coverage;
   /** 无法唯一定位、因而未纳入证据的正文块数量。 */
   excludedBlocks: number;
   /** 是否因上限缩小了读取范围（为 true 时不得声称覆盖全文）。 */
@@ -114,11 +116,18 @@ export function describeCompleteness(completeness: Completeness): string {
   if (completeness.images.found > 0) {
     parts.push(`图片：${completeness.images.found} 张未解析，其内容未纳入判断`);
   }
+  if (completeness.frames.found > completeness.frames.captured) {
+    parts.push(
+      `内嵌页面：${completeness.frames.found - completeness.frames.captured} 个跨来源框架未读取`,
+    );
+  }
   if (completeness.excludedBlocks > 0) {
     parts.push(`${completeness.excludedBlocks} 个正文块无法唯一定位，未纳入证据`);
   }
   if (completeness.truncated) {
     parts.push('本次只处理了部分正文，未覆盖全文');
   }
+  // 未展开的内容必须让模型也知道，否则它会当成全文来概括。
+  parts.push(...completeness.warnings);
   return parts.join('；');
 }

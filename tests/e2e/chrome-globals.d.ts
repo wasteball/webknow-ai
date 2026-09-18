@@ -17,7 +17,13 @@ declare const chrome: {
       set(items: Record<string, unknown>): Promise<void>;
     };
   };
-  tabs: { query(query: Record<string, unknown>): Promise<{ id?: number }[]> };
+  tabs: {
+    query(query: Record<string, unknown>): Promise<{ id?: number }[]>;
+    sendMessage(tabId: number, message: unknown): Promise<unknown>;
+  };
+  scripting: {
+    executeScript(injection: { target: { tabId: number }; files: string[] }): Promise<unknown[]>;
+  };
   permissions: { contains(permissions: { origins: string[] }): Promise<boolean> };
   sidePanel: {
     getOptions(options: Record<string, never>): Promise<{ path?: string; enabled?: boolean }>;

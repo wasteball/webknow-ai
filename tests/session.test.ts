@@ -39,6 +39,7 @@ const payload: BlocksPayload = {
     text: { status: 'parsed', found: 1, captured: 1 },
     tables: { status: 'not-present', found: 0, captured: 0 },
     images: { status: 'not-present', found: 0, captured: 0 },
+    frames: { status: 'not-present', found: 0, captured: 0 },
     excludedBlocks: 0,
     truncated: false,
     warnings: [],

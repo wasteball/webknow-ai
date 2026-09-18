@@ -43,8 +43,12 @@ export function ScopeLine({ completeness }: { completeness: Completeness | null 
     );
   }
   if (completeness.images.found > 0) parts.push(`${completeness.images.found} 张图片没读`);
+  const framesUnread = completeness.frames.found - completeness.frames.captured;
+  if (framesUnread > 0) parts.push(`${framesUnread} 个内嵌页面没读`);
   if (completeness.excludedBlocks > 0) parts.push(`${completeness.excludedBlocks} 段没法定位，没算进去`);
   if (completeness.truncated) parts.push('没有读完整篇');
+  // 未展开的内容、无法定位的块等，都在这里如实告诉用户。
+  parts.push(...completeness.warnings);
   return <p className="scope">读取范围：{parts.join('；')}</p>;
 }
 

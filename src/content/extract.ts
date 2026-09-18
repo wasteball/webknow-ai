@@ -13,6 +13,13 @@ import type {
 import { appError } from '../core/errors';
 import { LIMITS } from '../core/limits';
 import { cssPath, escapeCss, fingerprint, normalizeText } from './text';
+import {
+  CANDIDATE_SELECTOR,
+  cloneExpanded,
+  queryAllAcrossTrees,
+  readableRoots,
+  type ReadableRoot,
+} from './trees';
 
 /**
  * 正文提取与原文定位。核心算法来自本项目 2026-08-22 版本（735171c）的 page.ts，
@@ -22,7 +29,7 @@ import { cssPath, escapeCss, fingerprint, normalizeText } from './text';
  */
 
 const ANCHOR_ATTRIBUTE = 'data-wka-anchor';
-const CANDIDATES = 'h1,h2,h3,h4,h5,h6,p,li,th,td';
+const CANDIDATES = CANDIDATE_SELECTOR;
 const HIGHLIGHT_ID = 'wka-evidence-highlight-style';
 const HIGHLIGHT_CLASS = 'wka-evidence-highlight';
 const OWN_ANCHOR_SELECTOR = `[${ANCHOR_ATTRIBUTE}^="wka-"]`;
@@ -37,9 +44,9 @@ type SourceCandidate = {
   suffix: string;
 };
 
-function headingPathAt(element: Element): string[] {
+function headingPathIn(root: ReadableRoot, element: Element): string[] {
   const path: string[] = [];
-  for (const heading of document.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')) {
+  for (const heading of root.querySelectorAll<HTMLElement>('h1,h2,h3,h4,h5,h6')) {
     if (heading.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) {
       const level = Number(heading.tagName[1]);
       path.splice(level - 1);
@@ -54,10 +61,18 @@ function samePath(left: string[], right: string[]): boolean {
 }
 
 function clearAnchors(except = new Set<string>()): void {
-  for (const element of document.querySelectorAll(OWN_ANCHOR_SELECTOR)) {
+  for (const { element } of anchorElements()) {
     const id = element.getAttribute(ANCHOR_ATTRIBUTE);
     if (!id || !except.has(id)) element.removeAttribute(ANCHOR_ATTRIBUTE);
   }
+}
+
+/** 锚点元素可能存在于主文档、shadow root 或同源框架里，统一按可读子树枚举。 */
+function anchorElements(): { element: HTMLElement; root: ReadableRoot }[] {
+  const { roots } = readableRoots();
+  return roots.flatMap((root) =>
+    [...root.querySelectorAll<HTMLElement>(OWN_ANCHOR_SELECTOR)].map((element) => ({ element, root })),
+  );
 }
 
 function minCharsFor(element: Element): number {
@@ -66,11 +81,17 @@ function minCharsFor(element: Element): number {
 
 function annotateSource(runId: string): SourceCandidate[] {
   clearAnchors();
-  const elements = [...document.querySelectorAll<HTMLElement>(CANDIDATES)].filter((element) => {
-    const text = normalizeText(element.textContent);
-    return text.length >= minCharsFor(element) && !element.closest('[aria-hidden="true"]');
-  });
-  return elements.map((element, index) => {
+  const { roots } = readableRoots();
+  // 按子树顺序拉平：编号、前后缀、标题路径都基于同一份顺序，提取与回跳必须一致。
+  const found = roots.flatMap((root) =>
+    [...root.querySelectorAll<HTMLElement>(CANDIDATES)]
+      .filter((element) => {
+        const text = normalizeText(element.textContent);
+        return text.length >= minCharsFor(element) && !element.closest('[aria-hidden="true"]');
+      })
+      .map((element) => ({ element, root })),
+  );
+  return found.map(({ element, root }, index) => {
     const text = normalizeText(element.textContent);
     const id = `wka-${runId}-${index.toString(36)}`;
     element.setAttribute(ANCHOR_ATTRIBUTE, id);
@@ -78,10 +99,10 @@ function annotateSource(runId: string): SourceCandidate[] {
       element,
       id,
       text,
-      headingPath: headingPathAt(element),
+      headingPath: headingPathIn(root, element),
       selector: cssPath(element),
-      prefix: normalizeText(elements[index - 1]?.textContent).slice(-100),
-      suffix: normalizeText(elements[index + 1]?.textContent).slice(0, 100),
+      prefix: normalizeText(found[index - 1]?.element.textContent).slice(-100),
+      suffix: normalizeText(found[index + 1]?.element.textContent).slice(0, 100),
     };
   });
 }
@@ -113,12 +134,8 @@ function tableContext(element: Element): EvidenceBlock['table'] {
 
 /** 内容版本：同一 URL 下正文发生实质变化时，旧结果必须失效（FR-005）。 */
 export function documentFingerprint(): string {
-  const clone = document.cloneNode(true) as Document;
-  const sourceImages = [...document.images];
-  clone.querySelectorAll<HTMLImageElement>('img').forEach((image, index) => {
-    const source = sourceImages[index];
-    image.dataset.wkaFingerprintSource = source?.currentSrc || source?.src || '';
-  });
+  // 展开克隆顺带把图片的真实地址写进副本，因此不再需要按索引对齐。
+  const clone = cloneExpanded(document) as Document;
   const article = new Readability(clone).parse();
   if (!article?.content) return fingerprint(`${location.href}\n${document.title}\nunreadable`);
   const root = new DOMParser().parseFromString(`<main>${article.content}</main>`, 'text/html').body;
@@ -127,13 +144,37 @@ export function documentFingerprint(): string {
     .filter(Boolean)
     .join('\n');
   const images = [...root.querySelectorAll<HTMLImageElement>('img')]
-    .map((image) => `${image.dataset.wkaFingerprintSource}\t${normalizeText(image.alt)}`)
+    .map((image) => `${image.getAttribute('src') ?? ''}\t${normalizeText(image.alt)}`)
     .join('\n');
   return fingerprint(`${location.href}\n${document.title}\n${content}\n${images}`);
 }
 
 function coverage(status: CoverageStatus, found: number, captured: number): Coverage {
   return { status, found, captured };
+}
+
+/**
+ * 检测“可能还有没加载的内容”。
+ *
+ * 刻意**不自动滚动**去加载：滚动会改变用户正在读的位置、触发页面自己去发网络请求
+ * （广告、埋点），还可能根本停不下来。对阅读伴随工具来说，这些副作用比收益大。
+ *
+ * 取而代之：只在页面上真的存在“展开全文/加载更多”这类入口时如实披露；
+ * 用户自己点开后，正文变化会让内容版本失效（STALE），重新开始伴读即可读到新内容——
+ * 已有的“变化即失效”机制正好覆盖这条路径。
+ */
+const UNLOADED_HINT = /(展开全文|阅读全文|查看全文|加载更多|查看更多|继续阅读|load more|read more|show more)/i;
+
+function detectUnloadedHints(): string[] {
+  const hints = new Set<string>();
+  for (const element of queryAllAcrossTrees<HTMLElement>('button,a,[role="button"]')) {
+    const text = normalizeText(element.textContent);
+    // 限制长度：避免把恰好包含这些词的长段落误判成按钮。
+    if (!text || text.length > 16) continue;
+    if (UNLOADED_HINT.test(text)) hints.add(text);
+    if (hints.size >= 3) break;
+  }
+  return [...hints];
 }
 
 export function extractDocument(): BlocksPayload {
@@ -143,9 +184,10 @@ export function extractDocument(): BlocksPayload {
   }
 
   const runId = Math.random().toString(36).slice(2, 8);
+  const { stats } = readableRoots();
   const source = annotateSource(runId);
   const byId = new Map(source.map((candidate) => [candidate.id, candidate]));
-  const clone = document.cloneNode(true) as Document;
+  const clone = cloneExpanded(document) as Document;
   const article = new Readability(clone).parse();
   if (!article?.content) {
     clearAnchors();
@@ -212,6 +254,10 @@ export function extractDocument(): BlocksPayload {
   const tableCaptured = blocks.filter((block) => block.role === 'table-cell').length;
 
   const warnings: string[] = [];
+  const hints = detectUnloadedHints();
+  if (hints.length) {
+    warnings.push(`页面上有「${hints.join('、')}」，可能还有没展开的内容没有读到。`);
+  }
   if (excludedBlocks) warnings.push(`${excludedBlocks} 个正文块无法唯一定位，未纳入证据。`);
   if (imageFound) warnings.push(`发现 ${imageFound} 张图片；首版不解析图片内容。`);
 
@@ -228,6 +274,15 @@ export function extractDocument(): BlocksPayload {
       tableCaptured,
     ),
     images: coverage(imageFound ? 'unavailable' : 'not-present', imageFound, 0),
+    frames: coverage(
+      stats.framesFound === 0
+        ? 'not-present'
+        : stats.framesRead === stats.framesFound
+          ? 'parsed'
+          : 'partial',
+      stats.framesFound,
+      stats.framesRead,
+    ),
     excludedBlocks,
     truncated: false,
     warnings,
@@ -257,17 +312,20 @@ function headingPathAtFrom(root: Element, element: Element): string[] {
 }
 
 function currentCandidates(): SourceCandidate[] {
-  const elements = [...document.querySelectorAll<HTMLElement>(CANDIDATES)].filter(
-    (element) => normalizeText(element.textContent).length >= 2,
+  const { roots } = readableRoots();
+  const found = roots.flatMap((root) =>
+    [...root.querySelectorAll<HTMLElement>(CANDIDATES)]
+      .filter((element) => normalizeText(element.textContent).length >= 2)
+      .map((element) => ({ element, root })),
   );
-  return elements.map((element, index) => ({
+  return found.map(({ element, root }, index) => ({
     element,
     id: element.getAttribute(ANCHOR_ATTRIBUTE) ?? '',
     text: normalizeText(element.textContent),
-    headingPath: headingPathAt(element),
+    headingPath: headingPathIn(root, element),
     selector: cssPath(element),
-    prefix: normalizeText(elements[index - 1]?.textContent).slice(-100),
-    suffix: normalizeText(elements[index + 1]?.textContent).slice(0, 100),
+    prefix: normalizeText(found[index - 1]?.element.textContent).slice(-100),
+    suffix: normalizeText(found[index + 1]?.element.textContent).slice(0, 100),
   }));
 }
 
@@ -289,17 +347,21 @@ function highlight(element: HTMLElement): void {
  * 回到原文：校验块 id、摘录一致与内容版本，任一不成立就如实报失效，不假装跳转成功（FR-017）。
  */
 export function jumpToAnchor(anchor: DomAnchor): JumpOutcome {
-  const directMatches = document.querySelectorAll<HTMLElement>(
-    `[${ANCHOR_ATTRIBUTE}="${escapeCss(anchor.sessionAnchorId)}"]`,
+  const { roots } = readableRoots();
+  const directMatches = roots.flatMap((root) =>
+    [...root.querySelectorAll<HTMLElement>(`[${ANCHOR_ATTRIBUTE}="${escapeCss(anchor.sessionAnchorId)}"]`)].map(
+      (element) => ({ element, root }),
+    ),
   );
   const direct = directMatches.length === 1 ? directMatches[0] : undefined;
   if (
     direct &&
-    normalizeText(direct.textContent) === anchor.exact &&
-    fingerprint(`${normalizeText(direct.textContent)}\n${headingPathAt(direct).join(' > ')}`) ===
-      anchor.fingerprint
+    normalizeText(direct.element.textContent) === anchor.exact &&
+    fingerprint(
+      `${normalizeText(direct.element.textContent)}\n${headingPathIn(direct.root, direct.element).join(' > ')}`,
+    ) === anchor.fingerprint
   ) {
-    highlight(direct);
+    highlight(direct.element);
     return { outcome: 'jumped' };
   }
 

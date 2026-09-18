@@ -50,6 +50,107 @@ describe('extractDocument', () => {
   });
 });
 
+describe('影子 DOM 与内嵌框架', () => {
+  it('读取开放 shadow root 里的正文', () => {
+    install(`
+      <article><h1>外层标题</h1>
+      <p>外层的第一段正文内容，长度足够让提取器识别出文章主体，并且留有余量。</p>
+      <div id="host"></div>
+      <p>外层的第二段正文内容，继续补充说明，保证正文识别稳定完成不失败。</p></article>
+    `);
+    const host = document.getElementById('host');
+    if (!host) throw new Error('缺少挂载点');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML =
+      '<h2>组件内的小标题</h2><p>组件里的段落内容，长度同样足够被识别为正文块。</p>';
+
+    const payload = extractDocument();
+    const contents = payload.blocks.map((block) => block.content);
+    expect(contents.some((text) => text.includes('组件里的段落内容'))).toBe(true);
+    expect(contents.some((text) => text.includes('组件内的小标题'))).toBe(true);
+  });
+
+  it('能跳回 shadow root 里的原文', () => {
+    install(`
+      <article><h1>外层标题</h1>
+      <p>外层的第一段正文内容，长度足够让提取器识别出文章主体，并且留有余量。</p>
+      <div id="host"></div>
+      <p>外层的第二段正文内容，继续补充说明，保证正文识别稳定完成不失败。</p></article>
+    `);
+    const host = document.getElementById('host');
+    if (!host) throw new Error('缺少挂载点');
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = '<p>组件里的段落内容，长度同样足够被识别为正文块。</p>';
+
+    const payload = extractDocument();
+    const inside = payload.blocks.find((block) => block.content.includes('组件里的段落内容'));
+    expect(inside).toBeDefined();
+    if (!inside) return;
+    expect(jumpToAnchor(inside.anchor).outcome).toBe('jumped');
+  });
+
+  it('内容版本把 shadow root 里的正文算进去', () => {
+    const mount = () => {
+      install(`
+        <article><h1>外层标题</h1>
+        <p>外层的第一段正文内容，长度足够让提取器识别出文章主体。</p>
+        <div id="host"></div>
+        <p>外层的第二段正文内容，继续补充说明，保证识别稳定。</p></article>
+      `);
+      const host = document.getElementById('host');
+      if (!host) throw new Error('缺少挂载点');
+      return host.attachShadow({ mode: 'open' });
+    };
+
+    mount().innerHTML = '<p>组件里的第一版内容，长度足够被识别为正文块。</p>';
+    const before = currentIdentity().fingerprint;
+    mount().innerHTML = '<p>组件里的内容被改写了，长度依然足够被识别为正文块。</p>';
+    expect(currentIdentity().fingerprint).not.toBe(before);
+  });
+
+  it('框架数量如实计入读取范围', () => {
+    // 夹具必须明显越过 minArticleChars(80)，否则提取会因“文字太少”直接失败。
+    install(`
+      <article><h1>外层标题</h1>
+      <p>外层的第一段正文内容，长度要足够让提取器识别出文章主体，并且留出充分余量。</p>
+      <iframe src="about:blank"></iframe>
+      <p>外层的第二段正文内容，继续补充说明，保证正文识别能够稳定完成而不是失败。</p>
+      <p>外层的第三段正文内容，进一步增加长度，确保整篇正文远超最小长度门槛。</p></article>
+    `);
+    const payload = extractDocument();
+    expect(payload.completeness.frames.found).toBe(1);
+    // 同源空框架读到的内容为空，但计入已读，因此状态是 parsed 而不是 partial。
+    expect(payload.completeness.frames.captured).toBe(1);
+  });
+});
+
+describe('未加载内容的披露', () => {
+  it('页面上有“展开全文”时如实提示，而不是假装读全了', () => {
+    install(`
+      <article><h1>外层标题</h1>
+      <p>外层的第一段正文内容，长度要足够让提取器识别出文章主体，并且留出充分余量。</p>
+      <p>外层的第二段正文内容，继续补充说明，保证正文识别能够稳定完成而不是失败。</p>
+      <p>外层的第三段正文内容，进一步增加长度，确保整篇正文远超最小长度门槛。</p>
+      <button>展开全文</button></article>
+    `);
+    const payload = extractDocument();
+    expect(payload.completeness.warnings.join()).toContain('展开全文');
+  });
+
+  it('普通按钮不会被误报成未加载内容', () => {
+    install(`
+      <article><h1>外层标题</h1>
+      <p>外层的第一段正文内容，长度要足够让提取器识别出文章主体，并且留出充分余量。</p>
+      <p>外层的第二段正文内容，继续补充说明，保证正文识别能够稳定完成而不是失败。</p>
+      <p>外层的第三段正文内容，进一步增加长度，确保整篇正文远超最小长度门槛。</p>
+      <button>订阅</button><button>分享</button></article>
+    `);
+    const payload = extractDocument();
+    expect(payload.completeness.warnings.join()).not.toContain('未展开');
+    expect(payload.completeness.warnings.join()).not.toContain('展开');
+  });
+});
+
 describe('jumpToAnchor', () => {
   beforeEach(() => install(article));
 

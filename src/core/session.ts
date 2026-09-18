@@ -127,6 +127,7 @@ export function emptySession(tabId: number, url: string): PageSession {
       text: { status: 'not-present', found: 0, captured: 0 },
       tables: { status: 'not-present', found: 0, captured: 0 },
       images: { status: 'not-present', found: 0, captured: 0 },
+      frames: { status: 'not-present', found: 0, captured: 0 },
       excludedBlocks: 0,
       truncated: false,
       warnings: [],
