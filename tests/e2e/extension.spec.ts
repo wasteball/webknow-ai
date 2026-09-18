@@ -31,6 +31,20 @@ test('后台以 MV3 service worker 启动', async () => {
   expect(extensionId).toMatch(/^[a-p]{32}$/);
 });
 
+/**
+ * 点工具栏图标这条路径无法自动化（浏览器外壳点不到），但“侧栏是否配置正确”可以验证。
+ * 这条断言防的是：点图标后什么都不发生——那通常意味着 side_panel 配置缺失或未启用。
+ */
+test('侧栏已配置且启用（工具栏点击的前提）', async () => {
+  const worker = context.serviceWorkers()[0];
+  if (!worker) throw new Error('缺少 service worker');
+  const options = await worker.evaluate(() => chrome.sidePanel.getOptions({}));
+  const manifest = await worker.evaluate(() => chrome.runtime.getManifest());
+  expect(manifest.side_panel?.default_path).toBeTruthy();
+  expect(options.path ?? manifest.side_panel?.default_path).toBeTruthy();
+  expect(options.enabled).not.toBe(false);
+});
+
 test('未配置 Key 时侧栏进入配置状态', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
