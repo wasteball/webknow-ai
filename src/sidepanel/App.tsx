@@ -168,7 +168,7 @@ export function App() {
                 <p>你已经换了页面（或者这一页的内容变了）。上一页的结果作废了，不会拿来充数。</p>
               )}
               {!state.outboundConfirmed ? (
-                <OutboundNotice />
+                <OutboundNotice searchProviderName={state.settings.search.enabled ? state.settings.search.providerName : null} />
               ) : (
                 <p className="hint">你已经确认过：正文和你的问题会发给 DeepSeek，费用从你的账号扣。</p>
               )}
@@ -283,13 +283,19 @@ export function App() {
 }
 
 /** 首次外发前的告知与确认；接收方或范围变化后需要重新确认（FR-022）。 */
-function OutboundNotice() {
+function OutboundNotice({ searchProviderName }: { searchProviderName: string | null }) {
   return (
     <div className="banner banner-info">
       <p>开始之前，请先确认这几件事：</p>
       <ul>
         <li>你正在看的这一页的文字，会发给 DeepSeek 这家公司（不是发给我们）。</li>
         <li>发过去的是：这一页的正文、你提的问题，以及前面几轮对话。</li>
+        {searchProviderName && (
+          <li>
+            你还启用了联网搜索（{searchProviderName}）：打开那个开关提问时，你的<strong>搜索词</strong>会发给它；
+            文章正文不会发给它。
+          </li>
+        )}
         <li>费用从你自己的 DeepSeek 账号里扣。</li>
         <li>请只在这一页是公开的、你有权这样使用的时候才用。</li>
       </ul>

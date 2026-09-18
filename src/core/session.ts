@@ -27,6 +27,8 @@ export type ChatTurn = {
   source: AnswerSource;
   citations: Citation[];
   unanswered: string[];
+  /** 用到的网络资料链接（F3）：已由程序校验只能来自注入的搜索结果。 */
+  references: string[];
   at: number;
 };
 

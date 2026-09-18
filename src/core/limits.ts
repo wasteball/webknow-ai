@@ -40,6 +40,10 @@ export const LIMITS = {
   retryBackoffMs: 1_200,
   /** 每个标签页同时只允许一个在途请求。 */
   maxConcurrentPerTab: 1,
+
+  /** 联网搜索（F3）：单次注入提示词的结果数上限。 */
+  searchResultsCount: 5,
+  searchTimeoutMs: 15_000,
 } as const;
 
 export type Limits = typeof LIMITS;

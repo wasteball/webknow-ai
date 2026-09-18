@@ -37,6 +37,7 @@ const CHAT = [
     source: 'original',
     citations: [{ blockId: 'blk_2' }],
     unanswered: ['具体是装载还是行驶环节省了时间，正文没有说。'],
+    references: [],
     at: 0,
   },
 ];
@@ -188,11 +189,10 @@ test.afterAll(async () => {
 
 /**
  * 打开一个侧栏页面和一个“文章标签页”，把伪造的会话挂在文章标签页上（只测排版，不外发任何内容）。
- * 侧栏通过 tabs.onActivated 重新取状态，因此最后用一次标签页切换触发状态推送；
- * 不能 reload 侧栏页面本身——导航守卫会把它自己标签页上的会话判为陈旧。
- * 会话 url 指向 127.0.0.1，e2e 构建对该来源静态授予权限，因此相位推导为 READY。
+ * 写入会话后通过临时端口发 attach 命令，让后台把最新状态推给侧栏（确定性触发，
+ * 不依赖标签页切换事件的时序）。会话 url 指向 127.0.0.1，e2e 构建对该来源静态授予权限。
  */
-async function openPanel(width: number): Promise<{ panel: Page; article: Page }> {
+async function openPanel(width: number): Promise<{ panel: Page; tabId: number | null }> {
   const panel = await context.newPage();
   await panel.setViewportSize({ width, height: 920 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
@@ -215,37 +215,41 @@ async function openPanel(width: number): Promise<{ panel: Page; article: Page }>
     [tabId, FIXTURE_SESSION] as const,
   );
 
-  // 切走再切回来，让侧栏的 onActivated 监听重新 attach 文章标签页并推送新状态。
-  await panel.bringToFront();
-  await article.bringToFront();
-  return { panel, article };
+  await pushState(panel, tabId);
+  return { panel, tabId };
 }
 
-/** 切换一次活动标签页，让侧栏重新读取存储里的会话。 */
-async function refreshPanel(panel: Page, article: Page): Promise<void> {
-  await panel.bringToFront();
-  await article.bringToFront();
+/** 通过临时端口发 attach：后台先把完整状态推给侧栏的常驻端口，再回复本端口。 */
+async function pushState(panel: Page, tabId: number | null): Promise<void> {
+  await panel.evaluate(async (id) => {
+    await new Promise<void>((resolve) => {
+      const port = chrome.runtime.connect({ name: 'webknow' });
+      const requestId = Math.floor(Math.random() * 1e9);
+      port.onMessage.addListener((msg) => {
+        if (msg.type === 'reply' && msg.id === requestId) {
+          port.disconnect();
+          resolve();
+        }
+      });
+      port.postMessage({ id: requestId, command: { type: 'attach', tabId: id } });
+    });
+  }, tabId);
 }
 
 test('READY 视图在三种宽度下排版正确', async () => {
   test.setTimeout(120_000);
   for (const width of WIDTHS) {
-    const { panel, article } = await openPanel(width);
+    const { panel } = await openPanel(width);
     await expect(panel.getByText('这篇文章讲了什么')).toBeVisible();
     await expect(panel.locator('.bubble').first()).toBeVisible();
     await panel.screenshot({ path: join(OUTPUT_DIR, `ready-${width}.png`), fullPage: true });
     await panel.close();
-    await article.close();
   }
 });
 
 test('LEARNING 视图在宽面板下排版正确', async () => {
   test.setTimeout(120_000);
-  const { panel: _panel, article } = await openPanel(720);
-  const tabId = await _panel.evaluate(async () => {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    return tabs[0]?.id ?? null;
-  });
+  const { panel: _panel, tabId } = await openPanel(720);
   await context.serviceWorkers()[0]!.evaluate(
     async ([id, learning]) => {
       const stored = await chrome.storage.session.get(`sess:${id}`);
@@ -256,7 +260,7 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
     },
     [tabId, LEARNING] as const,
   );
-  await refreshPanel(_panel, article);
+  await pushState(_panel, tabId);
   await expect(_panel.locator('.entry-question').first()).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-720.png'), fullPage: true });
 
@@ -274,23 +278,18 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
     session.state = 'READY';
     await chrome.storage.session.set({ [`sess:${id}`]: session });
   }, tabId);
-  await refreshPanel(_panel, article);
+  await pushState(_panel, tabId);
   // 视图尊重用户所在的位置：收束后不会强行切走，需要自己回到“AI 问我”Tab。
   await _panel.getByRole('tab', { name: /AI 问我/ }).click();
   await expect(_panel.getByRole('button', { name: '再来一轮' })).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-closed-720.png'), fullPage: true });
 
   await _panel.close();
-  await article.close();
 });
 
 test('选择题轮在宽面板下可交互', async () => {
   test.setTimeout(120_000);
-  const { panel: quizPanel, article: quizArticle } = await openPanel(720);
-  const quizTabId = await quizPanel.evaluate(async () => {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    return tabs[0]?.id ?? null;
-  });
+  const { panel: quizPanel, tabId: quizTabId } = await openPanel(720);
   await context.serviceWorkers()[0]!.evaluate(
     async ([id, learning]) => {
       const stored = await chrome.storage.session.get(`sess:${id}`);
@@ -301,7 +300,7 @@ test('选择题轮在宽面板下可交互', async () => {
     },
     [quizTabId, QUIZ_CURRENT] as const,
   );
-  await refreshPanel(quizPanel, quizArticle);
+  await pushState(quizPanel, quizTabId);
   await expect(quizPanel.locator('.quiz-question').first()).toBeVisible();
 
   // 勾选一个选项后提交按钮才可用。
@@ -312,7 +311,6 @@ test('选择题轮在宽面板下可交互', async () => {
   await quizPanel.screenshot({ path: join(OUTPUT_DIR, 'quiz-720.png'), fullPage: true });
 
   await quizPanel.close();
-  await quizArticle.close();
 });
 
 test('设置页在宽面板下排版正确', async () => {

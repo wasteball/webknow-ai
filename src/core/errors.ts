@@ -26,6 +26,7 @@ export type ErrorCode =
   | 'BAD_OUTPUT'
   | 'BUDGET_EXCEEDED'
   | 'STORAGE_FAILED'
+  | 'SEARCH_FAILED'
   | 'INTERNAL';
 
 export type AppError = {

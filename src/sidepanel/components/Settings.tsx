@@ -8,6 +8,7 @@ import { LEARN_DEFAULT_POLICY } from '../../core/prompts/learn';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { PromptTarget } from '../../core/settings';
 import { BUILTIN_SKILLS } from '../../core/skills';
+import { BUILTIN_SEARCH_PROVIDERS } from '../../core/search/registry';
 import { Section } from './bits';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
@@ -48,6 +49,7 @@ export function Settings({ state, send }: { state: PanelState; send: Send }) {
       <ModelAndKey state={state} send={send} />
       <Prompts state={state} send={send} />
       <Skills state={state} send={send} />
+      <SearchSettings state={state} send={send} />
       <Behavior state={state} send={send} />
       <Appearance state={state} send={send} />
       <Cleanup state={state} send={send} />
@@ -402,6 +404,108 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
         <div className="composer-actions">
           <button type="button" className="secondary" onClick={() => setAdding(true)}>
             添加自定义技能
+          </button>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function SearchSettings({ state, send }: { state: PanelState; send: Send }) {
+  const current = state.settings.search;
+  const [providerId, setProviderId] = useState('');
+  const [credentials, setCredentials] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+  const selected = BUILTIN_SEARCH_PROVIDERS.find((provider) => provider.id === providerId);
+
+  const run = async (command: Command) => {
+    setBusy(true);
+    const reply = await send(command);
+    setBusy(false);
+    return reply;
+  };
+
+  /** 启用：先在用户手势里申请 host 权限（必须第一个发出、前面不能有 await），再保存并测试。 */
+  const enable = async () => {
+    if (!selected) return;
+    const hosts = selected.hosts(credentials);
+    try {
+      const granted = hosts.length ? await browser.permissions.request({ origins: hosts }) : true;
+      if (!granted) {
+        setHint('没有授予搜索服务的访问权限，什么都没有保存。可以稍后再试。');
+        return;
+      }
+    } catch {
+      setHint('浏览器没有弹出授权窗口。请关掉侧栏重新打开后再点一次。');
+      return;
+    }
+    const reply = await run({ type: 'saveSearchConfig', providerId: selected.id, credentials });
+    if (reply?.ok) await run({ type: 'testSearch', providerId: selected.id });
+  };
+
+  return (
+    <Section title="联网搜索">
+      <p className="hint">
+        启用后，问答里会多一个“联网搜索”开关：打开它提问，会把你的搜索词发给下面选的搜索服务，
+        拿到结果后连同文章一起回答。**只发搜索词，不发文章正文。**搜索服务按它自己的规则收费或免费。
+      </p>
+      <div className="field">
+        <label htmlFor="search-provider">搜索服务</label>
+        <select
+          id="search-provider"
+          value={providerId || (current.enabled ? '已启用' : '')}
+          disabled={busy}
+          onChange={(event) => setProviderId(event.target.value)}
+        >
+          <option value="">不启用{current.enabled ? '（当前已启用，更改请先选择）' : ''}</option>
+          {BUILTIN_SEARCH_PROVIDERS.map((provider) => (
+            <option key={provider.id} value={provider.id}>
+              {provider.name}
+            </option>
+          ))}
+          {current.enabled && <option value="已启用">已启用：{current.providerName}</option>}
+        </select>
+      </div>
+      {selected && (
+        <>
+          <p className="hint">{selected.description}</p>
+          {selected.configFields.map((field) => (
+            <div className="field" key={field.key}>
+              <label htmlFor={`search-${field.key}`}>{field.label}</label>
+              <input
+                id={`search-${field.key}`}
+                type={field.type}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={field.placeholder}
+                value={credentials[field.key] ?? ''}
+                onChange={(event) =>
+                  setCredentials((currentValues) => ({ ...currentValues, [field.key]: event.target.value }))
+                }
+              />
+            </div>
+          ))}
+          {hint && <p className="hint">{hint}</p>}
+          <div className="composer-actions">
+            <button type="button" disabled={busy} onClick={() => void enable()}>
+              授权并启用
+            </button>
+          </div>
+          <p className="hint">
+            点“授权并启用”后浏览器会先问你是否允许访问这个搜索服务的地址。启用后会自动试搜一次。
+          </p>
+        </>
+      )}
+      {current.enabled && (
+        <div className="composer-actions">
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => void run({ type: 'saveSearchConfig', providerId: null })}
+          >
+            停用联网搜索（当前：{current.providerName}）
           </button>
         </div>
       )}

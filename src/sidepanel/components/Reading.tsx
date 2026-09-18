@@ -9,9 +9,11 @@ type Send = (command: Command) => Promise<Reply | undefined>;
 
 export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
+  const [searchOn, setSearchOn] = useState(false);
   const tabId = state.tabId;
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.busy?.kind === 'answer';
+  const searchEnabled = state.settings.search.enabled;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
@@ -19,7 +21,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
 
   const ask = async (question: string) => {
     if (!tabId || !question.trim()) return;
-    const reply = await send({ type: 'ask', tabId, question });
+    const reply = await send({ type: 'ask', tabId, question, search: searchEnabled && searchOn });
     if (reply?.ok) setDraft('');
   };
 
@@ -60,6 +62,16 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
           placeholder="想问什么，写在这里…"
           onChange={(event) => setDraft(event.target.value)}
         />
+        {searchEnabled && (
+          <label className="search-toggle">
+            <input
+              type="checkbox"
+              checked={searchOn}
+              onChange={(event) => setSearchOn(event.target.checked)}
+            />
+            <span>联网搜索（只把搜索词发给{state.settings.search.providerName ?? '搜索服务'}）</span>
+          </label>
+        )}
         <div className="composer-actions">
           <button type="submit" disabled={busy || !draft.trim()}>
             发送
@@ -101,6 +113,16 @@ function Turn({ turn, tabId, send }: { turn: ChatTurn; tabId: number | null; sen
             >
               看看原文{index + 1}
             </button>
+          ))}
+        </p>
+      )}
+      {turn.references.length > 0 && (
+        <p className="citations">
+          网络资料：
+          {turn.references.map((url, index) => (
+            <a key={url} href={url} target="_blank" rel="noreferrer" className="link">
+              链接{index + 1}{' '}
+            </a>
           ))}
         </p>
       )}

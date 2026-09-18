@@ -26,6 +26,8 @@ export type PanelSettings = {
   customSkills: Skill[];
   learningBudget: number;
   learningStyle: 'mixed' | 'quiz' | 'open';
+  /** 联网搜索（F3）：只暴露状态，凭证永不进界面。 */
+  search: { enabled: boolean; providerName: string | null; hasCredentials: boolean };
   maxBubbles: number;
   summaryLength: SummaryLength;
   fontSize: FontSize;
@@ -57,7 +59,7 @@ export type Command =
   | { type: 'attach'; tabId: number | null }
   | { type: 'start'; tabId: number }
   | { type: 'stop'; tabId: number }
-  | { type: 'ask'; tabId: number; question: string }
+  | { type: 'ask'; tabId: number; question: string; search?: boolean }
   | { type: 'explore'; tabId: number; bubbleId: string }
   | { type: 'learnStart'; tabId: number; goal: string }
   | { type: 'learnAnswer'; tabId: number; text: string; choices?: { questionId: string; choiceIds: string[] }[] }
@@ -72,6 +74,8 @@ export type Command =
   | { type: 'saveSettings'; patch: import('./settings').SettingsPatch }
   | { type: 'saveSkill'; skill: { id?: string; name: string; description: string; target: 'guide' | 'answer' | 'learn'; body: string } }
   | { type: 'deleteSkill'; id: string }
+  | { type: 'saveSearchConfig'; providerId: string | null; credentials?: Record<string, string> }
+  | { type: 'testSearch'; providerId: string; credentials?: Record<string, string> }
   | { type: 'listModels' }
   | { type: 'confirmOutbound' };
 

@@ -6,6 +6,7 @@ import type { Command, Event, PanelState, PortRequest, Reply } from '../core/pro
 import { LIMITS } from '../core/limits';
 import { effectiveSettings } from '../core/settings';
 import { validateCustomSkill } from '../core/skills';
+import { BUILTIN_SEARCH_PROVIDERS, searchWithProvider } from '../core/search/registry';
 import { createSession, emptySession, markStale } from '../core/session';
 import { listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
@@ -23,8 +24,10 @@ import {
   getSession,
   putSession,
   readConfig,
+  readSearchCredentials,
   saveApiKey,
   saveCustomSkill,
+  saveSearchConfig,
   setPending,
   writeConfig,
 } from './store';
@@ -61,7 +64,11 @@ async function permissionFor(url: string | null): Promise<'granted' | 'missing' 
 
 export async function buildPanelState(tabId: number | null): Promise<PanelState> {
   const config = await readConfig();
-  const settings = { ...effectiveSettings(config), customSkills: config.skills ?? [] };
+  const settings = {
+    ...effectiveSettings(config),
+    customSkills: config.skills ?? [],
+    search: searchStatus(config),
+  };
   const hasKey = Boolean(config.apiKey?.trim());
   const outboundConfirmed = config.outbound?.version === OUTBOUND_NOTICE_VERSION;
 
@@ -125,6 +132,26 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       total: session?.learning?.budget ?? settings.learningBudget,
     },
     unsupportedReason,
+  };
+}
+
+/** 联网搜索的界面可见状态（F3）：只有启用状态与名称，凭证不出后台。 */
+function searchStatus(config: { search?: { providerId?: string; credentials?: Record<string, Record<string, string>> } }): {
+  enabled: boolean;
+  providerName: string | null;
+  hasCredentials: boolean;
+} {
+  const providerId = config.search?.providerId;
+  if (!providerId) return { enabled: false, providerName: null, hasCredentials: false };
+  const provider = BUILTIN_SEARCH_PROVIDERS.find((item) => item.id === providerId);
+  if (!provider) return { enabled: false, providerName: null, hasCredentials: false };
+  const saved = config.search?.credentials?.[providerId] ?? {};
+  return {
+    enabled: true,
+    providerName: provider.name,
+    hasCredentials: provider.configFields.every(
+      (field) => !field.required || Boolean(saved[field.key]?.trim()),
+    ),
   };
 }
 
@@ -215,13 +242,9 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
     switch (command.type) {
       case 'attach': {
         // 面板刚连上（或切换了标签页）：必须立刻推一次完整状态，否则界面只能停在“正在连接后台”。
+        // 同一标签页可能有多个端口（重开侧栏、诊断连接），attach 后统一广播，保证各端口状态一致。
         if (port) {
-          const state = await buildPanelState(port.tabId);
-          try {
-            port.raw.postMessage({ type: 'state', state });
-          } catch {
-            ports.delete(port);
-          }
+          broadcast(port.tabId, { type: 'state', state: await buildPanelState(port.tabId) });
         }
         return { ok: true };
       }
@@ -331,6 +354,36 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         await deleteCustomSkill(command.id);
         await pushAllStates();
         return { ok: true, message: '技能已删除。' };
+      }
+
+      case 'saveSearchConfig': {
+        const providerId = command.providerId;
+        if (providerId !== null && !BUILTIN_SEARCH_PROVIDERS.some((provider) => provider.id === providerId)) {
+          return { ok: false, error: appError('BAD_OUTPUT', '这个搜索供应商不存在。', false) };
+        }
+        await saveSearchConfig({ providerId, credentials: command.credentials });
+        await pushAllStates();
+        return { ok: true, message: providerId ? '联网搜索已启用。' : '联网搜索已停用。' };
+      }
+
+      case 'testSearch': {
+        // host 权限由界面在用户手势中先行申请；这里只做一次真实的最小搜索。
+        const credentials = {
+          ...(await readSearchCredentials(command.providerId)),
+          ...(command.credentials ?? {}),
+        };
+        try {
+          const results = await searchWithProvider({
+            providerId: command.providerId,
+            config: credentials,
+            query: 'DeepSeek API 文档',
+            count: 3,
+            signal: AbortSignal.timeout(20_000),
+          });
+          return { ok: true, message: `搜索通了，拿到 ${results.length} 条结果。` };
+        } catch (error) {
+          return { ok: false, error: fromThrown(error) };
+        }
       }
 
       case 'listModels': {

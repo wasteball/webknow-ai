@@ -19,7 +19,7 @@ import type { PageSession } from '../core/session';
  */
 
 /** 外发告知版本：接收方或发送范围实质变化时必须更新，旧确认随之失效（FR-022）。 */
-export const OUTBOUND_NOTICE_VERSION = '2026-09-18.1';
+export const OUTBOUND_NOTICE_VERSION = '2026-09-18.2';
 export const OUTBOUND_RECEIVER = 'DeepSeek（深度求索）';
 
 /**
@@ -40,6 +40,11 @@ export type Config = {
   learningBudget?: number;
   /** 出题方式（F5）：mixed=模型按内容选择；quiz=总是选择题；open=总是开放问答。 */
   learningStyle?: 'mixed' | 'quiz' | 'open';
+  /** 联网搜索（F3）：providerId=null 表示未启用。凭证只存这里，不进界面。 */
+  search?: {
+    providerId?: string;
+    credentials?: Record<string, Record<string, string>>;
+  };
   /** 首屏探索气泡上限（0–3，默认 3）。 */
   maxBubbles?: number;
   /** 摘要长度偏好（默认 medium）。 */
@@ -103,6 +108,37 @@ export async function clearPromptOverride(target: SkillTarget): Promise<void> {
   const { [target]: _removed, ...rest } = current.prompts;
   const prompts = Object.keys(rest).length ? rest : undefined;
   await storage.setItem(CONFIG_KEY, prompts ? { ...current, prompts } : { ...current, prompts: undefined });
+}
+
+/** 保存搜索供应商配置（F3）：providerId=null 表示停用；凭证按供应商合并保存。 */
+export async function saveSearchConfig(input: {
+  providerId: string | null;
+  credentials?: Record<string, string>;
+}): Promise<void> {
+  const current = await readConfig();
+  const search = { ...current.search };
+  if (input.credentials) {
+    const clean: Record<string, string> = {};
+    for (const [key, value] of Object.entries(input.credentials)) {
+      if (typeof value === 'string' && value.trim() && key.length <= 40) {
+        clean[key] = value.trim().slice(0, 500);
+      }
+    }
+    search.credentials = { ...(search.credentials ?? {}) };
+    if (Object.keys(clean).length) search.credentials[input.providerId ?? ''] = clean;
+  }
+  if (input.providerId === null) delete search.providerId;
+  else search.providerId = input.providerId;
+  const next: Config = { ...current, search };
+  if (!next.search?.providerId && !next.search?.credentials) delete next.search;
+  await storage.setItem(CONFIG_KEY, next);
+}
+
+/** 读取指定供应商的凭证（仅 background 边界内）。 */
+export async function readSearchCredentials(
+  providerId: string,
+): Promise<Record<string, string>> {
+  return (await readConfig()).search?.credentials?.[providerId] ?? {};
 }
 
 /** 保存自定义技能：同 id 覆盖更新，其余技能不动。 */

@@ -9,6 +9,11 @@ declare const chrome: {
       permissions?: string[];
       side_panel?: { default_path?: string };
     };
+    connect(options: { name: string }): {
+      onMessage: { addListener(cb: (message: { type: string; id?: number }) => void): void };
+      postMessage(message: unknown): void;
+      disconnect(): void;
+    };
   };
   storage: {
     local: { set(items: Record<string, unknown>): Promise<void> };

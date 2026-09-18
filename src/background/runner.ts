@@ -4,6 +4,8 @@ import { LIMITS } from '../core/limits';
 import { answerMessages } from '../core/prompts/answer';
 import { guideMessages, summaryCharsFor } from '../core/prompts/guide';
 import { LEARN_VERSION, learnMessages, type LearnMode } from '../core/prompts/learn';
+import { searchWithProvider } from '../core/search/registry';
+import type { SearchResult } from '../core/search/types';
 import { effectiveSettings } from '../core/settings';
 import { resolvePolicy } from '../core/skills';
 import {
@@ -24,7 +26,7 @@ import {
 import { cleanAnswer, cleanGuide, cleanLearn, type LearnResult } from '../core/validate';
 import { callModel } from './model';
 import { pageStillMatches, toAppError } from './page';
-import { getSession, putSession, readConfig } from './store';
+import { getSession, putSession, readConfig, readSearchCredentials, type Config } from './store';
 
 /**
  * 请求流水线（三类请求共用一条）：
@@ -34,7 +36,7 @@ import { getSession, putSession, readConfig } from './store';
 
 export type Intent =
   | { kind: 'guide'; tabId: number }
-  | { kind: 'ask'; tabId: number; question: string }
+  | { kind: 'ask'; tabId: number; question: string; search?: boolean }
   | { kind: 'learnStart'; tabId: number; goal: string }
   | { kind: 'learnAnswer'; tabId: number; text: string; choices?: LearnChoiceAnswer[] }
   | { kind: 'learnAssist'; tabId: number; assist: 'hint' | 'explain' | 'skip' }
@@ -70,7 +72,7 @@ export async function handleIntent(intent: Intent, hooks: RunnerHooks): Promise<
     case 'guide':
       return runGuide(intent.tabId, hooks);
     case 'ask':
-      return runAsk(intent.tabId, intent.question, hooks);
+      return runAsk(intent.tabId, intent.question, intent.search === true, hooks);
     case 'learnStart':
       return runLearnStart(intent.tabId, intent.goal, hooks);
     case 'learnAnswer':
@@ -193,7 +195,12 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
   );
 }
 
-async function runAsk(tabId: number, rawQuestion: string, hooks: RunnerHooks): Promise<AppError | null> {
+async function runAsk(
+  tabId: number,
+  rawQuestion: string,
+  searchRequested: boolean,
+  hooks: RunnerHooks,
+): Promise<AppError | null> {
   const question = rawQuestion.trim().slice(0, LIMITS.maxQuestionChars);
   if (!question) return appError('INTERNAL', '问题为空，未发送任何请求。');
 
@@ -203,6 +210,16 @@ async function runAsk(tabId: number, rawQuestion: string, hooks: RunnerHooks): P
     'answer',
     async (session, runId, signal) => {
       const ctx = contextOf(session);
+
+      // 联网搜索（F3）：失败或无结果时如实降级，只用文章本身回答，不阻断整个请求。
+      let webResults: SearchResult[] = [];
+      let searchFailed = false;
+      if (searchRequested) {
+        const search = await performSearch(config, question, signal);
+        if (search.ok) webResults = search.results;
+        else searchFailed = true;
+      }
+
       const parsed = await callModel(
         answerMessages({
           title: session.title,
@@ -214,12 +231,17 @@ async function runAsk(tabId: number, rawQuestion: string, hooks: RunnerHooks): P
             .map((turn) => ({ question: turn.question, answer: turn.answer })),
           question,
           override: resolvePolicy('answer', config),
+          webResults: webResults.length ? webResults : undefined,
         }),
         signal,
         progress(hooks, tabId),
       );
-      const clean = cleanAnswer(parsed, session.blocks);
+      const clean = cleanAnswer(parsed, session.blocks, webResults);
       if (!clean.ok) throw clean.error;
+      const unanswered = [...clean.value.unanswered];
+      if (searchFailed || (webResults.length === 0 && searchRequested)) {
+        unanswered.push('联网搜索没有可用的结果，这次只依据文章本身回答。');
+      }
       return writeBack(tabId, session, runId, (fresh) => ({
         ...fresh,
         chat: [
@@ -230,7 +252,8 @@ async function runAsk(tabId: number, rawQuestion: string, hooks: RunnerHooks): P
             answer: clean.value.answer,
             source: clean.value.source,
             citations: clean.value.citations,
-            unanswered: clean.value.unanswered,
+            unanswered,
+            references: clean.value.references,
             at: Date.now(),
           },
         ].slice(-LIMITS.maxChatTurns),
@@ -241,6 +264,29 @@ async function runAsk(tabId: number, rawQuestion: string, hooks: RunnerHooks): P
     },
     hooks,
   );
+}
+
+/** 执行一次联网搜索；只外发搜索词，不发送正文（F3）。 */
+async function performSearch(
+  config: Config,
+  question: string,
+  signal: AbortSignal,
+): Promise<{ ok: true; results: SearchResult[] } | { ok: false }> {
+  const providerId = config.search?.providerId;
+  if (!providerId) return { ok: false };
+  try {
+    const credentials = await readSearchCredentials(providerId);
+    const results = await searchWithProvider({
+      providerId,
+      config: credentials,
+      query: question.slice(0, 200),
+      count: LIMITS.searchResultsCount,
+      signal,
+    });
+    return { ok: true, results };
+  } catch {
+    return { ok: false };
+  }
 }
 
 type LearnInput = {
