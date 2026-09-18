@@ -12,12 +12,12 @@ import { chromium, expect, test, type BrowserContext, type Page } from '@playwri
  *   pnpm build:e2e
  *   DEEPSEEK_KEY=sk-... npx playwright test tests/e2e/screenshots.spec.ts
  *
- * 图片写到父仓库的 docs/images/（使用指南就在那里）。
+ * 图片写到本仓库的 docs/images/，供 README.md 与安装说明引用。
  * 浏览器外壳（chrome://extensions、工具栏图标）无法由 Playwright 截图，指南里那几步只能用文字。
  */
 
 const EXTENSION_PATH = resolve(process.cwd(), '.output/chrome-mv3-e2e');
-const OUTPUT_DIR = resolve(process.cwd(), '../docs/images');
+const OUTPUT_DIR = resolve(process.cwd(), 'docs/images');
 const liveKey = process.env.DEEPSEEK_KEY ?? '';
 
 const FIXTURE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>城市配送试点研究</title></head>
