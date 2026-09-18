@@ -55,6 +55,21 @@ DEEPSEEK_KEY=sk-... pnpm vitest run tests/live.deepseek.test.ts
 `--mode e2e` 会额外静态授予 `http://127.0.0.1/*`：浏览器授权弹窗是无头环境点不到的 UI，
 因此测试用本地回环页替代站点授权。**发布构建不含这条权限**，也不要用 e2e 模式出包。
 
+## 视觉读图基准
+
+在决定视觉能力是否进入产品之前，先用这个拿数字（结论见 `../docs/视觉读图实测.md`）：
+
+```bash
+npx playwright test tests/e2e/chart-fixture.spec.ts   # 造 14 张有标准答案的图表到 .bench/charts
+DEEPSEEK_KEY=sk-... python3 scripts/vision-bench.py   # 逐张调用视觉模型并打分
+```
+
+两条实测得到的硬约束，改这块代码时必须保留：
+
+- **视觉请求必须关闭思考**（`thinking: {"type": "disabled"}`）。开启时输出预算会被推理吃光，
+  实测出现过返回空答案。
+- **视觉模型是 `deepseek-v4-flash-vision-exp`**，它不出现在 `GET /models` 的返回里，但可以调用。
+
 ## 生成文档截图
 
 ```bash
