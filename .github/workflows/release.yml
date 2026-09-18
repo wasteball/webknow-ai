@@ -39,6 +39,14 @@ jobs:
           pnpm exec playwright install --with-deps chromium
           pnpm test:e2e
 
+      - name: 校验版本号与 tag 一致
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$PKG" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::package.json 是 $PKG，但 tag 是 ${GITHUB_REF_NAME}；安装包文件名会与 Release 对不上"
+            exit 1
+          fi
+
       - name: 构建可安装包
         run: pnpm zip
 
