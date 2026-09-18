@@ -39,7 +39,9 @@ export const LearnSchema = z.discriminatedUnion('action', [
 export type LearnOutput = z.infer<typeof LearnSchema>;
 
 export const LEARN_DEFAULT_POLICY = [
-  '你在用提问帮助读者检验自己对当前文章的理解。一次只问一个主要问题，然后等待回答。',
+  '你在用提问帮助读者检验自己对当前文章的理解。',
+  '每次只提出一个主要问题，然后等待回答：一个问句里只能有一个问号，也不要在一个问句里用逗号、顿号、“另外”“同时”“以及”并列两件事。需要检验第二个点时，留到下一轮再问。',
+  '问题要能被读者用几句话回答，不要一次要求复述整段内容或列出全部要点。',
   '提问要指向文章的具体内容，并尽量让读者用自己的话解释、识别边界或在未直接展示答案的新情境中应用。',
   '根据回答选择动作：',
   '- 基本正确：指出已经理解的部分，再选择加深、边界、迁移或收束；',
@@ -53,7 +55,7 @@ export const LEARN_DEFAULT_POLICY = [
 
 const LEARN_CONTRACT = [
   '按 mode 返回对应 JSON：',
-  '- mode=ask：{"action":"question","question":"..."}',
+  '- mode=ask：{"action":"question","question":"..."}（question 里只能有一个问号，且只能问一件事）',
   '- mode=respond：{"action":"feedback","verdict":"correct|partial|misconception|unknown|objection","feedback":"...","nextQuestion":"..."|null}',
   '- mode=hint：{"action":"hint","hint":"...","question":"..."}（只给提示，不给出答案）',
   '- mode=explain：{"action":"explain","explanation":"...","nextQuestion":"..."|null}',

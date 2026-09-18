@@ -63,9 +63,15 @@ export function App() {
     if (!state || state.tabId === null) return;
     const origin = state.pageUrl ? safeOrigin(state.pageUrl) : null;
     if (origin && state.permission !== 'granted') {
-      const granted = await browser.permissions.request({ origins: [`${origin}/*`] });
-      if (!granted) {
-        setNotice('没有授予当前站点权限，因此没有读取或外发任何正文。');
+      try {
+        const granted = await browser.permissions.request({ origins: [`${origin}/*`] });
+        if (!granted) {
+          setNotice('没有授予当前站点权限，因此没有读取或外发任何正文。可以稍后再试。');
+          return;
+        }
+      } catch {
+        // 浏览器没有弹出授权窗口时（例如侧栏不在前台），给出下一步而不是静默失败。
+        setNotice('浏览器没有弹出授权窗口。请点击工具栏图标重新打开侧栏，再点一次开始伴读。');
         return;
       }
     }

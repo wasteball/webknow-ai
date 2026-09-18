@@ -92,20 +92,25 @@ export type LearnResult =
   | { action: 'explain'; explanation: string; nextQuestion: string | null }
   | { action: 'summary'; summary: string; nextDirections: string[] };
 
-/** mode → 允许的动作：模型返回与请求模式不一致时视为无效输出，不发散解释。 */
-const EXPECTED: Record<LearnMode, 'question' | 'feedback' | 'hint' | 'explain' | 'summary'> = {
-  ask: 'question',
-  respond: 'feedback',
-  hint: 'hint',
-  explain: 'explain',
-  close: 'summary',
+/**
+ * mode → 允许的动作。模型返回与请求模式不符时视为无效输出，不发散解释。
+ *
+ * respond 允许两种：读者回答后正常给 feedback；但读者说“不知道”或直接要求讲解时，
+ * PRD FR-013 要求先讲解而不是重复逼问，模型会返回 explain。真实模型实测确认了这条路径。
+ */
+const EXPECTED: Record<LearnMode, readonly LearnResult['action'][]> = {
+  ask: ['question'],
+  respond: ['feedback', 'explain'],
+  hint: ['hint'],
+  explain: ['explain'],
+  close: ['summary'],
 };
 
 export function cleanLearn(parsed: unknown, mode: LearnMode): Clean<LearnResult> {
   const result = LearnSchema.safeParse(parsed);
   if (!result.success) return { ok: false, error: badOutput('学习反馈') };
   const data = result.data;
-  if (data.action !== EXPECTED[mode]) return { ok: false, error: badOutput('学习反馈') };
+  if (!EXPECTED[mode].includes(data.action)) return { ok: false, error: badOutput('学习反馈') };
 
   switch (data.action) {
     case 'question':

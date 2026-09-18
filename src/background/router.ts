@@ -176,7 +176,7 @@ async function onCommand(entry: PanelPort, raw: unknown): Promise<void> {
   const request = raw as PortRequest;
   if (!request || typeof request.id !== 'number' || !request.command) return;
   if (request.command.type === 'attach') entry.tabId = request.command.tabId;
-  const reply = await dispatch(request.command);
+  const reply = await dispatch(request.command, entry);
   try {
     entry.raw.postMessage({ type: 'reply', id: request.id, reply });
   } catch {
@@ -184,11 +184,21 @@ async function onCommand(entry: PanelPort, raw: unknown): Promise<void> {
   }
 }
 
-async function dispatch(command: Command): Promise<Reply> {
+async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
   try {
     switch (command.type) {
-      case 'attach':
+      case 'attach': {
+        // 面板刚连上（或切换了标签页）：必须立刻推一次完整状态，否则界面只能停在“正在连接后台”。
+        if (port) {
+          const state = await buildPanelState(port.tabId);
+          try {
+            port.raw.postMessage({ type: 'state', state });
+          } catch {
+            ports.delete(port);
+          }
+        }
         return { ok: true };
+      }
 
       case 'start':
         return await startSession(command.tabId);

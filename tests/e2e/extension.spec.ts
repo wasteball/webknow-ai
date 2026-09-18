@@ -9,15 +9,7 @@ import { chromium, expect, test, type BrowserContext } from '@playwright/test';
  * 这里不调用 DeepSeek：真实连接需要用户自己的 Key，属于 A0 的人工验证项。
  */
 
-/** 在 service worker 里求值时可用；这里只需要用到存储相关的两个方法。 */
-declare const chrome: {
-  storage: {
-    local: { set(items: Record<string, unknown>): Promise<void> };
-    session: { get(keys: null): Promise<Record<string, unknown>> };
-  };
-};
-
-const EXTENSION_PATH = resolve(process.cwd(), '.output/chrome-mv3');
+const EXTENSION_PATH = resolve(process.cwd(), '.output/chrome-mv3-e2e');
 
 let context: BrowserContext;
 let extensionId: string;
@@ -45,6 +37,61 @@ test('未配置 Key 时侧栏进入配置状态', async () => {
   await expect(page.getByRole('heading', { name: '配置 DeepSeek Key' })).toBeVisible();
   await expect(page.getByText('尚未配置 DeepSeek Key')).toBeVisible();
   await page.close();
+});
+
+/**
+ * CORS 是 A0 里唯一必须在浏览器内才能证实的假设：DeepSeek 的响应不带
+ * access-control-allow-origin，扩展依赖 host 权限豁免。用无效 Key 打真实端点，
+ * 能读到 401 就说明请求确实发出并被读取（被 CORS 拦下会抛 TypeError）。
+ */
+test('扩展页与后台都能直连 DeepSeek（host 权限豁免 CORS）', async () => {
+  const body = JSON.stringify({
+    model: 'deepseek-flash',
+    messages: [{ role: 'user', content: 'ping' }],
+    max_tokens: 1,
+  });
+  const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer sk-invalid-cors-probe' };
+
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  const fromPage = await page.evaluate(
+    async ([url, payload, headerSet]) => {
+      try {
+        const response = await fetch(url as string, {
+          method: 'POST',
+          headers: headerSet as Record<string, string>,
+          body: payload as string,
+        });
+        return { ok: true, status: response.status };
+      } catch (error) {
+        return { ok: false, error: String(error) };
+      }
+    },
+    ['https://api.deepseek.com/chat/completions', body, headers] as const,
+  );
+  await page.close();
+
+  const worker = context.serviceWorkers()[0];
+  if (!worker) throw new Error('缺少 service worker');
+  const fromWorker = await worker.evaluate(async () => {
+    try {
+      const response = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer sk-invalid-cors-probe' },
+        body: JSON.stringify({
+          model: 'deepseek-flash',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+        }),
+      });
+      return { ok: true, status: response.status };
+    } catch (error) {
+      return { ok: false, error: String(error) };
+    }
+  });
+
+  expect(fromPage, `侧栏页请求失败：${JSON.stringify(fromPage)}`).toMatchObject({ ok: true, status: 401 });
+  expect(fromWorker, `后台请求失败：${JSON.stringify(fromWorker)}`).toMatchObject({ ok: true, status: 401 });
 });
 
 test('保存的 Key 留在扩展本地存储，且不进入页面会话', async () => {

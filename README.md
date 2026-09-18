@@ -23,11 +23,21 @@ pnpm check          # typecheck + test + build
 
 ```bash
 pnpm exec playwright install chromium   # 首次
-sudo npx playwright install-deps chromium   # 需要系统库（WSL 下缺 libnspr4 等）
-pnpm test:e2e
+pnpm test:e2e                           # 会先做 e2e 模式构建到 .output/chrome-mv3-e2e
 ```
 
-E2E 只做冒烟：后台启动、侧栏状态推导、Key 不进入会话存储。
+覆盖：后台启动、侧栏状态推导、Key 不进入会话存储、扩展页与后台直连 DeepSeek（CORS 豁免），
+以及主路径（点击 → 注入内容脚本 → 提取正文 → 首屏）。首屏截图写在 `test-results/panel-ready.png`。
+
+两个环境前提：
+
+- **系统库**：Chromium 需要 `libnss3`/`libnspr4`/`libasound2` 等。没有 root 时可以只下载不安装：
+  `apt-get download libnspr4 libnss3 libasound2`，`dpkg -x *.deb <本地目录>`，
+  然后 `LD_LIBRARY_PATH=<本地目录>/usr/lib/x86_64-linux-gnu pnpm test:e2e`。
+- **中文字体**：无头容器若未装 CJK 字体，截图里的中文会显示为方块，不影响断言。
+
+`--mode e2e` 会额外静态授予 `http://127.0.0.1/*`：浏览器授权弹窗是无头环境点不到的 UI，
+因此测试用本地回环页替代站点授权。**发布构建不含这条权限**，也不要用 e2e 模式出包。
 
 真实模型接入单独一条，默认跳过，需要显式提供 Key（会产生少量费用）：
 

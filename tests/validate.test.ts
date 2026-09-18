@@ -76,6 +76,17 @@ describe('cleanLearn', () => {
     expect(cleanLearn({ action: 'summary', summary: 's', nextDirections: [] }, 'ask').ok).toBe(false);
   });
 
+  it('respond 模式允许模型改走讲解（读者说“不知道”时不许重复逼问）', () => {
+    const result = cleanLearn(
+      { action: 'explain', explanation: '先看正文这一段…', nextQuestion: null },
+      'respond',
+    );
+    expect(result.ok).toBe(true);
+    // 但 ask/hint/close 不接受讲解，避免模式串线。
+    expect(cleanLearn({ action: 'explain', explanation: 'x', nextQuestion: null }, 'ask').ok).toBe(false);
+    expect(cleanLearn({ action: 'explain', explanation: 'x', nextQuestion: null }, 'close').ok).toBe(false);
+  });
+
   it('接受五类回答判断', () => {
     for (const verdict of ['correct', 'partial', 'misconception', 'unknown', 'objection'] as const) {
       const result = cleanLearn(

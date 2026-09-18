@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "wxt build && playwright test",
+    "build:e2e": "wxt build --mode e2e",
+    "test:e2e": "pnpm build:e2e && playwright test",
     "check": "pnpm typecheck && pnpm test && pnpm build"
   },
   "dependencies": {
