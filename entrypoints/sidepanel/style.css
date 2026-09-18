@@ -79,6 +79,10 @@ body {
   gap: var(--space-3);
   padding: var(--space-4) var(--space-4) var(--space-6);
   min-height: 100vh;
+  /* 侧栏宽度由用户拖动浏览器分隔线决定，布局必须适应任意宽度：
+     超宽时整体限宽居中，长正文再单独限行宽（见 .summary/.answer/.entry），保证可读性。 */
+  max-width: 720px;
+  margin-inline: auto;
 }
 
 /* ── 顶部：常驻，长对话回滚时仍知道在读哪一页 ───────────────── */
@@ -150,6 +154,13 @@ details.section summary {
 
 /* ── 正文与摘要 ─────────────────────────────────────────── */
 
+/* 长正文在宽面板下限制每行字数（40 个汉字左右），拖宽也不变成一眼扫不到头的大片文字。 */
+.summary,
+.answer,
+.entry {
+  max-width: 40em;
+}
+
 .summary {
   margin: 0;
   font-size: 15px;
@@ -172,6 +183,15 @@ details.section summary {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/* 拖宽侧栏后，话题卡片并排铺开，而不是被拉成一根根长条。 */
+@media (min-width: 560px) {
+  .bubbles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    align-items: start;
+  }
 }
 
 .bubble {
