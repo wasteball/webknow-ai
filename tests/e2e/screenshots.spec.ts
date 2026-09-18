@@ -1,0 +1,112 @@
+import { createServer } from 'node:http';
+import { mkdirSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+
+import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
+
+/**
+ * 生成使用指南里的界面截图。UI 改动后重跑本文件即可更新文档配图：
+ *
+ *   pnpm build:e2e
+ *   DEEPSEEK_KEY=sk-... npx playwright test tests/e2e/screenshots.spec.ts
+ *
+ * 图片写到父仓库的 docs/images/（使用指南就在那里）。
+ * 浏览器外壳（chrome://extensions、工具栏图标）无法由 Playwright 截图，指南里那几步只能用文字。
+ */
+
+const EXTENSION_PATH = resolve(process.cwd(), '.output/chrome-mv3-e2e');
+const OUTPUT_DIR = resolve(process.cwd(), '../docs/images');
+const liveKey = process.env.DEEPSEEK_KEY ?? '';
+
+const FIXTURE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>城市配送试点研究</title></head>
+<body><nav>首页 产品 联系我们</nav><main><article>
+<h1>城市配送试点研究</h1>
+<p>本研究观察三个配送团队四周，比较新的路径方案与原有方案的处理时间。</p>
+<h2>主要发现</h2>
+<p>试点期间，新方案的平均处理时间为八十分钟，原方案为一百分钟。</p>
+<p>该结果仅来自三个已完成工具培训的团队，不能直接外推到其他城市或更长周期。</p>
+</article></main><aside>热门推荐与广告内容</aside></body></html>`;
+
+let context: BrowserContext;
+let extensionId: string;
+let panel: Page;
+let origin: string;
+let server: ReturnType<typeof createServer>;
+
+test.beforeAll(async () => {
+  mkdirSync(OUTPUT_DIR, { recursive: true });
+  server = createServer((_request, response) => {
+    response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    response.end(FIXTURE);
+  });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+
+  context = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), 'wka-shot-')), {
+    channel: 'chromium',
+    args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
+    viewport: { width: 400, height: 900 },
+  });
+  const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+  extensionId = new URL(worker.url()).host;
+});
+
+test.afterAll(async () => {
+  await context?.close();
+  server?.close();
+});
+
+test('首次配置界面', async () => {
+  panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await expect(panel.getByText('还没有填 DeepSeek 钥匙')).toBeVisible();
+  await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-01-setup.png'), fullPage: true });
+  await panel.close();
+});
+
+test('首屏摘要与话题', async () => {
+  test.skip(!liveKey, '需要 DEEPSEEK_KEY 才能生成首屏截图');
+  const worker = context.serviceWorkers()[0];
+  if (!worker) throw new Error('缺少 service worker');
+
+  await worker.evaluate(async (key) => {
+    await chrome.storage.local.set({
+      config: {
+        apiKey: key,
+        outbound: { version: '2026-09-18.1', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+      },
+    });
+  }, liveKey);
+
+  panel = await context.newPage();
+  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  const article = await context.newPage();
+  await article.goto(`${origin}/article.html`);
+  await article.bringToFront();
+
+  const tabId = await panel.evaluate(async () => {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tabs[0]?.id ?? null;
+  });
+  await worker.evaluate(
+    async ([id, url, org]) => {
+      await chrome.storage.session.set({ [`pending:${id}`]: { url, origin: org, at: Date.now() } });
+    },
+    [tabId, `${origin}/article.html`, origin] as const,
+  );
+  await panel.reload();
+
+  await panel.getByRole('button', { name: /开始伴读/ }).click();
+  await expect(panel.getByText('这篇文章讲了什么')).toBeVisible({ timeout: 60_000 });
+  await expect(panel.locator('.bubble').first()).toBeVisible();
+  await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-02-guide.png'), fullPage: true });
+
+  // “AI 问我”的第一题
+  await panel.getByRole('button', { name: '让 AI 问我' }).click();
+  await expect(panel.locator('.entry-question').first()).toBeVisible({ timeout: 60_000 });
+  await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-03-learning.png'), fullPage: true });
+  await article.close();
+  await panel.close();
+});

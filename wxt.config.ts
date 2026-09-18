@@ -20,6 +20,14 @@ export default defineConfig({
         ? ['https://api.deepseek.com/*', E2E_HOST_PERMISSION]
         : ['https://api.deepseek.com/*'],
     optional_host_permissions: ['https://*/*', 'http://*/*'],
-    action: {},
+    // 工具栏图标必须显式声明：默认的灰色拼图块会让试用者认不出哪个是本插件。
+    action: {
+      default_icon: {
+        16: 'icon/16.png',
+        32: 'icon/32.png',
+        48: 'icon/48.png',
+        128: 'icon/128.png',
+      },
+    },
   }),
 });
