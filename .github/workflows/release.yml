@@ -1,0 +1,60 @@
+name: 打包并发布
+
+# 打 tag 即出包：把可安装的扩展挂到 Release 上。
+# 存在的理由：源码包里没有 manifest.json，任何人点 GitHub 的 "Download ZIP" 都装不了
+# （真实反馈：用户拿到源码包去 Chrome 加载，报“清单文件缺失”）。
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 类型检查与单元测试
+        run: pnpm typecheck && pnpm test
+
+      # 真实 Chromium 里加载打包扩展。主路径用例需要 DEEPSEEK_KEY，未配置时自动跳过；
+      # 这里跑的是“扩展能不能启动、侧栏能不能连上后台、CORS 豁免是否成立”。
+      - name: 端到端冒烟
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+
+      - name: 构建可安装包
+        run: pnpm zip
+
+      - name: 校验包里确实有清单文件
+        run: |
+          unzip -l .output/*.zip | grep -q 'manifest.json' || {
+            echo "::error::构建产物里没有 manifest.json，Chrome 无法加载"
+            exit 1
+          }
+
+      - name: 挂到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .output/*.zip
+          generate_release_notes: true
+          body: |
+            下载下面的 `webknow-ai-<版本>-chrome.zip`，解压后按仓库首页的安装说明加载。
+
+            **不要使用源码包**（Code → Download ZIP）：源码里没有 `manifest.json`，Chrome 会报“清单文件缺失或不可读取”。

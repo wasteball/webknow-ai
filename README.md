@@ -39,7 +39,8 @@
 
 > ⚠️ **不要点 GitHub 页面上那个绿色的 "Code → Download ZIP"。**
 > 那是给开发者看的源码，Chrome 装不了——它会提示 **"清单文件缺失或不可读取"**。
-> 能安装的包叫 `webknow-ai-<版本>-chrome.zip`，在右侧的 **Releases** 里（或由我们直接发给你）。
+> 能安装的包叫 `webknow-ai-<版本>-chrome.zip`，在
+> **[Releases](https://github.com/wasteball/webknow-ai/releases/latest)** 页面里（或由我们直接发给你）。
 
 ### 正常方式（应用商店，尚未开放）
 
