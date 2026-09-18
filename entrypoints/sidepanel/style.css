@@ -337,6 +337,55 @@ details.section summary {
   font-size: 14px;
 }
 
+/* ── 选择题轮（F5）：题目是主角，选项是轻量可点的行 ─────────────── */
+
+.quiz-question {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.quiz-question legend {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.65;
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+
+.quiz-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 14px;
+  line-height: 1.6;
+  padding: var(--space-2) var(--space-3);
+  background: var(--paper-2);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.quiz-option:hover {
+  background: var(--paper-3);
+}
+
+.quiz-option input {
+  width: auto;
+  margin: 3px 0 0;
+  accent-color: var(--action);
+}
+
+.quiz-past {
+  margin-bottom: var(--space-2);
+}
+
+.quiz-past .hint {
+  margin: 0;
+}
+
 /* ── 输入与操作 ─────────────────────────────────────────── */
 
 .composer,

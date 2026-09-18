@@ -438,6 +438,24 @@ function Behavior({ state, send }: { state: PanelState; send: Send }) {
         </select>
       </div>
       <div className="field">
+        <label htmlFor="learning-style">“AI 问我”怎么出题</label>
+        <select
+          id="learning-style"
+          value={settings.learningStyle}
+          disabled={busy}
+          onChange={(event) =>
+            change({
+              type: 'saveSettings',
+              patch: { learningStyle: event.target.value as 'mixed' | 'quiz' | 'open' },
+            })
+          }
+        >
+          <option value="mixed">自动（按内容选择，默认）</option>
+          <option value="quiz">总是出选择题</option>
+          <option value="open">总是让我用自己的话答</option>
+        </select>
+      </div>
+      <div className="field">
         <label htmlFor="summary-length">摘要长度</label>
         <select
           id="summary-length"

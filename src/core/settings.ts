@@ -20,6 +20,8 @@ export type SettingsPatch = {
   /** 每个板块选择的技能 ID；空字符串 = 取消技能选择（回退到默认/自定义文本）。 */
   skillChoices?: SkillChoice;
   learningBudget?: number;
+  /** 出题方式（F5）：mixed=模型按内容选择；quiz=总是选择题；open=总是开放问答。 */
+  learningStyle?: 'mixed' | 'quiz' | 'open';
   maxBubbles?: number;
   summaryLength?: SummaryLength;
   fontSize?: FontSize;
@@ -30,6 +32,7 @@ export type EffectiveSettings = {
   prompts: PromptOverrides;
   skillChoices: SkillChoice;
   learningBudget: number;
+  learningStyle: 'mixed' | 'quiz' | 'open';
   maxBubbles: number;
   summaryLength: SummaryLength;
   fontSize: FontSize;
@@ -40,6 +43,7 @@ export const DEFAULT_SETTINGS: EffectiveSettings = {
   prompts: {},
   skillChoices: {},
   learningBudget: LIMITS.learningBudget,
+  learningStyle: 'mixed',
   maxBubbles: LIMITS.maxBubbles,
   summaryLength: 'medium',
   fontSize: 'normal',
@@ -80,6 +84,11 @@ export function normalizeSettings(patch: SettingsPatch): SettingsPatch {
   if (patch.learningBudget !== undefined) {
     clean.learningBudget = clamp(Math.round(patch.learningBudget), LIMITS.learningBudgetMin, LIMITS.learningBudgetMax);
   }
+  if (patch.learningStyle !== undefined) {
+    if (patch.learningStyle === 'mixed' || patch.learningStyle === 'quiz' || patch.learningStyle === 'open') {
+      clean.learningStyle = patch.learningStyle;
+    }
+  }
   if (patch.maxBubbles !== undefined) {
     clean.maxBubbles = clamp(Math.round(patch.maxBubbles), 0, LIMITS.maxBubbles);
   }
@@ -102,6 +111,7 @@ export function effectiveSettings(config: {
   prompts?: PromptOverrides;
   skillChoices?: SkillChoice;
   learningBudget?: number;
+  learningStyle?: 'mixed' | 'quiz' | 'open';
   maxBubbles?: number;
   summaryLength?: SummaryLength;
   appearance?: { fontSize?: FontSize };
@@ -115,6 +125,7 @@ export function effectiveSettings(config: {
       LIMITS.learningBudgetMin,
       LIMITS.learningBudgetMax,
     ),
+    learningStyle: config.learningStyle ?? DEFAULT_SETTINGS.learningStyle,
     maxBubbles: clamp(config.maxBubbles ?? DEFAULT_SETTINGS.maxBubbles, 0, LIMITS.maxBubbles),
     summaryLength: config.summaryLength ?? DEFAULT_SETTINGS.summaryLength,
     fontSize: config.appearance?.fontSize ?? DEFAULT_SETTINGS.fontSize,

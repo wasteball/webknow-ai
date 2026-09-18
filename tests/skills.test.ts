@@ -15,7 +15,7 @@ describe('技能（产品化改造 F6）', () => {
   });
 
   it('策略解析优先级：自定义文本 > 技能 > 默认', () => {
-    const custom = BUILTIN_SKILLS[0];
+    const custom = BUILTIN_SKILLS[0]!;
     expect(resolvePolicy('guide', {})).toBeUndefined();
     expect(resolvePolicy('guide', { skillChoices: { guide: custom.id } })).toBe(custom.body);
     expect(
@@ -31,7 +31,7 @@ describe('技能（产品化改造 F6）', () => {
   });
 
   it('findSkill 能在内置与自定义里查找', () => {
-    expect(findSkill(BUILTIN_SKILLS[0].id, [])).toBe(BUILTIN_SKILLS[0]);
+    expect(findSkill(BUILTIN_SKILLS[0]!.id, [])).toBe(BUILTIN_SKILLS[0]);
     expect(findSkill('missing', [])).toBeUndefined();
   });
 

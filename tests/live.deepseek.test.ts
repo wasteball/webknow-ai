@@ -158,7 +158,7 @@ live('A0 真实 DeepSeek 接入', () => {
         used: 0,
         budget: LIMITS.learningBudget,
         history: [],
-        currentQuestion: null,
+        current: null,
       }),
       'learn',
     );
@@ -169,6 +169,69 @@ live('A0 真实 DeepSeek 接入', () => {
     // FR-012：一个问句只能有一个问号。多次抽样见 docs/当前任务摘要.md 的实测记录。
     expect((clean.value.question.match(/[？?]/g) ?? []).length).toBe(1);
   }, 90_000);
+
+  /**
+   * F5 选择题：强制选择题风格出题，再用程序判分所需的完整回路作答一次。
+   * 断言只锁结构与程序判定；评析质量属于人工样例评审（同五类回答的处理方式）。
+   */
+  it('教学出题：选择题轮出题与批改（F5）', async () => {
+    const asked = await call(
+      learnMessages({
+        mode: 'ask',
+        title: '城市配送试点研究',
+        contextJson,
+        disclosure,
+        goal: '理解这项研究的结论和它的适用边界',
+        used: 0,
+        budget: LIMITS.learningBudget,
+        history: [],
+        current: null,
+        style: 'quiz',
+      }),
+      'quiz-ask',
+    );
+    const askClean = cleanLearn(asked.result, 'ask');
+    expect(askClean.ok, '选择题出题未通过结构校验').toBe(true);
+    if (!askClean.ok || askClean.value.action !== 'quiz') return;
+    const quiz = askClean.value;
+    expect(quiz.questions.length).toBeGreaterThanOrEqual(1);
+    expect(quiz.questions.length).toBeLessThanOrEqual(5);
+
+    // 故意答对第一题、答错剩余题：程序判分应给出混合结果。
+    const userChoices = quiz.questions.map((question, index) => {
+      const key = quiz.answerKey.find((item) => item.questionId === question.id);
+      if (index === 0) return { questionId: question.id, choiceIds: key?.answer ?? [] };
+      const wrong = question.choices.find((choice) => !key?.answer.includes(choice.id));
+      return { questionId: question.id, choiceIds: wrong ? [wrong.id] : [] };
+    });
+
+    const graded = await call(
+      learnMessages({
+        mode: 'respond',
+        title: '城市配送试点研究',
+        contextJson,
+        disclosure,
+        goal: '理解这项研究的结论和它的适用边界',
+        used: 1,
+        budget: LIMITS.learningBudget,
+        history: [],
+        current: { kind: 'quiz', questions: quiz.questions, answerKey: quiz.answerKey },
+        userAnswers: userChoices,
+      }),
+      'quiz-graded',
+    );
+    const gradedClean = cleanLearn(graded.result, 'respond', 'quiz');
+    process.stdout.write(
+      `  [quiz-graded] 完整输出: ${JSON.stringify(graded.result)}\n`,
+    );
+    process.stdout.write(
+      `  [quiz-graded] 校验: ${gradedClean.ok ? JSON.stringify(gradedClean.value).slice(0, 300) : gradedClean.error.message}\n`,
+    );
+    expect(gradedClean.ok, '选择题批改未通过结构校验').toBe(true);
+    if (!gradedClean.ok || gradedClean.value.action !== 'graded') return;
+    // 模型不得改判程序判定：评析通过校验即可，逐题对错以程序为准（runner 内实现）。
+    expect(gradedClean.value.analysis.length).toBeGreaterThan(0);
+  }, 120_000);
 
   /**
    * 五类回答只做结构与路径断言，不断言具体判定：真实模型在“合理异议”与“部分正确”
@@ -196,13 +259,14 @@ live('A0 真实 DeepSeek 接入', () => {
           used: 1,
           budget: LIMITS.learningBudget,
           history: [{ question: currentQuestion, answer, verdict: '', hintUsed: false }],
-          currentQuestion,
+          current: { kind: 'open', question: currentQuestion, hintUsed: false },
           userAnswer: answer,
+          hintUsed: false,
         }),
         signal: AbortSignal.timeout(60_000),
         maxTokens: LIMITS.maxOutputTokens,
       });
-      const clean = cleanLearn(parsed, 'respond');
+      const clean = cleanLearn(parsed, 'respond', 'open');
       process.stdout.write(
         `  [${label}] ${clean.ok ? JSON.stringify(clean.value).slice(0, 160) : `校验失败: ${clean.error.message}`}\n`,
       );

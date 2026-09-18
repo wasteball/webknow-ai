@@ -92,8 +92,64 @@ describe('cleanLearn', () => {
       const result = cleanLearn(
         { action: 'feedback', verdict, feedback: '反馈', nextQuestion: null },
         'respond',
+        'open',
       );
       expect(result.ok).toBe(true);
+    }
+  });
+
+  it('选择题轮必须用 graded，开放问题必须用 feedback（F5）', () => {
+    const feedback = { action: 'feedback', verdict: 'correct', feedback: '反馈', nextQuestion: null };
+    expect(cleanLearn(feedback, 'respond', 'open').ok).toBe(true);
+    expect(cleanLearn(feedback, 'respond', 'quiz').ok).toBe(false);
+    const graded = {
+      action: 'graded',
+      analysis: '整体不错',
+      notes: [{ questionId: 'q1', note: '对' }],
+      nextQuestion: null,
+      nextQuiz: null,
+    };
+    expect(cleanLearn(graded, 'respond', 'quiz').ok).toBe(true);
+    expect(cleanLearn(graded, 'respond', 'open').ok).toBe(false);
+  });
+
+  it('quiz 输出：答案必须是选项之一，重复题目 id 判为无效（F5）', () => {
+    const valid = {
+      action: 'quiz',
+      questions: [
+        {
+          id: 'q1',
+          text: '哪个说法符合正文？',
+          choices: [
+            { id: 'A', label: '样本只有三个团队' },
+            { id: 'B', label: '结论适用于所有城市' },
+          ],
+          answer: ['A'],
+          why: '作者明确写了不能外推。',
+        },
+      ],
+    };
+    const result = cleanLearn(valid, 'ask');
+    expect(result.ok).toBe(true);
+    if (result.ok && result.value.action === 'quiz') {
+      expect(result.value.questions[0]?.multi).toBe(false);
+      expect(result.value.answerKey[0]?.answer).toEqual(['A']);
+    }
+    // answer 指向不存在的选项 → 无效。
+    const badAnswer = JSON.parse(JSON.stringify(valid)) as typeof valid;
+    (badAnswer.questions[0] as { answer: string[] }).answer = ['Z'];
+    expect(cleanLearn(badAnswer, 'ask').ok).toBe(false);
+    // 题目 id 重复 → 无效。
+    const duplicate = JSON.parse(JSON.stringify(valid)) as typeof valid;
+    duplicate.questions.push(JSON.parse(JSON.stringify(duplicate.questions[0])));
+    expect(cleanLearn(duplicate, 'ask').ok).toBe(false);
+    // 多个正确答案 → multi 自动为 true。
+    const multi = JSON.parse(JSON.stringify(valid)) as typeof valid;
+    (multi.questions[0] as { answer: string[] }).answer = ['A', 'B'];
+    const multiResult = cleanLearn(multi, 'ask');
+    expect(multiResult.ok).toBe(true);
+    if (multiResult.ok && multiResult.value.action === 'quiz') {
+      expect(multiResult.value.questions[0]?.multi).toBe(true);
     }
   });
 });

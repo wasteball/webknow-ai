@@ -36,9 +36,12 @@ export type Intent =
   | { kind: 'guide'; tabId: number }
   | { kind: 'ask'; tabId: number; question: string }
   | { kind: 'learnStart'; tabId: number; goal: string }
-  | { kind: 'learnAnswer'; tabId: number; text: string }
+  | { kind: 'learnAnswer'; tabId: number; text: string; choices?: LearnChoiceAnswer[] }
   | { kind: 'learnAssist'; tabId: number; assist: 'hint' | 'explain' | 'skip' }
   | { kind: 'learnEnd'; tabId: number };
+
+/** 选择题作答：一题多个选项 id。 */
+export type LearnChoiceAnswer = { questionId: string; choiceIds: string[] };
 
 export type RunnerHooks = {
   onState: (tabId: number) => void;
@@ -71,7 +74,7 @@ export async function handleIntent(intent: Intent, hooks: RunnerHooks): Promise<
     case 'learnStart':
       return runLearnStart(intent.tabId, intent.goal, hooks);
     case 'learnAnswer':
-      return runLearnStep(intent.tabId, 'respond', { userAnswer: intent.text }, hooks);
+      return runLearnStep(intent.tabId, 'respond', { userAnswer: intent.text, userChoices: intent.choices }, hooks);
     case 'learnAssist':
       return runAssist(intent.tabId, intent.assist, hooks);
     case 'learnEnd':
@@ -240,7 +243,11 @@ async function runAsk(tabId: number, rawQuestion: string, hooks: RunnerHooks): P
   );
 }
 
-type LearnInput = { userAnswer?: string; hintUsed?: boolean };
+type LearnInput = {
+  userAnswer?: string;
+  userChoices?: LearnChoiceAnswer[];
+  hintUsed?: boolean;
+};
 
 async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): Promise<AppError | null> {
   const session = await getSession(tabId);
@@ -276,6 +283,13 @@ async function runAssist(
   assist: 'hint' | 'explain' | 'skip',
   hooks: RunnerHooks,
 ): Promise<AppError | null> {
+  if (assist === 'hint') {
+    // 选择题轮没有提示路径：跳过或讲解才是可执行的动作。
+    const session = await getSession(tabId);
+    if (session?.learning?.current?.kind === 'quiz') {
+      return appError('INTERNAL', '选择题这一轮没有提示。可以跳过这一轮，或直接看讲解。', false);
+    }
+  }
   if (assist === 'skip') {
     // 跳过不发模型请求：只记录用户选择，然后换一个题目（FR-014）。
     const session = await getSession(tabId);
@@ -308,15 +322,38 @@ async function runLearnStep(
       if (!learning || learning.status !== 'active') {
         throw appError('INTERNAL', '当前没有进行中的学习会话。', false);
       }
-      if ((mode === 'respond' || mode === 'explain' || mode === 'hint') && !learning.current) {
+      if ((mode === 'respond' || mode === 'hint' || mode === 'explain') && !learning.current) {
         throw appError('INTERNAL', '当前没有待回答的问题。', false);
       }
 
       const ctx = contextOf(session);
-      let next = await callLearn(session, learning, mode, input, ctx.json, signal, hooks, tabId, resolvePolicy('learn', config));
+      const style = effectiveSettings(config).learningStyle;
+      let next = await callLearn(
+        session,
+        learning,
+        mode,
+        input,
+        ctx.json,
+        signal,
+        hooks,
+        tabId,
+        resolvePolicy('learn', config),
+        style,
+      );
       // 预算用尽或模型判断应当收束时，本轮直接补一次收束，不留给用户一个悬空状态（FR-012）。
       if (mode !== 'close' && !next.current && next.status === 'active') {
-        next = await callLearn(session, next, 'close', {}, ctx.json, signal, hooks, tabId, resolvePolicy('learn', config));
+        next = await callLearn(
+          session,
+          next,
+          'close',
+          {},
+          ctx.json,
+          signal,
+          hooks,
+          tabId,
+          resolvePolicy('learn', config),
+          style,
+        );
       }
 
       return writeBack(tabId, session, runId, (fresh) => ({
@@ -342,6 +379,7 @@ async function callLearn(
   hooks: RunnerHooks,
   tabId: number,
   override: string | undefined,
+  style: 'mixed' | 'quiz' | 'open',
 ): Promise<LearningState> {
   const parsed = await callModel(
     learnMessages({
@@ -353,23 +391,38 @@ async function callLearn(
       used: learning.used,
       budget: learning.budget ?? LIMITS.learningBudget,
       history: learning.log
-        .filter((entry) => entry.role === 'question' || entry.role === 'answer')
+        .filter((entry) => entry.role === 'question' || entry.role === 'quiz' || entry.role === 'answer')
         .slice(-LIMITS.maxHistoryTurns * 2)
-        .map((entry) => ({
-          question: entry.role === 'question' ? entry.text : '',
-          answer: entry.role === 'answer' ? entry.text : '',
-          verdict: '',
-          hintUsed: entry.independent === false,
-        })),
-      currentQuestion: learning.current?.question ?? null,
+        .reduce<{ question: string; answer: string; verdict: string; hintUsed: boolean }[]>(
+          (pairs, entry) => {
+            if (entry.role === 'question' || entry.role === 'quiz') {
+              pairs.push({
+                question: entry.text.split('\n')[0] ?? '',
+                answer: '',
+                verdict: '',
+                hintUsed: false,
+              });
+            } else {
+              const last = pairs[pairs.length - 1];
+              if (last) {
+                last.answer = entry.text;
+                last.hintUsed = entry.independent === false;
+              }
+            }
+            return pairs;
+          },
+          []),
+      current: learning.current,
       userAnswer: input.userAnswer,
-      hintUsed: input.hintUsed ?? learning.current?.hintUsed ?? false,
+      userAnswers: input.userChoices,
+      hintUsed: input.hintUsed ?? (learning.current?.kind === 'open' ? learning.current.hintUsed : false),
       override,
+      style,
     }),
     signal,
     progress(hooks, tabId),
   );
-  const clean = cleanLearn(parsed, mode);
+  const clean = cleanLearn(parsed, mode, learning.current?.kind);
   if (!clean.ok) throw clean.error;
   return applyLearn(learning, clean.value, input);
 }
@@ -379,12 +432,26 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
   switch (clean.action) {
     case 'question':
       next = appendLearn(
-        { ...next, used: next.used + 1, current: { question: clean.question, hintUsed: false } },
+        { ...next, used: next.used + 1, current: { kind: 'open', question: clean.question, hintUsed: false } },
         { role: 'question', text: clean.question },
       );
       break;
+    case 'quiz':
+      next = appendLearn(
+        {
+          ...next,
+          used: next.used + 1,
+          current: { kind: 'quiz', questions: clean.questions, answerKey: clean.answerKey },
+        },
+        {
+          role: 'quiz',
+          quiz: clean.questions,
+          text: clean.questions.map((question) => question.text).join('\n'),
+        },
+      );
+      break;
     case 'feedback': {
-      const hintUsed = next.current?.hintUsed ?? false;
+      const hintUsed = next.current?.kind === 'open' ? next.current.hintUsed : false;
       next = appendLearn({ ...next }, { role: 'answer', text: input.userAnswer ?? '', independent: !hintUsed });
       next = appendLearn(next, {
         role: 'feedback',
@@ -394,14 +461,85 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
       next = advance(next, clean.nextQuestion);
       break;
     }
+    case 'graded': {
+      const current = next.current;
+      if (!current || current.kind !== 'quiz') break;
+      const chosenOf = (questionId: string) =>
+        input.userChoices?.find((item) => item.questionId === questionId)?.choiceIds ?? [];
+      const labelOf = (questionId: string, choiceId: string) =>
+        current.questions
+          .find((question) => question.id === questionId)
+          ?.choices.find((choice) => choice.id === choiceId)?.label ?? choiceId;
+
+      // 客观对错由程序按答案钥匙判定（不信任模型改判）。
+      const graded = current.questions.map((question) => {
+        const chosen = chosenOf(question.id);
+        const key = current.answerKey.find((item) => item.questionId === question.id)?.answer ?? [];
+        const correct = chosen.length === key.length && key.every((id) => chosen.includes(id));
+        return { questionId: question.id, chosen, correct };
+      });
+      const score = { correct: graded.filter((item) => item.correct).length, total: graded.length };
+
+      const answerText = current.questions
+        .map((question) => {
+          const chosen = chosenOf(question.id);
+          const rendered = chosen.length ? chosen.map((id) => labelOf(question.id, id)).join('、') : '未作答';
+          return `${question.text}｜我的答案：${rendered}`;
+        })
+        .join('\n');
+      next = appendLearn({ ...next }, { role: 'answer', text: answerText, independent: true });
+
+      const notesById = new Map(clean.notes.map((note) => [note.questionId, note.note]));
+      const feedbackText = [
+        `本轮 ${score.correct}/${score.total} 题正确。`,
+        clean.analysis,
+        ...graded.map((item) => {
+          const why =
+            notesById.get(item.questionId) ??
+            current.answerKey.find((key) => key.questionId === item.questionId)?.why ??
+            '';
+          return `【${item.correct ? '答对' : '答错'}】${why}`;
+        }),
+      ]
+        .filter(Boolean)
+        .join('\n');
+      next = appendLearn(next, { role: 'feedback', text: feedbackText, graded, score });
+
+      // 下一轮：选择题优先，其次开放问题；预算用尽则交给收束。
+      const canContinue = nextQuestionAllowed(next);
+      if (clean.nextQuiz && canContinue) {
+        next = appendLearn(
+          {
+            ...next,
+            used: next.used + 1,
+            current: { kind: 'quiz', questions: clean.nextQuiz.questions, answerKey: clean.nextQuiz.answerKey },
+          },
+          {
+            role: 'quiz',
+            quiz: clean.nextQuiz.questions,
+            text: clean.nextQuiz.questions.map((question) => question.text).join('\n'),
+          },
+        );
+      } else if (clean.nextQuestion && canContinue) {
+        next = advance(next, clean.nextQuestion);
+      } else {
+        next = { ...next, current: null };
+      }
+      break;
+    }
     case 'hint':
       next = appendLearn(
-        { ...next, current: { question: clean.question, hintUsed: true } },
+        {
+          ...next,
+          current: { kind: 'open', question: clean.question, hintUsed: true },
+        },
         { role: 'hint', text: clean.hint },
       );
       break;
     case 'explain':
-      next = appendLearn({ ...next }, { role: 'explain', text: clean.explanation });
+      next = appendLearn(next, { role: 'explain', text: clean.explanation });
+      // 选择题轮讲解后继续作答（契约要求模型返回 nextQuestion:null）。
+      if (next.current?.kind === 'quiz') break;
       next = advance(next, clean.nextQuestion);
       break;
     case 'summary':
@@ -417,11 +555,11 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
   return next;
 }
 
-/** 是否还有下一个小问：预算用尽时不再提问，交给收束（FR-012/FR-039）。 */
+/** 是否还有下一轮开放问题：预算用尽时不再提问，交给收束（FR-012/FR-039）。 */
 function advance(learning: LearningState, nextQuestion: string | null): LearningState {
   if (!nextQuestion || !nextQuestionAllowed(learning)) return { ...learning, current: null };
   return appendLearn(
-    { ...learning, used: learning.used + 1, current: { question: nextQuestion, hintUsed: false } },
+    { ...learning, used: learning.used + 1, current: { kind: 'open', question: nextQuestion, hintUsed: false } },
     { role: 'question', text: nextQuestion },
   );
 }

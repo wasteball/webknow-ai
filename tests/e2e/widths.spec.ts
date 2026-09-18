@@ -44,8 +44,13 @@ const CHAT = [
 const LEARNING = {
   goal: '理解这篇文章的核心内容',
   promptVersion: '2026-09-18.1',
+  budget: 5,
   used: 1,
-  current: { question: '如果你换一个城市重做这个试点，哪一点最不能照搬？', hintUsed: false },
+  current: {
+    kind: 'open' as const,
+    question: '如果你换一个城市重做这个试点，哪一点最不能照搬？',
+    hintUsed: false,
+  },
   status: 'active' as const,
   log: [
     { role: 'question' as const, text: '这项研究里，新方案比原方案快了多少？', at: 0 },
@@ -54,6 +59,61 @@ const LEARNING = {
       role: 'feedback' as const,
       text: '对，数字说对了。下一步我们看看这个结论的边界。',
       verdict: 'correct' as const,
+      at: 2,
+    },
+  ],
+};
+
+const QUIZ_CURRENT = {
+  goal: '理解这篇文章的核心内容',
+  promptVersion: '2026-09-18.1',
+  budget: 5,
+  used: 1,
+  current: {
+    kind: 'quiz' as const,
+    questions: [
+      {
+        id: 'q1',
+        text: '这项研究最重要的结论边界是什么？',
+        multi: false,
+        choices: [
+          { id: 'A', label: '样本只有三个团队，不能推广到其他城市' },
+          { id: 'B', label: '新方案在任何城市都快二十分钟' },
+          { id: 'C', label: '工具培训没有作用' },
+        ],
+      },
+    ],
+    answerKey: [{ questionId: 'q1', answer: ['A'], why: '作者明确写了不能直接外推。' }],
+  },
+  status: 'active' as const,
+  log: [
+    {
+      role: 'quiz' as const,
+      text: '这项研究最重要的结论边界是什么？',
+      quiz: [
+        {
+          id: 'q0',
+          text: '这项研究处理时间的对比结果是什么？',
+          multi: false,
+          choices: [
+            { id: 'A', label: '八十分钟对一百分钟' },
+            { id: 'B', label: '一百分钟对八十分钟' },
+          ],
+        },
+      ],
+      at: 0,
+    },
+    {
+      role: 'answer' as const,
+      text: '这项研究处理时间的对比结果是什么？｜我的答案：八十分钟对一百分钟',
+      independent: true,
+      at: 1,
+    },
+    {
+      role: 'feedback' as const,
+      text: '本轮 1/1 题正确。\n数字对得很准。',
+      graded: [{ questionId: 'q0', chosen: ['A'], correct: true }],
+      score: { correct: 1, total: 1 },
       at: 2,
     },
   ],
@@ -222,6 +282,37 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
 
   await _panel.close();
   await article.close();
+});
+
+test('选择题轮在宽面板下可交互', async () => {
+  test.setTimeout(120_000);
+  const { panel: quizPanel, article: quizArticle } = await openPanel(720);
+  const quizTabId = await quizPanel.evaluate(async () => {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tabs[0]?.id ?? null;
+  });
+  await context.serviceWorkers()[0]!.evaluate(
+    async ([id, learning]) => {
+      const stored = await chrome.storage.session.get(`sess:${id}`);
+      const session = stored[`sess:${id}`] as Record<string, unknown>;
+      session.learning = learning;
+      session.state = 'LEARNING';
+      await chrome.storage.session.set({ [`sess:${id}`]: session });
+    },
+    [quizTabId, QUIZ_CURRENT] as const,
+  );
+  await refreshPanel(quizPanel, quizArticle);
+  await expect(quizPanel.locator('.quiz-question').first()).toBeVisible();
+
+  // 勾选一个选项后提交按钮才可用。
+  const submit = quizPanel.getByRole('button', { name: '提交答案' });
+  await expect(submit).toBeDisabled();
+  await quizPanel.getByRole('radio').first().check();
+  await expect(submit).toBeEnabled();
+  await quizPanel.screenshot({ path: join(OUTPUT_DIR, 'quiz-720.png'), fullPage: true });
+
+  await quizPanel.close();
+  await quizArticle.close();
 });
 
 test('设置页在宽面板下排版正确', async () => {

@@ -251,7 +251,17 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       case 'learnStart':
         return finish(await handleIntent({ kind: 'learnStart', tabId: command.tabId, goal: command.goal }, hooks));
       case 'learnAnswer':
-        return finish(await handleIntent({ kind: 'learnAnswer', tabId: command.tabId, text: command.text }, hooks));
+        return finish(
+          await handleIntent(
+            {
+              kind: 'learnAnswer',
+              tabId: command.tabId,
+              text: command.text,
+              choices: command.choices,
+            },
+            hooks,
+          ),
+        );
       case 'learnAssist':
         return finish(
           await handleIntent({ kind: 'learnAssist', tabId: command.tabId, assist: command.action }, hooks),

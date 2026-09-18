@@ -33,8 +33,20 @@ export type ChatTurn = {
 /** 五类回答判断（FR-013）。 */
 export type Verdict = 'correct' | 'partial' | 'misconception' | 'unknown' | 'objection';
 
+/** 选择题轮次（产品化改造 F5）。 */
+export type QuizChoice = { id: string; label: string };
+export type QuizQuestion = { id: string; text: string; choices: QuizChoice[]; multi: boolean };
+/** 答案钥匙：只在会话数据里保存用于程序判分，不渲染给用户。 */
+export type QuizKey = { questionId: string; answer: string[]; why: string };
+
+/** 当前待回答的轮次：开放问答或选择题测验。 */
+export type CurrentRound =
+  | { kind: 'open'; question: string; hintUsed: boolean }
+  | { kind: 'quiz'; questions: QuizQuestion[]; answerKey: QuizKey[] };
+
 export type LearnRole =
   | 'question'
+  | 'quiz'
   | 'answer'
   | 'feedback'
   | 'hint'
@@ -50,6 +62,11 @@ export type LearnEntry = {
   verdict?: Verdict;
   /** 该回答是否在无提示条件下完成（FR-014：经提示后完成不记为独立掌握）。 */
   independent?: boolean;
+  /** role=quiz：本轮的选择题（不含答案）。 */
+  quiz?: QuizQuestion[];
+  /** role=feedback（选择题轮）：逐题判定。 */
+  graded?: { questionId: string; chosen: string[]; correct: boolean }[];
+  score?: { correct: number; total: number };
   at: number;
 };
 
@@ -59,10 +76,10 @@ export type LearningState = {
   promptVersion: string;
   /** 启动时固定的提问预算；旧会话可能没有此字段，此时用默认值。 */
   budget?: number;
-  /** 已用提问预算（按“提出问题”计数）。 */
+  /** 已用提问预算（按“提出一轮问题”计数）。 */
   used: number;
-  /** 当前待回答的问题。 */
-  current: { question: string; hintUsed: boolean } | null;
+  /** 当前待回答的轮次。 */
+  current: CurrentRound | null;
   status: 'active' | 'closed';
   log: LearnEntry[];
 };

@@ -4,7 +4,7 @@ import { LIMITS } from './limits';
 import { AnswerSchema } from './prompts/answer';
 import { BUBBLE_KINDS, GuideSchema } from './prompts/guide';
 import { LearnSchema, type LearnMode } from './prompts/learn';
-import type { AnswerSource, Bubble, BubbleKind, Citation, Verdict } from './session';
+import type { AnswerSource, Bubble, BubbleKind, Citation, QuizKey, QuizQuestion, Verdict } from './session';
 
 /**
  * 程序侧校验：模型输出只是候选，写入会话前必须通过结构与引用校验（FR-016/FR-029）。
@@ -86,11 +86,19 @@ export function cleanAnswer(
 
 export type LearnResult =
   | { action: 'question'; question: string }
+  | { action: 'quiz'; questions: QuizQuestion[]; answerKey: QuizKey[] }
   | {
       action: 'feedback';
       verdict: Verdict;
       feedback: string;
       nextQuestion: string | null;
+    }
+  | {
+      action: 'graded';
+      analysis: string;
+      notes: { questionId: string; note: string }[];
+      nextQuestion: string | null;
+      nextQuiz: { questions: QuizQuestion[]; answerKey: QuizKey[] } | null;
     }
   | { action: 'hint'; hint: string; question: string }
   | { action: 'explain'; explanation: string; nextQuestion: string | null }
@@ -99,26 +107,68 @@ export type LearnResult =
 /**
  * mode → 允许的动作。模型返回与请求模式不符时视为无效输出，不发散解释。
  *
- * respond 允许两种：读者回答后正常给 feedback；但读者说“不知道”或直接要求讲解时，
- * PRD FR-013 要求先讲解而不是重复逼问，模型会返回 explain。真实模型实测确认了这条路径。
+ * respond 允许三种：开放问题给 feedback；选择题轮给 graded（客观对错由程序按答案钥匙判定，
+ * 模型只写评析）；读者说“不知道”或要求讲解时返回 explain（FR-013 要求先讲解而不是重复逼问）。
  */
 const EXPECTED: Record<LearnMode, readonly LearnResult['action'][]> = {
-  ask: ['question'],
-  respond: ['feedback', 'explain'],
+  ask: ['question', 'quiz'],
+  respond: ['feedback', 'explain', 'graded'],
   hint: ['hint'],
   explain: ['explain'],
   close: ['summary'],
 };
 
-export function cleanLearn(parsed: unknown, mode: LearnMode): Clean<LearnResult> {
+/** 把模型返回的选择题规格整理成会话数据：题目（无答案）+ 答案钥匙。 */
+function cleanQuizQuestions(
+  raw: { id: string; text: string; choices: { id: string; label: string }[]; answer: string[]; why: string }[],
+): { questions: QuizQuestion[]; answerKey: QuizKey[] } | null {
+  const questions: QuizQuestion[] = [];
+  const answerKey: QuizKey[] = [];
+  const seenQuestionIds = new Set<string>();
+  for (const item of raw) {
+    const id = item.id.trim();
+    const text = item.text.trim();
+    if (!id || !text || seenQuestionIds.has(id)) return null;
+    const choices = item.choices
+      .map((choice) => ({ id: choice.id.trim(), label: choice.label.trim() }))
+      .filter((choice) => choice.id && choice.label);
+    const choiceIds = new Set(choices.map((choice) => choice.id));
+    if (choices.length < 2 || choiceIds.size !== choices.length) return null;
+    const answer = [...new Set(item.answer.map((value) => value.trim()))].filter((value) => value);
+    if (!answer.length || !answer.every((value) => choiceIds.has(value))) return null;
+    const why = item.why.trim();
+    if (!why) return null;
+    seenQuestionIds.add(id);
+    questions.push({ id, text, choices, multi: answer.length > 1 });
+    answerKey.push({ questionId: id, answer, why });
+  }
+  return questions.length ? { questions, answerKey } : null;
+}
+
+export function cleanLearn(
+  parsed: unknown,
+  mode: LearnMode,
+  currentKind?: 'open' | 'quiz',
+): Clean<LearnResult> {
   const result = LearnSchema.safeParse(parsed);
   if (!result.success) return { ok: false, error: badOutput('学习反馈') };
   const data = result.data;
   if (!EXPECTED[mode].includes(data.action)) return { ok: false, error: badOutput('学习反馈') };
 
+  // 动作必须与当前轮次类型匹配：选择题轮用 graded，开放问题用 feedback。
+  if (mode === 'respond') {
+    if (data.action === 'graded' && currentKind !== 'quiz') return { ok: false, error: badOutput('学习反馈') };
+    if (data.action === 'feedback' && currentKind !== 'open') return { ok: false, error: badOutput('学习反馈') };
+  }
+
   switch (data.action) {
     case 'question':
       return { ok: true, value: { action: 'question', question: data.question.trim() } };
+    case 'quiz': {
+      const cleaned = cleanQuizQuestions(data.questions);
+      if (!cleaned) return { ok: false, error: badOutput('学习反馈') };
+      return { ok: true, value: { action: 'quiz', ...cleaned } };
+    }
     case 'feedback':
       return {
         ok: true,
@@ -129,6 +179,22 @@ export function cleanLearn(parsed: unknown, mode: LearnMode): Clean<LearnResult>
           nextQuestion: data.nextQuestion?.trim() || null,
         },
       };
+    case 'graded': {
+      // nextQuiz 缺答案钥匙等问题只降级（丢弃下一轮测验），不影响本轮批改的可用性。
+      const nextQuiz = data.nextQuiz ? cleanQuizQuestions(data.nextQuiz.questions) : null;
+      return {
+        ok: true,
+        value: {
+          action: 'graded',
+          analysis: data.analysis.trim(),
+          notes: data.notes
+            .map((note) => ({ questionId: note.questionId.trim(), note: note.note.trim() }))
+            .filter((note) => note.questionId && note.note),
+          nextQuestion: data.nextQuestion?.trim() || null,
+          nextQuiz,
+        },
+      };
+    }
     case 'hint':
       return {
         ok: true,

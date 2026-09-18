@@ -38,6 +38,8 @@ export type Config = {
   skills?: Skill[];
   /** 学习提问预算（1–10，默认 5），在开始学习时固定进会话。 */
   learningBudget?: number;
+  /** 出题方式（F5）：mixed=模型按内容选择；quiz=总是选择题；open=总是开放问答。 */
+  learningStyle?: 'mixed' | 'quiz' | 'open';
   /** 首屏探索气泡上限（0–3，默认 3）。 */
   maxBubbles?: number;
   /** 摘要长度偏好（默认 medium）。 */

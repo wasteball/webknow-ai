@@ -25,6 +25,7 @@ export type PanelSettings = {
   /** 用户自建的技能；内置技能由界面直接从 core/skills 读取。 */
   customSkills: Skill[];
   learningBudget: number;
+  learningStyle: 'mixed' | 'quiz' | 'open';
   maxBubbles: number;
   summaryLength: SummaryLength;
   fontSize: FontSize;
@@ -59,7 +60,7 @@ export type Command =
   | { type: 'ask'; tabId: number; question: string }
   | { type: 'explore'; tabId: number; bubbleId: string }
   | { type: 'learnStart'; tabId: number; goal: string }
-  | { type: 'learnAnswer'; tabId: number; text: string }
+  | { type: 'learnAnswer'; tabId: number; text: string; choices?: { questionId: string; choiceIds: string[] }[] }
   | { type: 'learnAssist'; tabId: number; action: 'hint' | 'explain' | 'skip' }
   | { type: 'learnEnd'; tabId: number }
   | { type: 'jump'; tabId: number; blockId: string }
