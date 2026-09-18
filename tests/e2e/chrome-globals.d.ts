@@ -4,7 +4,11 @@
  */
 declare const chrome: {
   runtime: {
-    getManifest(): { host_permissions?: string[]; side_panel?: { default_path?: string } };
+    getManifest(): {
+      host_permissions?: string[];
+      permissions?: string[];
+      side_panel?: { default_path?: string };
+    };
   };
   storage: {
     local: { set(items: Record<string, unknown>): Promise<void> };

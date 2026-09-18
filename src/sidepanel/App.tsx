@@ -129,14 +129,19 @@ export function App() {
 
           {(phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE') && (
             <Section title={phase === 'STALE' ? '页面换了' : '开始读这一页'}>
-              {phase === 'PERMISSION_REQUIRED' && (
-                <p>
-                  要读这一页的文字才能给你摘要。接下来浏览器会弹窗问你是否允许——
-                  只针对
-                  {state.pageUrl ? ` ${safeOrigin(state.pageUrl) ?? '这一个网站'} ` : '这一个网站'}
-                  ，其他网站读不到。
-                </p>
-              )}
+              {phase === 'PERMISSION_REQUIRED' &&
+                (state.pageUrl ? (
+                  <p>
+                    要读这一页的文字才能给你摘要。接下来浏览器会弹窗问你是否允许——只针对
+                    {` ${safeOrigin(state.pageUrl) ?? '这一个网站'} `}，其他网站读不到。
+                  </p>
+                ) : (
+                  // 拿不到网址时给可执行的下一步：点工具栏图标会把当前页地址交给扩展。
+                  <p>
+                    还不知道你正在看哪个网站。请先点一下浏览器右上角的{' '}
+                    <strong>webknow-ai 图标</strong>，再回来点下面的按钮。
+                  </p>
+                ))}
               {phase === 'STALE' && (
                 <p>你已经换了页面（或者这一页的内容变了）。上一页的结果作废了，不会拿来充数。</p>
               )}

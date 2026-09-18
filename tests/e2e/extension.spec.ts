@@ -32,8 +32,11 @@ test('后台以 MV3 service worker 启动', async () => {
 });
 
 /**
- * 点工具栏图标这条路径无法自动化（浏览器外壳点不到），但“侧栏是否配置正确”可以验证。
- * 这条断言防的是：点图标后什么都不发生——那通常意味着 side_panel 配置缺失或未启用。
+ * 点工具栏图标这条路径无法自动化（浏览器外壳点不到），但它的两个前提可以验证：
+ * 侧栏配置正确，以及声明了 activeTab。
+ *
+ * 真实故障：漏声明 activeTab → 点图标后扩展拿不到标签页地址 → 不知道该向哪个网站
+ * 申请读取权限 → 用户既看不到授权弹窗，又收到“读不到这一页”。
  */
 test('侧栏已配置且启用（工具栏点击的前提）', async () => {
   const worker = context.serviceWorkers()[0];
@@ -43,6 +46,15 @@ test('侧栏已配置且启用（工具栏点击的前提）', async () => {
   expect(manifest.side_panel?.default_path).toBeTruthy();
   expect(options.path ?? manifest.side_panel?.default_path).toBeTruthy();
   expect(options.enabled).not.toBe(false);
+});
+
+test('声明了 activeTab（否则扩展拿不到当前页地址，无法申请站点权限）', async () => {
+  const worker = context.serviceWorkers()[0];
+  if (!worker) throw new Error('缺少 service worker');
+  const permissions = await worker.evaluate(() => chrome.runtime.getManifest().permissions ?? []);
+  expect(permissions).toContain('activeTab');
+  // 仍然不申请 tabs：那会带来“读取浏览历史”的安装警告。
+  expect(permissions).not.toContain('tabs');
 });
 
 test('未配置 Key 时侧栏进入配置状态', async () => {

@@ -19,8 +19,8 @@ export async function ensureInjected(tabId: number): Promise<void> {
     throw isAppError(error)
       ? error
       : appError(
-          'PERMISSION_MISSING',
-          '读不到这一页：可能你还没允许我们读这个网站，也可能这类页面本来就读不了。再点一次开始伴读试试。',
+          'PAGE_UNSUPPORTED',
+          '这一页读不了：可能是浏览器内部页面、扩展商店页面或文件页。请换一篇公开的文章页面。',
           false,
         );
   }
@@ -50,8 +50,24 @@ function unwrap<T>(reply: ContentReply): T {
   return reply.data as T;
 }
 
-/** 提取正文；这一步之后才第一次产生可以外发的正文（FR-006）。 */
-export async function extractPage(tabId: number): Promise<BlocksPayload> {
+/**
+ * 提取正文；这一步之后才第一次产生可以外发的正文（FR-006）。
+ *
+ * 先自查站点权限，再注入：权限缺失和“这类页面读不了”是两种完全不同的处境，
+ * 分别给不同的下一步，而不是统一报“读不到”。（真实故障：漏了 activeTab，
+ * 扩展拿不到网址，于是既没申请权限也没告诉用户该点哪里。）
+ */
+export async function extractPage(tabId: number, expectedOrigin: string | null): Promise<BlocksPayload> {
+  if (expectedOrigin) {
+    const granted = await browser.permissions.contains({ origins: [`${expectedOrigin}/*`] });
+    if (!granted) {
+      throw appError(
+        'PERMISSION_MISSING',
+        `还没有允许我们读这个网站（${expectedOrigin}）。请点一下浏览器右上角的 webknow-ai 图标，再点一次按钮。`,
+        false,
+      );
+    }
+  }
   await ensureInjected(tabId);
   const payload = unwrap<BlocksPayload>(await send(tabId, { type: 'extract' }));
   if (!payload?.blocks?.length) {

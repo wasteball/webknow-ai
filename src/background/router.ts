@@ -328,7 +328,10 @@ async function startSession(tabId: number): Promise<Reply> {
   }
 
   try {
-    const payload = await extractPage(tabId);
+    const pending = await getPending(tabId);
+    const expectedOrigin =
+      pending?.origin ?? (existing?.url ? originOf(existing.url) : null);
+    const payload = await extractPage(tabId, expectedOrigin);
     const session = createSession(tabId, payload);
     await putSession(session);
     await watchPage(tabId);
@@ -359,6 +362,8 @@ export async function onPageChanged(tabId: number, url: string): Promise<void> {
  * 宁可多要一次点击“开始伴读”，也不让上一页的结果留在新页面上（FR-005/FR-024）。
  */
 export async function onTabNavigating(tabId: number): Promise<void> {
+  // 导航后上一次工具栏点击留下的地址已经作废：留着会导致向错误的网站申请权限。
+  await clearPending(tabId);
   const session = await getSession(tabId);
   if (!session) return;
   if (session.run) abortRun(tabId);
