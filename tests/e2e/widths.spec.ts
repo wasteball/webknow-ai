@@ -241,12 +241,38 @@ test('READY 视图在三种宽度下排版正确', async () => {
   for (const width of WIDTHS) {
     const { panel } = await openPanel(width);
     await expect(panel.getByText('这篇文章讲了什么')).toBeVisible();
-    await expect(panel.locator('.bubble').first()).toBeVisible();
+    await expect(panel.locator('.chip').first()).toBeVisible();
     // 一进来就停在顶部：摘要与话题是这一栏最重要的一段，不该被推到屏幕外。
     expect(await panel.evaluate(() => window.scrollY)).toBe(0);
     await panel.screenshot({ path: join(OUTPUT_DIR, `ready-${width}.png`), fullPage: true });
     await panel.close();
   }
+});
+
+test('问过的话题从 chip 行里退休，并作为你的话留在对话里', async () => {
+  test.setTimeout(120_000);
+  const { panel, tabId } = await openPanel(560);
+  await expect(panel.locator('.chip')).toHaveCount(3);
+
+  // 把已有那一轮的问题改成某个话题的原文：等价于"这个话题已经问过了"。
+  // 话题与提问在数据上没有 id 关联（explore 在下游就是一次普通提问），
+  // 所以退休判定靠问题原文，这条用例守住的就是它。
+  await context.serviceWorkers()[0]!.evaluate(
+    async ([id, question]) => {
+      const stored = await chrome.storage.session.get(`sess:${id}`);
+      const session = stored[`sess:${id}`] as Record<string, unknown>;
+      (session.chat as { question: string }[])[0]!.question = question;
+      await chrome.storage.session.set({ [`sess:${id}`]: session });
+    },
+    [tabId, BUBBLES[0]!.question] as const,
+  );
+  await pushState(panel, tabId);
+
+  await expect(panel.locator('.chip')).toHaveCount(2);
+  await expect(panel.getByRole('button', { name: BUBBLES[0]!.question })).toBeHidden();
+  // 退休不等于消失：它变成你说过的那句话，还在记录里。
+  await expect(panel.locator('.bubble.user').filter({ hasText: BUBBLES[0]!.question })).toBeVisible();
+  await panel.close();
 });
 
 test('LEARNING 视图在宽面板下排版正确', async () => {
@@ -397,7 +423,7 @@ test('深色模式跟随系统配色', async () => {
   await expect(panel.getByText('这篇文章讲了什么')).toBeVisible();
   // 深色不是把浅色反相：只断言"确实变暗了"，具体色值交给令牌本身。
   expect(await isDark(panel, 'body')).toBe(true);
-  expect(await isDark(panel, '.guide')).toBe(true);
+  expect(await isDark(panel, '.bubble-guide')).toBe(true);
   await panel.screenshot({ path: join(OUTPUT_DIR, 'ready-560-dark.png'), fullPage: true });
   await panel.close();
 });

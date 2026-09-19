@@ -103,7 +103,7 @@ test('首屏摘要与话题', async () => {
 
   await panel.getByRole('button', { name: /开始伴读/ }).click();
   await expect(panel.getByText('这篇文章讲了什么')).toBeVisible({ timeout: 60_000 });
-  await expect(panel.locator('.bubble').first()).toBeVisible();
+  await expect(panel.locator('.chip').first()).toBeVisible();
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-02-guide.png'), fullPage: true });
 
   // “AI 问我”：真答一轮再截图。只截第一题的话，画面大半是空白，

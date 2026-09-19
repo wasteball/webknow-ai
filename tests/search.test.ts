@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { searxng, tavily, bocha } from '../src/core/search/providers';
-import { cleanSearchResults, searchWithProvider } from '../src/core/search/registry';
+import { bingKeyless, bocha, duckduckgo, searxng, tavily } from '../src/core/search/providers';
+import { BUILTIN_SEARCH_PROVIDERS, cleanSearchResults, searchWithProvider } from '../src/core/search/registry';
 import { cleanAnswer } from '../src/core/validate';
 import type { EvidenceBlock } from '../src/core/blocks';
 
@@ -107,6 +107,117 @@ describe('搜索供应商解析（产品化改造 F3）', () => {
     expect(cleaned).toHaveLength(2);
     expect(cleaned[0]?.title.length).toBeLessThanOrEqual(200);
     expect(cleaned[0]?.snippet.length).toBeLessThanOrEqual(500);
+  });
+});
+
+/**
+ * 免 Key 供应商：抓公开搜索页并抽结果。
+ *
+ * 下面的 fixture 是**按目标页面的结构写的**，不是从真实页面抓下来的——
+ * 这台机器连不上外网（见计划文件）。所以这些用例证明的是"抽取值不对时会被发现"，
+ * 不能证明真实页面一定抽得到。真实可达性只能在你自己浏览器里确认；
+ * 抽不到时的表现是返回空数组，由上游如实降级，不会污染正文依据。
+ */
+describe('免 Key 搜索供应商（抓公开搜索页）', () => {
+  const htmlResponse = (body: string, status = 200) =>
+    (async () => new Response(body, { status, headers: { 'Content-Type': 'text/html' } })) as unknown as typeof fetch;
+
+  it('Bing：抽出标题、链接与摘要', async () => {
+    const html = `<ol id="b_results">
+      <li class="b_algo"><h2><a href="https://example.com/a">配送路径研究综述</a></h2>
+        <div class="b_caption"><p>这篇综述比较了三种路径方案。</p></div></li>
+      <li class="b_algo"><h2 class="b_topTitle"><a href="https://example.com/b">试点方法说明</a></h2>
+        <p>样本与周期如何选择。</p></li>
+    </ol>`;
+    const results = await bingKeyless.search({
+      query: '配送路径', count: 5, signal, config: {}, fetchImpl: htmlResponse(html),
+    });
+    expect(results).toHaveLength(2);
+    expect(results[0]).toEqual({
+      title: '配送路径研究综述',
+      url: 'https://example.com/a',
+      snippet: '这篇综述比较了三种路径方案。',
+    });
+    expect(results[1]!.url).toBe('https://example.com/b');
+  });
+
+  it('Bing：实体与内嵌标签被还原成纯文本', async () => {
+    const html = `<li class="b_algo"><h2><a href="https://example.com/x">A &amp; B <b>加粗</b></a></h2>
+      <p>5 &lt; 10 &nbsp;并且 &quot;引用&quot;</p></li>`;
+    const results = await bingKeyless.search({
+      query: 'q', count: 5, signal, config: {}, fetchImpl: htmlResponse(html),
+    });
+    expect(results[0]!.title).toBe('A & B 加粗');
+    expect(results[0]!.snippet).toBe('5 < 10 并且 "引用"');
+  });
+
+  it('Bing：第一个 host 抽不到就换第二个', async () => {
+    const seen: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      seen.push(String(url));
+      // 只有 www.bing.com 返回带结果的页面，cn.bing.com 返回一个空壳。
+      return new Response(String(url).includes('cn.bing.com') ? '<html></html>' : '<li class="b_algo"><h2><a href="https://example.com/ok">换到备用域名</a></h2><p>摘要</p></li>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }) as unknown as typeof fetch;
+    const results = await bingKeyless.search({ query: 'q', count: 5, signal, config: {}, fetchImpl });
+    expect(seen).toHaveLength(2);
+    expect(results[0]!.url).toBe('https://example.com/ok');
+  });
+
+  it('Bing：页面结构变了（抽不到）就抛错，交给上游降级', async () => {
+    await expect(
+      bingKeyless.search({ query: 'q', count: 5, signal, config: {}, fetchImpl: htmlResponse('<html><body>改版了</body></html>') }),
+    ).rejects.toThrow(/没有返回可解析的结果/);
+  });
+
+  it('DuckDuckGo：跳转链接还原成真实目标，摘要按顺序配对', async () => {
+    const html = `<div class="result">
+        <h2 class="result__title"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Freal&amp;rut=abc">真实结果的标题</a></h2>
+        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=x">第一段摘要</a>
+      </div>
+      <div class="result">
+        <h2 class="result__title"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fb">第二条</a></h2>
+        <a class="result__snippet" href="x">第二段摘要</a>
+      </div>`;
+    const results = await duckduckgo.search({
+      query: 'q', count: 5, signal, config: {}, fetchImpl: htmlResponse(html),
+    });
+    expect(results.map((item) => item.url)).toEqual([
+      'https://example.com/real',
+      'https://example.org/b',
+    ]);
+    expect(results[0]!.snippet).toBe('第一段摘要');
+    expect(results[1]!.snippet).toBe('第二段摘要');
+  });
+
+  it('DuckDuckGo：非 HTML（例如被拦截返回 JSON）抽不到结果', async () => {
+    const results = await duckduckgo.search({
+      query: 'q', count: 5, signal, config: {}, fetchImpl: htmlResponse('{"error":"blocked"}'),
+    });
+    expect(results).toEqual([]);
+  });
+
+  it('注册表：免 Key 供应商排在最前，且不需要任何凭证', () => {
+    expect(BUILTIN_SEARCH_PROVIDERS[0]!.id).toBe('bing');
+    for (const provider of BUILTIN_SEARCH_PROVIDERS.slice(0, 2)) {
+      expect(provider.configFields).toEqual([]);
+      expect(provider.hosts({}).length).toBeGreaterThan(0);
+    }
+    // 自备服务的三个仍在，作为备选。
+    const ids = BUILTIN_SEARCH_PROVIDERS.map((provider) => provider.id);
+    expect(ids).toEqual(expect.arrayContaining(['searxng', 'tavily', 'bocha']));
+  });
+
+  it('免 Key 供应商经 searchWithProvider 走完整条（含清洗与上限）', async () => {
+    const html = `<li class="b_algo"><h2><a href="https://example.com/1">一</a></h2><p>甲</p></li>
+      <li class="b_algo"><h2><a href="https://example.com/1">重复链接被去重</a></h2><p>乙</p></li>
+      <li class="b_algo"><h2><a href="https://example.com/2">二</a></h2><p>丙</p></li>`;
+    const results = await searchWithProvider({
+      providerId: 'bing', config: {}, query: 'q', count: 5, signal, fetchImpl: htmlResponse(html),
+    });
+    expect(results.map((item) => item.url)).toEqual(['https://example.com/1', 'https://example.com/2']);
   });
 });
 

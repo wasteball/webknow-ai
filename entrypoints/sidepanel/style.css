@@ -277,76 +277,65 @@ details.section summary {
   cursor: pointer;
 }
 
-/* ── 导读摘要：蓝色导览块。全屏最用力的地方，读的就是它 ────────── */
+/* ── 导读摘要：对话里的第一口气泡 ───────────────────────────
+   全屏只有这里用蓝色底：它是用户打开侧栏想读的那一段。后面每一轮
+   回答都是中性底色，不跟它抢。 */
 
-.guide {
-  margin: 0 0 var(--space-4);
-  padding: var(--space-4);
+.bubble-guide {
   background: var(--accent-soft);
   border-left: 3px solid var(--accent);
-  border-radius: 0 var(--radius) var(--radius) 0;
 }
 
-.guide h2 {
+.bubble-guide h2 {
   color: var(--accent-strong);
   margin-bottom: var(--space-2);
 }
 
-.guide .summary {
+.bubble-guide .summary {
   max-width: 40em;
 }
 
-.bubbles {
+/* 话题是一排 chip，不是卡片：它们是"接下来可以聊什么"，点了就进对话。 */
+.chiprow {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--line);
 }
 
-/* 拖宽侧栏后，话题并排铺开，而不是被拉成一根根长条。 */
-@media (min-width: 560px) {
-  .bubbles {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    align-items: start;
-  }
-}
-
-/* 话题是可点的行，不是需要确认的动作：箭头说明它可以继续往下走。 */
-.bubble {
-  display: flex;
-  align-items: flex-start;
+.chip {
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-2);
-  width: 100%;
+  max-width: 100%;
+  min-height: 32px;
   text-align: left;
   font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--accent-strong);
   background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease;
+  transition: background-color 140ms ease, transform 100ms ease;
 }
 
-.bubble::before {
-  content: "→";
-  flex: none;
-  color: var(--accent);
-  font-weight: 600;
+.chip:hover:not(:disabled) {
+  background: var(--accent-soft);
 }
 
-.bubble:hover:not(:disabled) {
-  background: var(--paper-2);
-  border-color: var(--accent);
+/* 按下去要有手感：原型里也是往下一像素。 */
+.chip:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
-.bubble:disabled {
-  opacity: 0.5;
+.chip:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -385,29 +374,44 @@ details.section summary {
   border-radius: var(--radius-pill);
 }
 
-/* ── 对话：问题靠右、回答靠左，一眼分清谁说的 ────────────────── */
+/* ── 对话：你的话靠右、AI 的话靠左，靠形状和位置分清谁说的 ──────
+   侧栏最窄只有 360px，再摆头像要吃掉 40px 宽，所以这里不用头像：
+   位置（左/右）、底色（白/蓝）、圆角缺口方向已经够区分了。 */
 
-.turn {
+.msg {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
-.turn + .turn {
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--line-soft);
+.msg.user {
+  justify-content: flex-end;
 }
 
-.turn .question {
-  align-self: flex-end;
+.bubble {
   max-width: 88%;
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
-  background: var(--paper-3);
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+  min-width: 0;
+  padding: var(--space-3);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.bubble.user {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: var(--radius-lg) var(--radius-sm) var(--radius-lg) var(--radius-lg);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.65;
+}
+
+.bubble.ai {
+  width: 100%;
+  background: var(--paper-2);
+  border-radius: var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg);
+}
+
+/* 摘要气泡是这一栏的开场，给它整幅宽度和一点留白，读起来像一段正文。 */
+.bubble.ai > h2 {
+  margin-bottom: var(--space-2);
 }
 
 .answer {
@@ -534,6 +538,36 @@ details.section summary {
   font-size: 14px;
 }
 
+/* 你自己写的那一句：从时间线里"抬"出来，一眼看出哪些是你说的。
+   同一轮里 AI 的评析保持中性，不跟它抢。 */
+.your-answer {
+  max-width: 40em;
+  padding: var(--space-2) var(--space-3);
+  color: var(--ink);
+  background: var(--paper-2);
+  border-radius: var(--radius-sm);
+}
+
+.your-answer p {
+  margin: var(--space-1) 0 0;
+}
+
+/* 题目在上、你的答案在下：像一次问答，而不是一行"题目｜答案"。 */
+.qa-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qa-q {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.qa-a {
+  font-weight: 600;
+}
+
 .entry-feedback .answer,
 .entry-explain {
   color: var(--ink);
@@ -570,7 +604,10 @@ details.section summary {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+}
+
+.quiz-question + .quiz-question {
+  margin-top: var(--space-3);
 }
 
 .quiz-question legend {
@@ -581,32 +618,59 @@ details.section summary {
   margin-bottom: var(--space-2);
 }
 
+/* 选项是对话里的整行：整行可点、行间发丝分隔、选中立刻有底色。
+   原生 radio/checkbox 仍然在（可聚焦、可键盘操作），只是不再画成一个个方框。 */
 .quiz-option {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 43px;
   font-size: 14px;
   line-height: 1.6;
   padding: var(--space-2) var(--space-3);
-  background: var(--paper-2);
-  border: 1px solid transparent;
+  background: transparent;
+  border: 0;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.quiz-option::after {
+  content: "";
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: 0;
+  height: 1px;
+  background: var(--line-soft);
 }
 
 .quiz-option:hover {
-  background: var(--paper-3);
+  background: var(--paper-2);
 }
 
 .quiz-option:has(input:checked) {
   background: var(--accent-soft);
-  border-color: var(--accent);
+}
+
+/* 选中的那一行不再画下划线：底色已经是"就是这条"的答复。 */
+.quiz-option:has(input:checked)::after,
+.quiz-option:last-child::after {
+  opacity: 0;
 }
 
 .quiz-option input {
   width: auto;
+  flex: none;
   margin: 3px 0 0;
   accent-color: var(--accent);
+}
+
+.quiz-option > span {
+  flex: 1;
+  min-width: 0;
 }
 
 .quiz-past {

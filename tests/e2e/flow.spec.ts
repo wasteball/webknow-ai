@@ -127,7 +127,7 @@ test.describe('主路径', () => {
     await expect(panel.getByText('等你在浏览器里允许读取这个网站')).toBeHidden({ timeout: 20_000 }).catch(() => {});
     await expect(panel.getByText('这篇文章讲了什么')).toBeVisible({ timeout: 60_000 });
     await expect(panel.getByText(/读取范围：读到了 \d+ 段文字/)).toBeVisible();
-    const bubbles = panel.locator('.bubble');
+    const bubbles = panel.locator('.chip');
     await expect(bubbles.first()).toBeVisible();
     expect(await bubbles.count()).toBeGreaterThan(0);
     // 留一张首屏截图作为人工复核材料；无头容器若缺中文字体，截图里会显示为方块。

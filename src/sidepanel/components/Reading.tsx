@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChatTurn } from '../../core/session';
 import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
-import { Busy, Section, SourceTag } from './bits';
+import { Busy, SourceTag } from './bits';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
@@ -45,30 +45,37 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
     setSavingToIma(false);
   };
 
+  // 问过的话题就退休：ChatTurn 里没有 bubbleId（explore 在下游退化成了一次普通提问），
+  // 所以按问题原文匹配。这也正好是用户看到的"我问过了"。
+  const asked = new Set(state.chat.map((turn) => turn.question));
+  const openTopics = guide?.bubbles.filter((bubble) => !asked.has(bubble.question)) ?? [];
+
   return (
     <>
       {guide && (
-        <section className="guide" aria-labelledby="guide-heading">
-          <h2 id="guide-heading">这篇文章讲了什么</h2>
-          <p className="summary">{guide.summary}</p>
-          {guide.bubbles.length > 0 && (
-            <div className="bubbles">
-              {guide.bubbles.map((bubble) => (
-                <button
-                  key={bubble.id}
-                  type="button"
-                  className="bubble"
-                  disabled={busy}
-                  onClick={() => {
-                    if (tabId) void send({ type: 'explore', tabId, bubbleId: bubble.id });
-                  }}
-                >
-                  {bubble.question}
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
+        <article className="msg ai">
+          <div className="bubble ai bubble-guide">
+            <h2 id="guide-heading">这篇文章讲了什么</h2>
+            <p className="summary">{guide.summary}</p>
+            {openTopics.length > 0 && (
+              <div className="chiprow">
+                {openTopics.map((bubble) => (
+                  <button
+                    key={bubble.id}
+                    type="button"
+                    className="chip"
+                    disabled={busy}
+                    onClick={() => {
+                      if (tabId) void send({ type: 'explore', tabId, bubbleId: bubble.id });
+                    }}
+                  >
+                    {bubble.question}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </article>
       )}
 
       {imaEnabled && (
@@ -89,9 +96,9 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
         </div>
       )}
 
-      <Section title="问答">
-        {state.chat.length === 0 && !busy && (
-          <p className="hint">可以点上面的话题，也可以自己在下面提问。</p>
+      <div className="chat">
+        {guide && state.chat.length === 0 && !busy && openTopics.length === 0 && (
+          <p className="hint">话题都聊完了。下面接着问就行。</p>
         )}
         {state.chat.map((turn) => (
           <Turn key={turn.id} turn={turn} tabId={tabId} send={send} />
@@ -104,7 +111,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
           />
         )}
         <div ref={endRef} />
-      </Section>
+      </div>
 
       <div className="dock">
         <form
@@ -158,45 +165,52 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
   );
 }
 
+/** 一轮问答 = 你的气泡 + AI 的气泡，和上面摘要那条连成一段对话。 */
 function Turn({ turn, tabId, send }: { turn: ChatTurn; tabId: number | null; send: Send }) {
   return (
-    <article className="turn">
-      <p className="question">{turn.question}</p>
-      <p className="answer">
-        <SourceTag source={turn.source} />
-        <span className="answer-text">{turn.answer}</span>
-      </p>
-      {turn.citations.length > 0 && (
-        <p className="citations">
-          {turn.citations.map((citation, index) => (
-            <button
-              key={citation.blockId}
-              type="button"
-              className="link"
-              onClick={() => tabId && void send({ type: 'jump', tabId, blockId: citation.blockId })}
-            >
-              看看原文{index + 1}
-            </button>
-          ))}
-        </p>
-      )}
-      {turn.references.length > 0 && (
-        <p className="citations">
-          网络资料：
-          {turn.references.map((url, index) => (
-            <a key={url} href={url} target="_blank" rel="noreferrer" className="link">
-              链接{index + 1}{' '}
-            </a>
-          ))}
-        </p>
-      )}
-      {turn.unanswered.length > 0 && (
-        <ul className="unanswered">
-          {turn.unanswered.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      )}
-    </article>
+    <>
+      <article className="msg user">
+        <div className="bubble user">{turn.question}</div>
+      </article>
+      <article className="msg ai">
+        <div className="bubble ai">
+          <p className="answer">
+            <SourceTag source={turn.source} />
+            <span className="answer-text">{turn.answer}</span>
+          </p>
+          {turn.citations.length > 0 && (
+            <p className="citations">
+              {turn.citations.map((citation, index) => (
+                <button
+                  key={citation.blockId}
+                  type="button"
+                  className="link"
+                  onClick={() => tabId && void send({ type: 'jump', tabId, blockId: citation.blockId })}
+                >
+                  看看原文{index + 1}
+                </button>
+              ))}
+            </p>
+          )}
+          {turn.references.length > 0 && (
+            <p className="citations">
+              网络资料：
+              {turn.references.map((url, index) => (
+                <a key={url} href={url} target="_blank" rel="noreferrer" className="link">
+                  链接{index + 1}{' '}
+                </a>
+              ))}
+            </p>
+          )}
+          {turn.unanswered.length > 0 && (
+            <ul className="unanswered">
+              {turn.unanswered.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </article>
+    </>
   );
 }

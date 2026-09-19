@@ -168,6 +168,34 @@ test('问答里的联网开关真的会把搜索发出去', async () => {
   await panel.close();
 });
 
+test('设置里免 Key 的搜索排在前面，选中后不要任何凭证', async () => {
+  test.setTimeout(120_000);
+  const settings = await context.newPage();
+  await settings.setViewportSize({ width: 1100, height: 900 });
+  await settings.goto(`chrome-extension://${extensionId}/options.html`);
+  await settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '联网搜索' }).click();
+
+  // 免 Key 的排在最前，并且直接标出"不用注册"——这是这次改动的全部意义。
+  const options = settings.getByLabel('搜索服务').locator('option');
+  await expect(options.nth(1)).toHaveText(/Bing（免费，无需注册）/);
+  await expect(options.nth(2)).toHaveText(/DuckDuckGo（免费，无需注册）/);
+  // 自备服务的三个仍在，作为备选。
+  await expect(options.nth(3)).toHaveText(/SearXNG/);
+
+  // 选中免 Key 的：不该出现任何要填的凭证字段。
+  await settings.getByLabel('搜索服务').selectOption('bing');
+  await expect(settings.getByText(/不用注册也不用填任何东西/)).toBeVisible();
+  await expect(settings.getByLabel('API Key')).toBeHidden();
+  await expect(settings.getByLabel('实例地址')).toBeHidden();
+  await expect(settings.getByRole('button', { name: '授权并启用' })).toBeEnabled();
+
+  // 换成自备服务的，凭证字段才出现——说明"免 Key"不是靠隐藏字段装出来的。
+  await settings.getByLabel('搜索服务').selectOption('tavily');
+  await expect(settings.getByLabel('API Key')).toBeVisible();
+
+  await settings.close();
+});
+
 test('开关没打开时不发搜索', async () => {
   test.setTimeout(120_000);
   hits.length = 0;

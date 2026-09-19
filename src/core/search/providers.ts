@@ -1,11 +1,65 @@
 import type { SearchProvider, SearchResult } from './types';
 
 /**
- * 首发供应商（产品化改造 F3）。三个各覆盖一种接入形态：
- * - SearXNG：自建或公开实例，无需 Key（JSON 接口需实例开启）；
- * - Tavily：面向 LLM 的搜索 API（海外）；
+ * 搜索供应商。两类：
+ *
+ * 免 Key（抓公开搜索页，开箱可用，不用注册也不用自建）：
+ * - Bing：cn.bing.com 主用、www.bing.com 兜底（两者页面结构一致，换 host 即可）；
+ * - DuckDuckGo：html.duckduckgo.com。
+ * 这类实现抓的是对方给浏览器看的页面，**对方改版就会失效**，且高频会被限流。
+ * 失效时的表现是"抽不到结果"，由 registry 统一归一为 SEARCH_FAILED，
+ * 界面照实说"这次只依据文章本身回答"，不会污染正文依据。
+ *
+ * 自备服务（稳定、合法，但要用户自己有账号或实例）：
+ * - SearXNG：自建或公开实例（JSON 接口需实例开启）；
+ * - Tavily：面向 LLM 的搜索 API；
  * - 博查 Bocha：国内可用的网页搜索 API。
+ *
+ * 搜索与模型供应商完全解耦：这里只产出 SearchResult[]，由 runner 以文本注入提示词，
+ * 换任何模型都不影响这一层。
  */
+
+/** 把一段 HTML 片段还原成纯文本：搜索结果要进提示词，不能带标记进去。 */
+function textOf(html: string): string {
+  return decodeEntities(html.replace(/<[^>]*>/g, ''))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function decodeEntities(input: string): string {
+  return input
+    .replace(/&(?:amp|#38);/gi, '&')
+    .replace(/&(?:lt|#60);/gi, '<')
+    .replace(/&(?:gt|#62);/gi, '>')
+    .replace(/&(?:quot|#34);/gi, '"')
+    .replace(/&(?:apos|#39);/gi, "'")
+    .replace(/&nbsp;|&#160;/gi, ' ');
+}
+
+/** 取出标签里的某个属性值（属性顺序不固定，所以单独找）。 */
+function attr(tag: string, name: string): string | undefined {
+  const found = new RegExp(`${name}\\s*=\\s*"([^"]*)"`, 'i').exec(tag);
+  return found?.[1] !== undefined ? decodeEntities(found[1]) : undefined;
+}
+
+/**
+ * DuckDuckGo 的结果链接是跳转地址（`//duckduckgo.com/l/?uddg=<编码后的目标>`），
+ * 要还原成真实目标；还原不出来就原样返回，交给下游的 http(s) 过滤。
+ */
+function unwrapRedirect(href: string): string {
+  const absolute = href.startsWith('//') ? `https:${href}` : href;
+  try {
+    const url = new URL(absolute, 'https://duckduckgo.com');
+    return url.searchParams.get('uddg') ?? absolute;
+  } catch {
+    return absolute;
+  }
+}
+
+/** 按出现顺序把「标题链接」与「摘要」两串配对：两类页面都是同序一一对应。 */
+function zipResults(titles: { title: string; url: string }[], snippets: string[]): SearchResult[] {
+  return titles.map((item, index) => ({ ...item, snippet: snippets[index] ?? '' }));
+}
 
 function pickString(value: unknown, path: (string | number)[]): string | undefined {
   let current: unknown = value;
@@ -94,6 +148,94 @@ export const tavily: SearchProvider = {
       .filter((item): item is SearchResult => Boolean(item.url && item.title));
   },
 };
+
+/**
+ * 免 Key：抓 Bing 的结果页。两个 host 页面结构相同，主用国内可达的 cn.bing.com。
+ * 结果块是 `<li class="b_algo">`，块内第一个 <h2> 里的链接是标题（Bing 的 <h2> 里
+ * 还可能套一层别的标记，所以不要求 <a> 紧跟其后）。
+ */
+export const bingKeyless: SearchProvider = {
+  id: 'bing',
+  name: 'Bing',
+  description: '直接用 Bing 的结果页，不用注册也不用填 Key。国内网络可用；对方改版可能失效。',
+  configFields: [],
+  hosts: () => ['https://cn.bing.com/*', 'https://www.bing.com/*'],
+  async search(request) {
+    const doFetch = request.fetchImpl ?? fetch;
+    for (const host of ['https://cn.bing.com', 'https://www.bing.com']) {
+      const url = `${host}/search?q=${encodeURIComponent(request.query)}&setlang=zh-CN`;
+      const response = await doFetch(url, {
+        headers: {
+          Accept: 'text/html,application/xhtml+xml',
+          'Accept-Language': 'zh-CN,zh;q=0.9',
+        },
+        signal: request.signal,
+      });
+      if (!response.ok) continue;
+      const results = parseBing(await response.text(), request.count);
+      // 第一个 host 抽不到就换第二个；都抽不到才交给上游降级。
+      if (results.length) return results;
+    }
+    throw new Error('Bing 没有返回可解析的结果（页面结构可能变了）');
+  },
+};
+
+function parseBing(html: string, count: number): SearchResult[] {
+  const titles: { title: string; url: string }[] = [];
+  const snippets: string[] = [];
+  const blocks = html.split(/<li[^>]+class="[^"]*b_algo[^"]*"/i).slice(1);
+  for (const block of blocks) {
+    const heading = /<h2[^>]*>([\s\S]*?)<\/h2>/i.exec(block)?.[1];
+    const anchor = heading ? /<a\b([^>]*)>([\s\S]*?)<\/a>/i.exec(heading) : null;
+    if (!anchor) continue;
+    const url = attr(anchor[1]!, 'href');
+    const title = textOf(anchor[2]!);
+    if (!url || !title) continue;
+    titles.push({ title, url });
+    snippets.push(textOf(/<p[^>]*>([\s\S]*?)<\/p>/i.exec(block)?.[1] ?? ''));
+    if (titles.length >= count) break;
+  }
+  return zipResults(titles, snippets);
+}
+
+/**
+ * 免 Key：抓 DuckDuckGo 的无脚本结果页。链接是跳转地址，需要还原。
+ * 这是海外网络的备选——大陆直连通常不可达。
+ */
+export const duckduckgo: SearchProvider = {
+  id: 'duckduckgo',
+  name: 'DuckDuckGo',
+  description: '直接用 DuckDuckGo 的结果页，不用注册也不用填 Key。海外网络可用；对方改版可能失效。',
+  configFields: [],
+  hosts: () => ['https://html.duckduckgo.com/*'],
+  async search(request) {
+    const doFetch = request.fetchImpl ?? fetch;
+    const response = await doFetch(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(request.query)}`,
+      { headers: { Accept: 'text/html' }, signal: request.signal },
+    );
+    if (!response.ok) throw new Error(`DuckDuckGo 返回 ${response.status}`);
+    return parseDuckDuckGo(await response.text(), request.count);
+  },
+};
+
+function parseDuckDuckGo(html: string, count: number): SearchResult[] {
+  const titles: { title: string; url: string }[] = [];
+  const snippets: string[] = [];
+  const anchors = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(anchors)) {
+    const attributes = match[1]!;
+    if (!/class\s*=\s*"[^"]*result__a/i.test(attributes)) continue;
+    const href = attr(attributes, 'href');
+    const title = textOf(match[2]!);
+    if (!href || !title) continue;
+    titles.push({ title, url: unwrapRedirect(href) });
+    if (titles.length >= count) break;
+  }
+  const snippetRe = /<a\b([^>]*class\s*=\s*"[^"]*result__snippet[^"]*"[^>]*)>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(snippetRe)) snippets.push(textOf(match[2]!));
+  return zipResults(titles, snippets);
+}
 
 export const bocha: SearchProvider = {
   id: 'bocha',

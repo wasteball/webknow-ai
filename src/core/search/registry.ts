@@ -1,13 +1,21 @@
 import { appError, type AppError } from '../errors';
-import { bocha, searxng, tavily } from './providers';
+import { bingKeyless, bocha, duckduckgo, searxng, tavily } from './providers';
 import type { SearchProvider, SearchResult } from './types';
 
 /**
  * 供应商注册表与搜索执行（产品化改造 F3）。
  * searchWithProvider 只允许 background 调用：搜索配置与 Key 一样不离开后台边界。
+ *
+ * 免 Key 的排在最前面：默认选择就是"开箱可用"，用户不必先有账号或实例。
  */
 
-export const BUILTIN_SEARCH_PROVIDERS: SearchProvider[] = [searxng, tavily, bocha];
+export const BUILTIN_SEARCH_PROVIDERS: SearchProvider[] = [
+  bingKeyless,
+  duckduckgo,
+  searxng,
+  tavily,
+  bocha,
+];
 
 export function findSearchProvider(id: string): SearchProvider | undefined {
   return BUILTIN_SEARCH_PROVIDERS.find((provider) => provider.id === id);

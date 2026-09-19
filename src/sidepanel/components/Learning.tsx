@@ -103,12 +103,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               <li key={`${entry.role}-${entry.at}-${index}`} className={`entry entry-${entry.role}`}>
                 {entry.role === 'question' && <p className="question">{entry.text}</p>}
                 {entry.role === 'quiz' && <QuizEntryView entry={entry} />}
-                {entry.role === 'answer' && (
-                  <p className="your-answer">
-                    <span className="tag">{entry.independent ? '自己答出来的' : '看了提示才答出来的'}</span>
-                    {entry.text}
-                  </p>
-                )}
+                {entry.role === 'answer' && <YourAnswer entry={entry} />}
                 {entry.role === 'feedback' && (
                   <p className="answer">
                     {entry.verdict && <VerdictTag verdict={entry.verdict} />}
@@ -301,6 +296,31 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * 你自己的那句回答。
+ * 选择题轮里后台存的是「题目｜我的答案：xxx」（多选题之间用换行分隔），
+ * 这里拆成问答两行，读起来才像一次对话，而不是一行流水账。
+ * 拆不开（开放问答本来就是自由文本）就照原样显示——格式变了也不会显示错。
+ */
+function YourAnswer({ entry }: { entry: LearnEntry }) {
+  const label = entry.independent ? '自己答出来的' : '看了提示才答出来的';
+  return (
+    <div className="your-answer">
+      <span className="tag">{label}</span>
+      {entry.text.split('\n').map((line) => {
+        const [question, picked] = line.split('｜我的答案：');
+        if (picked === undefined) return <p key={line}>{question}</p>;
+        return (
+          <p className="qa-line" key={line}>
+            <span className="qa-q">{question}</span>
+            <span className="qa-a">{picked}</span>
+          </p>
+        );
+      })}
+    </div>
   );
 }
 

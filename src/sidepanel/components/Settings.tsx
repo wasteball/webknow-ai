@@ -565,7 +565,8 @@ function SearchSettings({ state, send }: { state: PanelState; send: Send }) {
     <Section title="联网搜索">
       <p className="hint">
         启用后，问答里会多一个“联网搜索”开关：打开它提问，会把你的搜索词发给下面选的搜索服务，
-        拿到结果后连同文章一起回答。**只发搜索词，不发文章正文。**搜索服务按它自己的规则收费或免费。
+        拿到结果后连同文章一起回答。<strong>只发搜索词，不发文章正文。</strong>
+        搜索服务和你的 DeepSeek 账号是分开的，换任何模型都不影响它。
       </p>
       <div className="field">
         <label htmlFor="search-provider">搜索服务</label>
@@ -578,7 +579,8 @@ function SearchSettings({ state, send }: { state: PanelState; send: Send }) {
           <option value="">不启用{current.enabled ? '（当前已启用，更改请先选择）' : ''}</option>
           {BUILTIN_SEARCH_PROVIDERS.map((provider) => (
             <option key={provider.id} value={provider.id}>
-              {provider.name}
+              {/* 免 Key 的标在选项上：一眼看出哪个不用注册就能用。 */}
+              {provider.configFields.length ? provider.name : `${provider.name}（免费，无需注册）`}
             </option>
           ))}
           {current.enabled && <option value="已启用">已启用：{current.providerName}</option>}
@@ -587,6 +589,12 @@ function SearchSettings({ state, send }: { state: PanelState; send: Send }) {
       {selected && (
         <>
           <p className="hint">{selected.description}</p>
+          {!selected.configFields.length && (
+            <p className="hint">
+              这个不用注册也不用填任何东西。它直接读对方的搜索结果页，所以对方改版时可能失效——
+              真失效了，回答会照实说“这次只依据文章本身”，不会拿别的东西充数。
+            </p>
+          )}
           {selected.configFields.map((field) => (
             <div className="field" key={field.key}>
               <label htmlFor={`search-${field.key}`}>{field.label}</label>
