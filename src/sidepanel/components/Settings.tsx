@@ -9,15 +9,29 @@ import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { PromptTarget } from '../../core/settings';
 import { BUILTIN_SKILLS } from '../../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS } from '../../core/search/registry';
-import { Section } from './bits';
+import { Notice, Section } from './bits';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
- * 设置页（产品化改造 F2）：分区展示——模型与钥匙、提示词、行为偏好、外观、内容清理、关于。
+ * 设置（F2 / 2026-09-19 反馈改版）：整页界面，渲染在独立标签页里（entrypoints/options）。
+ * 左侧分类导航 + 右侧内容区，像常规软件的设置窗——改配置不是阅读，不占用侧栏。
  * 非敏感设置统一走 saveSettings；Key 仍是独立命令与独立校验。
  * 清除这一页、清除全部、删掉钥匙、恢复默认提示词，互不牵连（FR-033）。
  */
+
+type CategoryId = 'general' | 'model' | 'prompts' | 'skills' | 'search' | 'ima' | 'data' | 'about';
+
+const CATEGORIES: { id: CategoryId; label: string }[] = [
+  { id: 'general', label: '通用' },
+  { id: 'model', label: '模型' },
+  { id: 'prompts', label: '提示词' },
+  { id: 'skills', label: '技能' },
+  { id: 'search', label: '联网搜索' },
+  { id: 'ima', label: '知识库' },
+  { id: 'data', label: '数据' },
+  { id: 'about', label: '关于' },
+];
 
 const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string }[] = [
   {
@@ -43,22 +57,60 @@ const TARGET_LABEL: Record<PromptTarget, string> = {
   learn: 'AI 问我',
 };
 
-export function Settings({ state, send }: { state: PanelState; send: Send }) {
+export function Settings({
+  state,
+  send,
+  notice,
+  onDismissNotice,
+}: {
+  state: PanelState;
+  send: Send;
+  notice: string | null;
+  onDismissNotice: () => void;
+}) {
+  const [category, setCategory] = useState<CategoryId>('general');
+
   return (
-    <>
-      <ModelAndKey state={state} send={send} />
-      <Prompts state={state} send={send} />
-      <Skills state={state} send={send} />
-      <SearchSettings state={state} send={send} />
-      <ImaSettings state={state} send={send} />
-      <Behavior state={state} send={send} />
-      <Appearance state={state} send={send} />
-      <Cleanup state={state} send={send} />
-      <About />
-    </>
+    <div className="settings-page">
+      <nav className="settings-nav" aria-label="设置分类">
+        <p className="settings-brand">webknow-ai</p>
+        {CATEGORIES.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-current={category === item.id ? 'true' : undefined}
+            onClick={() => setCategory(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
+      <main className="settings-content">
+        {notice && <Notice text={notice} onDismiss={onDismissNotice} />}
+        {category === 'general' && (
+          <>
+            <Behavior state={state} send={send} />
+            <Appearance state={state} send={send} />
+          </>
+        )}
+        {category === 'model' && <ModelAndKey state={state} send={send} />}
+        {category === 'prompts' && <Prompts state={state} send={send} />}
+        {category === 'skills' && <Skills state={state} send={send} />}
+        {category === 'search' && <SearchSettings state={state} send={send} />}
+        {category === 'ima' && <ImaSettings state={state} send={send} />}
+        {category === 'data' && <Cleanup state={state} send={send} />}
+        {category === 'about' && <About />}
+      </main>
+    </div>
   );
 }
 
+/**
+ * 模型供应商（2026-09-19 反馈改版，参照 Dify / WorkBuddy 的顺序）：
+ * 先把供应商接上（填钥匙、试连一次），接上之后再选模型。
+ * 反过来先摆模型选择器是错的：没有钥匙时拉不到模型列表，用户只会看到一句误导人的失败。
+ * 目前只有 DeepSeek 一家，所以“装供应商”和“填钥匙”本来就是一步，不假装分成两步。
+ */
 function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
   const { settings } = state;
   const [models, setModels] = useState<string[] | null>(null);
@@ -75,7 +127,15 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
     return reply;
   };
 
+  const connected = state.hasKey;
+
+  // 接上之后才拉模型列表；断开就把列表清掉，免得留下过期的选项。
   useEffect(() => {
+    if (!connected) {
+      setModels(null);
+      setLoadFailed(false);
+      return;
+    }
     let alive = true;
     void (async () => {
       const reply = await send({ type: 'listModels' });
@@ -86,111 +146,146 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
     return () => {
       alive = false;
     };
-    // 只在进入设置页时拉一次模型列表。
+    // send 是稳定引用；只有“接上了没有”变化时才需要重新拉。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [connected]);
 
   const known = models ?? KNOWN_MODELS;
   const modelInList = known.includes(settings.model);
 
   return (
-    <Section title="模型与钥匙">
+    <Section title="DeepSeek">
       <p className="hint">
-        这个插件用你自己的 DeepSeek 账号干活。钥匙只存在这个浏览器里，不会同步，也发不给我们。
+        {connected
+          ? '已连接。这个插件借你自己的 DeepSeek 账号干活，费用从你的账号里扣。'
+          : '还没有连接。这个插件不提供 AI，它借你自己的 DeepSeek 账号干活，费用从你的账号里扣。'}
       </p>
 
-      <div className="field">
-        <label htmlFor="model-select">模型</label>
-        {customMode ? (
-          <>
+      {!connected ? (
+        <div className="field">
+          <label htmlFor="deepseek-key">DeepSeek 钥匙（以 sk- 开头）</label>
+          <input
+            id="deepseek-key"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={key}
+            onChange={(event) => setKey(event.target.value)}
+          />
+          <div className="composer-actions">
+            <button
+              type="button"
+              disabled={busy || !key.trim()}
+              onClick={() => void run({ type: 'saveKey', key }).then(() => setKey(''))}
+            >
+              {busy ? '正在确认这把钥匙…' : '连接'}
+            </button>
+          </div>
+          <p className="hint">
+            连接时会先试连一次，确认这把钥匙能用——试连不发送你正在看的网页，但会有极少量费用。
+            还没有钥匙？先到{' '}
+            <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
+              DeepSeek 的钥匙页面
+            </a>{' '}
+            创建一个（没有账号就先注册并充值一点金额）。
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="field">
+            <label htmlFor="model-select">用哪个模型</label>
+            {customMode ? (
+              <>
+                <input
+                  id="model-select"
+                  type="text"
+                  spellCheck={false}
+                  placeholder={settings.model}
+                  value={customModel}
+                  onChange={(event) => setCustomModel(event.target.value)}
+                />
+                <div className="composer-actions">
+                  <button
+                    type="button"
+                    disabled={busy || !customModel.trim()}
+                    onClick={() =>
+                      void run({ type: 'saveSettings', patch: { model: customModel.trim() } }).then(() => {
+                        setCustomModel('');
+                        setCustomMode(false);
+                      })
+                    }
+                  >
+                    保存模型
+                  </button>
+                  <button type="button" className="secondary" onClick={() => setCustomMode(false)}>
+                    取消
+                  </button>
+                </div>
+              </>
+            ) : (
+              <select
+                id="model-select"
+                value={modelInList ? settings.model : '__custom__'}
+                disabled={busy}
+                onChange={(event) => {
+                  if (event.target.value === '__custom__') setCustomMode(true);
+                  else void run({ type: 'saveSettings', patch: { model: event.target.value } });
+                }}
+              >
+                {!modelInList && <option value={settings.model}>{settings.model}（当前）</option>}
+                {known.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+                <option value="__custom__">手动填写…</option>
+              </select>
+            )}
+            <p className="hint">
+              换模型只影响之后的请求，已经读出来的内容不动。
+              {loadFailed && ' 没能取得完整模型列表，可以手动填写模型 ID。'}
+            </p>
+          </div>
+
+          <div className="field">
+            <label htmlFor="replace-key">换一把新钥匙</label>
             <input
-              id="model-select"
-              type="text"
+              id="replace-key"
+              type="password"
+              autoComplete="off"
               spellCheck={false}
-              placeholder={settings.model}
-              value={customModel}
-              onChange={(event) => setCustomModel(event.target.value)}
+              value={key}
+              onChange={(event) => setKey(event.target.value)}
             />
             <div className="composer-actions">
               <button
                 type="button"
-                disabled={busy || !customModel.trim()}
-                onClick={() =>
-                  void run({ type: 'saveSettings', patch: { model: customModel.trim() } }).then(() => {
-                    setCustomModel('');
-                    setCustomMode(false);
-                  })
-                }
+                disabled={busy || !key.trim()}
+                onClick={() => void run({ type: 'saveKey', key }).then(() => setKey(''))}
               >
-                保存模型
+                保存并确认能用
               </button>
-              <button type="button" className="secondary" onClick={() => setCustomMode(false)}>
-                取消
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || !key.trim()}
+                onClick={() => void run({ type: 'testKey', key })}
+              >
+                只试试连得上不
+              </button>
+              <button
+                type="button"
+                className="danger"
+                disabled={busy}
+                onClick={() => void run({ type: 'deleteKey' })}
+              >
+                断开并删掉钥匙
               </button>
             </div>
-          </>
-        ) : (
-          <select
-            id="model-select"
-            value={modelInList ? settings.model : '__custom__'}
-            disabled={busy}
-            onChange={(event) => {
-              if (event.target.value === '__custom__') setCustomMode(true);
-              else void run({ type: 'saveSettings', patch: { model: event.target.value } });
-            }}
-          >
-            {!modelInList && <option value={settings.model}>{settings.model}（当前）</option>}
-            {known.map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-            <option value="__custom__">手动填写…</option>
-          </select>
-        )}
-        {loadFailed && <p className="hint">没能取得完整模型列表，可以手动填写模型 ID。</p>}
-      </div>
-
-      <div className="field">
-        <label htmlFor="replace-key">{state.hasKey ? '换一把新钥匙' : 'DeepSeek 钥匙'}</label>
-        <input
-          id="replace-key"
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          value={key}
-          onChange={(event) => setKey(event.target.value)}
-        />
-        <div className="composer-actions">
-          <button
-            type="button"
-            disabled={busy || !key.trim()}
-            onClick={() => void run({ type: 'saveKey', key }).then(() => setKey(''))}
-          >
-            保存并确认能用
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy || !key.trim()}
-            onClick={() => void run({ type: 'testKey', key })}
-          >
-            只试试连得上不
-          </button>
-          <button
-            type="button"
-            className="danger"
-            disabled={busy || !state.hasKey}
-            onClick={() => void run({ type: 'deleteKey' })}
-          >
-            删掉钥匙
-          </button>
-        </div>
-        <p className="hint">
-          {state.hasKey ? '已经保存了一把钥匙。' : '还没有填钥匙。'}
-          删掉钥匙不会清掉你读过的内容，也不会动下面的设置。
-        </p>
-      </div>
+            <p className="hint">删掉钥匙不会清掉你读过的内容，也不会动其他设置。</p>
+          </div>
+        </>
+      )}
     </Section>
   );
 }
@@ -203,6 +298,12 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
     learn: settings.prompts.learn ?? '',
   });
   const [busy, setBusy] = useState(false);
+  /**
+   * “自己写”是一个覆盖层，不是第三套预设：选中它只切换这一块显示什么，
+   * 不丢掉上面选好的技能——把自写内容清掉时还能落回那套技能。
+   * 未保存过自写内容时也要能打开输入框，否则这个选项点了没有任何反应（曾经的缺陷）。
+   */
+  const [writing, setWriting] = useState<Record<string, boolean>>({});
 
   const run = async (command: Command) => {
     setBusy(true);
@@ -228,21 +329,20 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
       {PROMPT_TARGETS.map(({ key, title, hint }) => {
         const chosen = settings.skillChoices[key] ?? '';
         const custom = settings.prompts[key] ?? '';
+        const isWriting = writing[key] ?? Boolean(custom);
         return (
           <div className="field" key={key}>
             <label htmlFor={`preset-${key}`}>{title}</label>
             <p className="hint">{hint}</p>
             <select
               id={`preset-${key}`}
-              value={custom ? '__custom__' : chosen || '__default__'}
+              value={isWriting ? '__custom__' : chosen || '__default__'}
               disabled={busy}
               onChange={(event) => {
                 const value = event.target.value;
-                if (value === '__custom__' || value === '__default__') {
-                  void run({ type: 'saveSettings', patch: { skillChoices: { [key]: '' } } });
-                } else {
-                  void run({ type: 'saveSettings', patch: { skillChoices: { [key]: value } } });
-                }
+                setWriting((current) => ({ ...current, [key]: value === '__custom__' }));
+                if (value === '__custom__') return;
+                void run({ type: 'saveSettings', patch: { skillChoices: { [key]: value === '__default__' ? '' : value } } });
               }}
             >
               <option value="__default__">默认写法</option>
@@ -253,20 +353,21 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
               ))}
               <option value="__custom__">自己写（优先于预设）</option>
             </select>
-            {custom && (
+            {isWriting && (
               <>
                 <textarea
                   id={`prompt-${key}`}
+                  aria-label={`${title}：我自己写的写法`}
                   rows={6}
                   maxLength={8000}
                   value={drafts[key]}
-                  placeholder="留空就用上面选的写法。"
+                  placeholder="写你希望它怎么写。保存后会盖过上面选的写法。"
                   onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
                 />
                 <div className="composer-actions">
                   <button
                     type="button"
-                    disabled={busy || drafts[key].trim() === custom}
+                    disabled={busy || !drafts[key].trim() || drafts[key].trim() === custom}
                     onClick={() => void run({ type: 'saveSettings', patch: { prompts: { [key]: drafts[key] } } })}
                   >
                     保存我的写法
@@ -277,10 +378,11 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
                     disabled={busy}
                     onClick={() => {
                       setDrafts((current) => ({ ...current, [key]: '' }));
-                      void run({ type: 'saveSettings', patch: { prompts: { [key]: '' } } });
+                      setWriting((current) => ({ ...current, [key]: false }));
+                      if (custom) void run({ type: 'saveSettings', patch: { prompts: { [key]: '' } } });
                     }}
                   >
-                    清掉我的写法
+                    {custom ? '清掉我的写法' : '取消'}
                   </button>
                 </div>
               </>
@@ -790,6 +892,7 @@ function Appearance({ state, send }: { state: PanelState; send: Send }) {
 
 function Cleanup({ state, send }: { state: PanelState; send: Send }) {
   const [busy, setBusy] = useState(false);
+  const tabId = state.tabId;
   const run = async (command: Command) => {
     setBusy(true);
     await send(command);
@@ -802,14 +905,19 @@ function Cleanup({ state, send }: { state: PanelState; send: Send }) {
         关掉标签页就清掉那一页，关掉浏览器就全部清掉。钥匙和上面的设置不受影响。
       </p>
       <div className="composer-actions">
-        <button
-          type="button"
-          className="secondary"
-          disabled={busy || state.tabId === null}
-          onClick={() => state.tabId !== null && void run({ type: 'clearSession', tabId: state.tabId })}
-        >
-          清掉这一页的内容
-        </button>
+        {/* 从浏览器自带的“扩展选项”进来时不知道你在读哪一页：给一句说明，不留一个禁用按钮。 */}
+        {tabId !== null ? (
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => void run({ type: 'clearSession', tabId })}
+          >
+            清掉这一页的内容
+          </button>
+        ) : (
+          <p className="hint">想只清掉某一页？在那一页的侧栏里点“清掉这一页的内容”。</p>
+        )}
         <button
           type="button"
           className="danger"

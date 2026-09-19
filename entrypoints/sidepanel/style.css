@@ -631,6 +631,76 @@ button.link:hover:not(:disabled) {
   vertical-align: 2px;
 }
 
+/* ── 设置页：整页界面，跑在独立标签页里（entrypoints/options）────────
+   非工作时的界面不按侧栏排版：左边分类导航常驻，右边内容限行宽。
+   这里也是唯一用 h2 当页面标题的地方（正文区没有 h1 可抢）。 */
+
+.settings-page {
+  display: flex;
+  align-items: flex-start;
+  min-height: 100vh;
+  max-width: 860px;
+  margin-inline: auto;
+}
+
+.settings-nav {
+  flex: none;
+  position: sticky;
+  top: 0;
+  width: 200px;
+  max-height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-4) var(--space-5) 0;
+}
+
+.settings-brand {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-3);
+}
+
+.settings-nav button {
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+}
+
+.settings-nav button:hover:not(:disabled) {
+  background: var(--paper-2);
+  opacity: 1;
+}
+
+.settings-nav button[aria-current='true'] {
+  background: var(--paper-2);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.settings-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 100vh;
+  padding: var(--space-5) var(--space-5) var(--space-6) var(--space-6);
+  border-left: 1px solid var(--line);
+}
+
+.settings-content h2 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 /* ── 状态与提示 ─────────────────────────────────────────── */
 
 .busy {

@@ -19,7 +19,8 @@
 entrypoints/            扩展入口（薄）
   background.ts         MV3 service worker：注册监听 + 转发事件
   content.ts            runtime 注册的内容脚本（不在 manifest 声明站点）
-  sidepanel/            React 侧栏
+  sidepanel/            React 侧栏：阅读时的一切（摘要、问答、学习）
+  options/              React 设置页：非阅读时的整页界面，独立标签页
 
 src/core/               纯逻辑：无 chrome.*、无 DOM，可单测
   protocol.ts           侧栏 ↔ 后台 ↔ 内容脚本的消息契约（唯一真源）
@@ -42,8 +43,12 @@ src/content/            只在被调用时读当前页
   trees.ts              可读子树：开放 shadow root 与同源 iframe 的展开克隆
   text.ts               归一化、指纹、CSS 路径
 
-src/sidepanel/          界面 + 端口客户端
+src/sidepanel/          界面 + 端口客户端（侧栏与设置页共用；两边都只经端口与后台说话）
 ```
+
+**侧栏是工作时的界面，设置是整页界面。** 两者用同一个端口协议连后台：设置页用
+`attach(null)`（没有“当前这一页”），从侧栏打开时带 `#<标签页号>` 才 attach 到那一页，
+因此“清掉这一页的内容”知道指的是哪一页，而浏览器自带的“扩展选项”入口进来时不指向任何页面。
 
 ## 三条不可越过的边界
 

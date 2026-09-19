@@ -5,7 +5,6 @@ import type { Command, PanelState, Reply } from '../core/protocol';
 import { activeTabId, createClient, type Client } from './api';
 import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
-import { Settings } from './components/Settings';
 import { Setup } from './components/Setup';
 import { Busy, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
 
@@ -24,7 +23,6 @@ export function App() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [state, setState] = useState<PanelState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
   const [view, setView] = useState<View>('qa');
   const learningWasActive = useRef(false);
   const clientRef = useRef<Client | null>(null);
@@ -103,6 +101,17 @@ export function App() {
     await send({ type: 'start', tabId: state.tabId });
   };
 
+  /**
+   * 设置打开成独立标签页，不在侧栏里展开：阅读才在侧栏，改配置不是阅读，
+   * 不该被侧栏宽度限制。地址带上当前页号，设置页里的“清掉这一页的内容”才指得准。
+   */
+  // ponytail: 连点两次会开两个设置标签页。要复用已有那个得用 runtime.getContexts 找出来再聚焦，
+  // 现在不值得。真的烦了再加。
+  const openSettings = () => {
+    const url = browser.runtime.getURL('/options.html');
+    void browser.tabs.create({ url: state?.tabId != null ? `${url}#${state.tabId}` : url });
+  };
+
   const phase = state?.phase ?? 'READY_TO_START';
   const busy = state?.busy ?? null;
   const readyShell = phase === 'READY' || phase === 'LEARNING';
@@ -115,22 +124,15 @@ export function App() {
     >
       <header className="panel-header">
         <h1>webknow-ai</h1>
-        <button
-          type="button"
-          className="link"
-          aria-expanded={showSettings}
-          onClick={() => setShowSettings((value) => !value)}
-        >
-          {showSettings ? '返回阅读' : '设置'}
+        <button type="button" className="link" onClick={openSettings}>
+          设置
         </button>
       </header>
 
       {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
       {state?.error && <ErrorBanner error={state.error} />}
 
-      {showSettings ? (
-        state && <Settings state={state} send={send} />
-      ) : !state ? (
+      {!state ? (
         <p className="hint">正在连接后台…</p>
       ) : (
         <>

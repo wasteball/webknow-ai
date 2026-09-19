@@ -313,14 +313,61 @@ test('选择题轮在宽面板下可交互', async () => {
   await quizPanel.close();
 });
 
-test('设置页在宽面板下排版正确', async () => {
+test('设置是独立标签页：分类导航与内容区排版正确', async () => {
   test.setTimeout(120_000);
   const panel = await context.newPage();
   await panel.setViewportSize({ width: 720, height: 920 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await panel.getByRole('button', { name: '设置' }).click();
-  await expect(panel.getByText('模型与钥匙')).toBeVisible();
-  await expect(panel.getByText('提示词')).toBeVisible();
-  await panel.screenshot({ path: join(OUTPUT_DIR, 'settings-720.png'), fullPage: true });
+  // 设置不在侧栏里展开：非工作时的界面不该被侧栏宽度限制。
+  const [settings] = await Promise.all([
+    context.waitForEvent('page'),
+    panel.getByRole('button', { name: '设置' }).click(),
+  ]);
+  await settings.setViewportSize({ width: 1100, height: 900 });
+  await expect(settings).toHaveURL(/options\.html(#\d+)?$/);
+
+  // 左侧分类导航可切换，右侧内容随分类变化。
+  await expect(settings.getByText('“AI 问我”一轮最多问几个问题')).toBeVisible();
+  const nav = settings.getByRole('navigation', { name: '设置分类' });
+  // 这台浏览器里已经有钥匙（beforeAll 放的），所以模型这一步直接可选。
+  await nav.getByRole('button', { name: '模型' }).click();
+  await expect(nav.getByRole('button', { name: '模型' })).toHaveAttribute('aria-current', 'true');
+  await expect(settings.getByRole('heading', { name: 'DeepSeek' })).toBeVisible();
+  await expect(settings.getByLabel('用哪个模型')).toBeVisible();
+  // 提示词：选“自己写”必须立刻出现输入框——没保存过自写内容时也不能点了没反应。
+  await nav.getByRole('button', { name: '提示词' }).click();
+  await expect(settings.getByLabel('导读摘要：我自己写的写法')).toBeHidden();
+  await settings.getByLabel('导读摘要').selectOption('__custom__');
+  await expect(settings.getByLabel('导读摘要：我自己写的写法')).toBeVisible();
+
+  await nav.getByRole('button', { name: '知识库' }).click();
+  await expect(settings.getByText('Client ID')).toBeVisible();
+  await settings.screenshot({ path: join(OUTPUT_DIR, 'settings-page.png'), fullPage: true });
+
+  await settings.close();
   await panel.close();
+});
+
+test('模型：先接上供应商，再选模型', async () => {
+  test.setTimeout(120_000);
+  const settings = await context.newPage();
+  await settings.setViewportSize({ width: 1100, height: 900 });
+  const openModelCategory = async () => {
+    await settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '模型' }).click();
+  };
+  await settings.goto(`chrome-extension://${extensionId}/options.html`);
+  await openModelCategory();
+  await expect(settings.getByText('已连接。', { exact: false })).toBeVisible();
+
+  // 清掉钥匙，回到“还没有连接”：这时候只给连接这一步，不摆一个拉不到列表的模型选择器
+  // （Dify 式顺序：先装供应商，再填钥匙，最后才是模型）。
+  await context.serviceWorkers()[0]!.evaluate(() => chrome.storage.local.clear());
+  await settings.reload();
+  await openModelCategory();
+  await expect(settings.getByText('还没有连接。', { exact: false })).toBeVisible();
+  await expect(settings.getByRole('button', { name: '连接' })).toBeVisible();
+  await expect(settings.getByLabel('用哪个模型')).toBeHidden();
+  await settings.screenshot({ path: join(OUTPUT_DIR, 'settings-page-connect.png'), fullPage: true });
+
+  await settings.close();
 });
