@@ -127,3 +127,84 @@ describe('chatJson', () => {
     expect(onProgress.mock.calls.at(-1)?.[0]).toBeGreaterThanOrEqual(500);
   });
 });
+
+/**
+ * 失败分类：**不能只看 HTTP 状态**。
+ * 下面每一条的响应体都是 2026-09-19 从智谱真实接口抓下来的原样结构。
+ */
+describe('失败分类按供应商错误码', () => {
+  const sseOk = (body: string) =>
+    (async () =>
+      new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(body));
+          controller.close();
+        },
+      }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })) as unknown as typeof fetch;
+
+  const fail = (status: number, body: unknown) =>
+    (async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })) as unknown as typeof fetch;
+
+  it('智谱 429 + code 1113 是「余额不足」，不是「太忙」', async () => {
+    // 真实响应：{"code":"1113","message":"余额不足或无可用资源包,请充值。"}
+    const failure = chatJson({
+      ...base,
+      provider: findProvider('zhipu'),
+      fetchImpl: fail(429, { code: '1113', message: '余额不足或无可用资源包,请充值。' }),
+    });
+    await expect(failure).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
+    // 文案要点名是哪家，并且给出可执行的下一步（去充值），不是"等一会儿"。
+    await expect(failure).rejects.toThrowError(/智谱.*余额不够.*充值/);
+  });
+
+  it('DeepSeek 的 429 仍是「限流」——同样状态码，含义不同', async () => {
+    const failure = chatJson({
+      ...base,
+      provider: findProvider('deepseek'),
+      fetchImpl: fail(429, { error: { message: 'Rate limit reached' } }),
+    });
+    await expect(failure).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+    await expect(failure).rejects.toThrowError(/太忙/);
+  });
+
+  it('余额字样兜底：码表变了也不会误报成限流', async () => {
+    const failure = chatJson({
+      ...base,
+      provider: findProvider('zhipu'),
+      fetchImpl: fail(429, { code: '9999', message: 'Account balance is insufficient.' }),
+    });
+    await expect(failure).rejects.toMatchObject({ code: 'INSUFFICIENT_BALANCE' });
+  });
+
+  it('智谱 401 与 400+1211 各自给出可执行的下一步', async () => {
+    // 真实响应：{"code":"1000","message":"身份验证失败。"}
+    await expect(
+      chatJson({ ...base, provider: findProvider('zhipu'), fetchImpl: fail(401, { code: '1000', message: '身份验证失败。' }) }),
+    ).rejects.toMatchObject({ code: 'KEY_INVALID' });
+    // 真实响应：{"code":"1211","message":"模型不存在，请检查模型代码。"}
+    const badModel = chatJson({
+      ...base,
+      provider: findProvider('zhipu'),
+      fetchImpl: fail(400, { code: '1211', message: '模型不存在，请检查模型代码。' }),
+    });
+    await expect(badModel).rejects.toMatchObject({ code: 'UNSUPPORTED_MODEL' });
+    await expect(badModel).rejects.toThrowError(/换一个|手动填写/);
+  });
+
+  it('读不出正文时退回按状态码分类，不因此报错', async () => {
+    const notJson = (async () =>
+      new Response('<html>502 Bad Gateway</html>', { status: 502 })) as unknown as typeof fetch;
+    await expect(
+      chatJson({ ...base, provider: findProvider('deepseek'), fetchImpl: notJson }),
+    ).rejects.toMatchObject({ code: 'SERVICE' });
+  });
+
+  it('成功路径不读正文：正常流式结果照常返回', async () => {
+    const body = 'data: {"choices":[{"delta":{"content":"{\\"answer\\":1}"},"finish_reason":null}]}\n\ndata: [DONE]\n\n';
+    await expect(chatJson({ ...base, fetchImpl: sseOk(body) })).resolves.toEqual({ answer: 1 });
+  });
+});

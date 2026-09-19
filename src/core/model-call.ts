@@ -80,6 +80,34 @@ function pickString(value: unknown, path: (string | number)[]): string | undefin
   return typeof current === 'string' ? current : undefined;
 }
 
+/**
+ * 从失败响应里取出**只用于分类**的错误码与一句话。
+ *
+ * 为什么要读正文：只看 HTTP 状态会分错类——429 在 DeepSeek 是"限流"，
+ * 在智谱是"余额不足"（code 1113），两者给用户的下一步完全不同。
+ *
+ * 边界：读到的内容只喂给分类函数，**绝不进界面、日志或会话**；
+ * 截断到 2KB，解析失败就退回只按状态码分类。成功路径不读正文。
+ */
+async function failureHint(
+  response: Response,
+  providerName: string,
+): Promise<{ providerName: string; code?: string; detail?: string }> {
+  const hint: { providerName: string; code?: string; detail?: string } = { providerName };
+  try {
+    const text = (await response.text()).slice(0, 2000);
+    const parsed: unknown = JSON.parse(text);
+    const body = parsed as { error?: { code?: unknown; message?: unknown }; code?: unknown; message?: unknown };
+    const raw = body.error?.code ?? body.code;
+    const message = body.error?.message ?? body.message;
+    if (raw !== undefined) hint.code = String(raw);
+    if (typeof message === 'string') hint.detail = message.slice(0, 300);
+  } catch {
+    // 读不出来或不是 JSON：保持只有状态码，分类照旧
+  }
+  return hint;
+}
+
 /** 模型偶尔会包上代码块或前后缀；这里只做容忍解析，不做猜测性修补。 */
 export function parseJsonLoose(text: string): unknown {
   const trimmed = text.trim();
@@ -131,16 +159,16 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
   } catch {
     if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
     if (timeout.aborted) {
-      throw appError('TIMEOUT', '等太久了，DeepSeek 一直没回话。这次没有结果，可以再试一次。', true);
+      throw appError('TIMEOUT', `等太久了，${provider.name} 一直没回话。这次没有结果，可以再试一次。`, true);
     }
-    throw fromNetworkFailure(globalThis.navigator?.onLine === false ? 'offline' : 'unknown');
+    throw fromNetworkFailure(globalThis.navigator?.onLine === false ? 'offline' : 'unknown', provider.name);
   }
 
   if (!response.ok) {
-    throw fromHttpStatus(response.status);
+    throw fromHttpStatus(response.status, await failureHint(response, provider.name));
   }
   if (!response.body) {
-    throw appError('SERVICE', 'DeepSeek 没有回任何内容。这次没有结果，可以再试一次。', true);
+    throw appError('SERVICE', `${provider.name} 没有回任何内容。这次没有结果，可以再试一次。`, true);
   }
 
   const reader = response.body.getReader();
@@ -164,9 +192,9 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
   } catch {
     if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
     if (timeout.aborted) {
-      throw appError('TIMEOUT', 'DeepSeek 回到一半断了。这次没有结果，可以再试一次。', true);
+      throw appError('TIMEOUT', `${provider.name} 回到一半断了。这次没有结果，可以再试一次。`, true);
     }
-    throw appError('SERVICE', '读 DeepSeek 的回复时出错了。可以再试一次。', true);
+    throw appError('SERVICE', `读 ${provider.name} 的回复时出错了。可以再试一次。`, true);
   } finally {
     reader.releaseLock();
   }

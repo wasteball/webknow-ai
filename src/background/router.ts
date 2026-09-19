@@ -82,6 +82,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     ...effectiveSettings(config),
     provider: provider.id,
     providerKeys,
+    models: config.models ?? {},
     customSkills: config.skills ?? [],
     search: searchStatus(config),
     ima: {

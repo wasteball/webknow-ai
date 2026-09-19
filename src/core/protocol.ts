@@ -27,9 +27,11 @@ export type PanelSettings = {
   customSkills: Skill[];
   learningBudget: number;
   learningStyle: 'mixed' | 'quiz' | 'open';
-  /** 当前用哪家模型供应商，以及每家是否已经配好钥匙（Key 本身永不进界面）。 */
+  /** 当前用哪家模型供应商、每家配没配好钥匙、每家各自选的模型。
+      Key 本身永不进界面——这里只有布尔值。 */
   provider: ProviderId;
   providerKeys: Record<ProviderId, boolean>;
+  models: Partial<Record<ProviderId, string>>;
   /** 联网搜索（F3）：只暴露状态，凭证永不进界面。 */
   search: { enabled: boolean; providerName: string | null; hasCredentials: boolean };
   /** 知识库（K-ima）：只暴露状态；凭证永不进界面。 */

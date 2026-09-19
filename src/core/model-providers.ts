@@ -37,6 +37,12 @@ export type ModelProvider = {
   keyPage: string;
   /** 该供应商是否已在 manifest 里固定授权（DeepSeek 是；其余按需申请）。 */
   fixedHost: boolean;
+  /** 设置页卡片上的一句话说明。 */
+  tagline: string;
+  /** 卡片左上角方形标记里的字（原型做法）。 */
+  logoChar: string;
+  /** 标记底色：品牌色，只有这里是硬编码的颜色。 */
+  logoColor: string;
 };
 
 const deepseek: ModelProvider = {
@@ -63,21 +69,24 @@ const deepseek: ModelProvider = {
   keyHint: '以 sk- 开头',
   keyPage: 'https://platform.deepseek.com/api_keys',
   fixedHost: true,
+  tagline: '通用对话与推理模型',
+  logoChar: 'D',
+  logoColor: '#4f69e9',
 };
 
 /**
- * 智谱。**本段整体未经真实联调**（加这个供应商时手上没有智谱 Key），
- * 依据是官方文档与 OpenAI 兼容说明：
- * - 端点 POST https://open.bigmodel.cn/api/paas/v4/chat/completions，SSE 与 OpenAI 一致；
- * - 鉴权 `Authorization: Bearer <key>`，key 形如 `xxxxxxxx.xxxxxxxxxxxxxxxx`（不是 sk- 开头）；
- * - response_format 的 json_object **官方文档明确支持**（仅文本模型），故沿用；
- * - 未写入 thinking 开关：智谱各版本对它的支持不一致，宁可用默认行为，
- *   也不塞一个可能 400 的字段。
+ * 智谱。2026-09-19 已用真实 Key 跑通**整条链路**（打包扩展 → 后台 → 这里 →
+ * 智谱端点 → 流式 → JSON 校验 → 界面渲染出摘要），端点、鉴权头、请求体形状、
+ * 流式分片都与下面的写法一致。
  *
- * 第一次真机联调时按顺序看这三点：
- * 1. 请求体是否被接受（若 400，先去掉 bodyDefaults 里的 response_format）；
- * 2. 流式分片是否仍是 choices[0].delta.content（是则传输层不用改）；
- * 3. knownModels 里的模型 ID 在你的账号下是否可用——不可用就在设置页手动填。
+ * 实测到的错误形状（决定了错误分类，见 core/errors.ts）：
+ * - 钥匙无效：HTTP 401 + code 1000
+ * - 模型不存在：HTTP 400 + code 1211
+ * - 余额不足：**HTTP 429** + code 1113 —— 同样返回 429，DeepSeek 那边表示限流，
+ *   只看状态码会把"去充值"说成"等一会儿"。
+ *
+ * 未写入 thinking 开关：智谱各版本对它的支持不一致，用默认行为，
+ * 不塞一个可能 400 的字段。
  */
 const zhipu: ModelProvider = {
   id: 'zhipu',
@@ -95,6 +104,9 @@ const zhipu: ModelProvider = {
   keyHint: '形如 xxxxxxxx.xxxxxxxxxxxxxxxx（不是 sk- 开头）',
   keyPage: 'https://open.bigmodel.cn/usercenter/apikeys',
   fixedHost: false,
+  tagline: 'GLM 系列模型',
+  logoChar: '智',
+  logoColor: '#202a42',
 };
 
 export const MODEL_PROVIDERS: ModelProvider[] = [deepseek, zhipu];
