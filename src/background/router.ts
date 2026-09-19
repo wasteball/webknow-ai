@@ -265,7 +265,13 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
           : { ok: false, error: appError('INTERNAL', '现在没有正在进行的事情。', false) };
 
       case 'ask':
-        return finish(await handleIntent({ kind: 'ask', tabId: command.tabId, question: command.question }, hooks));
+        // 逐题联网开关由界面决定：这里必须原样透传，否则开关是死的（F3）。
+        return finish(
+          await handleIntent(
+            { kind: 'ask', tabId: command.tabId, question: command.question, search: command.search },
+            hooks,
+          ),
+        );
 
       case 'explore': {
         const session = await getSession(command.tabId);

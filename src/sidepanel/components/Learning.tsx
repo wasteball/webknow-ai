@@ -7,12 +7,12 @@ import { Busy, Section, VerdictTag } from './bits';
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
- * “AI 问我”Tab。四种形态：
+ * 「对话学懂」面板。四种形态：
  * - 空闲（没有学习会话）：学习目标表单；
  * - 开放问题进行中：时间线 + 回答输入 + 辅助操作；
  * - 选择题轮进行中：直接在题目上勾选并提交；
  * - 已收束：完整时间线 + 小结，并可再开一轮。
- * 切到别的 Tab 不影响学习会话；这里只负责展示与操作。
+ * 时间线在滚动区，当前能做的动作固定在底部；切到别的模式不影响学习会话。
  */
 export function Learning({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
@@ -24,8 +24,14 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
   const busy = state.busy?.kind === 'learn';
   const endRef = useRef<HTMLDivElement>(null);
 
+  // 同上：只有新的一轮出现时才跟到底部，挂载时停在时间线开头（目标与预算在那里）。
+  const seen = useRef({ entries: learning?.log.length ?? 0, busy });
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
+    const entries = learning?.log.length ?? 0;
+    if (entries > seen.current.entries || (busy && !seen.current.busy)) {
+      endRef.current?.scrollIntoView({ block: 'end' });
+    }
+    seen.current = { entries, busy };
   }, [learning?.log.length, busy]);
 
   useEffect(() => {
@@ -37,6 +43,8 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
   const current = learning?.current ?? null;
   const quiz = current?.kind === 'quiz' ? current.questions : null;
   const allAnswered = quiz !== null && quiz.every((question) => (picks[question.id] ?? []).length > 0);
+  // 有学习请求在飞时不摆动作区：这期间所有操作都会被后台挡回来，摆出来只会让人白点。
+  const showDock = !busy;
 
   const answer = async () => {
     if (!tabId || !draft.trim()) return;
@@ -74,7 +82,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <>
-      <Section title="AI 问我">
+      <Section title="学习过程">
         {learning && (
           <p className="hint">
             这次要弄清楚「{learning.goal}」。已经问了 {state.budget.used}/{state.budget.total} 轮
@@ -132,167 +140,165 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
         <div ref={endRef} />
       </Section>
 
-      {quiz && !busy && learning?.status === 'active' && (
-        <form
-          className="composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submitQuiz();
-          }}
-        >
-          {quiz.map((question, questionIndex) => (
-            <fieldset className="quiz-question" key={question.id}>
-              <legend>
-                {questionIndex + 1}. {question.text}
-                {question.multi && <span className="tag">可多选</span>}
-              </legend>
-              {question.choices.map((choice) => (
-                <label key={choice.id} className="quiz-option">
-                  <input
-                    type={question.multi ? 'checkbox' : 'radio'}
-                    name={`quiz-${question.id}`}
-                    checked={(picks[question.id] ?? []).includes(choice.id)}
-                    onChange={() => togglePick(question, choice.id)}
-                  />
-                  <span>{choice.label}</span>
-                </label>
+      {/* 底部固定区：只放"现在能做的动作"，滚到时间线哪一段都能作答。 */}
+      {showDock && (
+        <div className="dock">
+          {quiz && learning?.status === 'active' && (
+            <form
+              className="composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitQuiz();
+              }}
+            >
+              {quiz.map((question, questionIndex) => (
+                <fieldset className="quiz-question" key={question.id}>
+                  <legend>
+                    {questionIndex + 1}. {question.text}
+                    {question.multi && <span className="tag">可多选</span>}
+                  </legend>
+                  {question.choices.map((choice) => (
+                    <label key={choice.id} className="quiz-option">
+                      <input
+                        type={question.multi ? 'checkbox' : 'radio'}
+                        name={`quiz-${question.id}`}
+                        checked={(picks[question.id] ?? []).includes(choice.id)}
+                        onChange={() => togglePick(question, choice.id)}
+                      />
+                      <span>{choice.label}</span>
+                    </label>
+                  ))}
+                </fieldset>
               ))}
-            </fieldset>
-          ))}
-          <div className="composer-actions">
-            <button type="submit" disabled={!allAnswered}>
-              提交答案
-            </button>
-          </div>
-        </form>
-      )}
+              <div className="composer-actions">
+                <button type="submit" disabled={!allAnswered}>
+                  提交答案
+                </button>
+              </div>
+            </form>
+          )}
 
-      {current?.kind === 'open' && learning?.status === 'active' && !busy && (
-        <>
-          <form
-            className="composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void answer();
-            }}
-          >
-            <label className="sr-only" htmlFor="learning-answer">
-              用自己的话回答
-            </label>
-            <textarea
-              id="learning-answer"
-              rows={2}
-              maxLength={1000}
-              value={draft}
-              placeholder={current ? '用自己的话说说看…' : '等一下，马上提问…'}
-              disabled={!current || busy}
-              onChange={(event) => setDraft(event.target.value)}
-            />
-            <div className="composer-actions">
-              <button type="submit" disabled={busy || !draft.trim() || !current}>
-                回答
+          {current?.kind === 'open' && learning?.status === 'active' && (
+            <>
+              <form
+                className="composer"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void answer();
+                }}
+              >
+                <label className="sr-only" htmlFor="learning-answer">
+                  用自己的话回答
+                </label>
+                <textarea
+                  id="learning-answer"
+                  rows={2}
+                  maxLength={1000}
+                  value={draft}
+                  placeholder="用自己的话说说看…"
+                  onChange={(event) => setDraft(event.target.value)}
+                />
+                <div className="composer-actions">
+                  <button type="submit" disabled={!draft.trim()}>
+                    回答
+                  </button>
+                </div>
+              </form>
+              <div className="composer-actions" role="group" aria-label="学习辅助">
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'hint' })}
+                >
+                  给我提示
+                </button>
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'explain' })}
+                >
+                  直接讲解
+                </button>
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'skip' })}
+                >
+                  跳过
+                </button>
+                <button
+                  type="button"
+                  className="quiet"
+                  onClick={() => tabId && void send({ type: 'learnEnd', tabId })}
+                >
+                  结束学习
+                </button>
+              </div>
+            </>
+          )}
+
+          {current?.kind === 'quiz' && learning?.status === 'active' && (
+            <div className="composer-actions" role="group" aria-label="学习辅助">
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'explain' })}
+              >
+                直接讲解
+              </button>
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'skip' })}
+              >
+                跳过这一轮
+              </button>
+              <button
+                type="button"
+                className="quiet"
+                onClick={() => tabId && void send({ type: 'learnEnd', tabId })}
+              >
+                结束学习
               </button>
             </div>
-          </form>
-          <div className="composer-actions" role="group" aria-label="学习辅助">
-            <button
-              type="button"
-              className="quiet"
-              disabled={busy || !current}
-              onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'hint' })}
-            >
-              给我提示
-            </button>
-            <button
-              type="button"
-              className="quiet"
-              disabled={busy || !current}
-              onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'explain' })}
-            >
-              直接讲解
-            </button>
-            <button
-              type="button"
-              className="quiet"
-              disabled={busy}
-              onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'skip' })}
-            >
-              跳过
-            </button>
-            <button
-              type="button"
-              className="quiet"
-              disabled={busy}
-              onClick={() => tabId && void send({ type: 'learnEnd', tabId })}
-            >
-              结束学习
-            </button>
-          </div>
-        </>
-      )}
-
-      {current?.kind === 'quiz' && learning?.status === 'active' && !busy && (
-        <div className="composer-actions" role="group" aria-label="学习辅助">
-          <button
-            type="button"
-            className="quiet"
-            disabled={busy}
-            onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'explain' })}
-          >
-            直接讲解
-          </button>
-          <button
-            type="button"
-            className="quiet"
-            disabled={busy}
-            onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'skip' })}
-          >
-            跳过这一轮
-          </button>
-          <button
-            type="button"
-            className="quiet"
-            disabled={busy}
-            onClick={() => tabId && void send({ type: 'learnEnd', tabId })}
-          >
-            结束学习
-          </button>
-        </div>
-      )}
-
-      {learning?.status === 'active' && !current && !busy && (
-        <p className="hint">等一下，马上出下一轮…</p>
-      )}
-
-      {(!learning || learning.status === 'closed') && (
-        <form
-          className="composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void start();
-          }}
-        >
-          {learning?.status === 'closed' && (
-            <p className="hint">这一轮到这里。想继续的话，可以换个方向再来一轮。</p>
           )}
-          <label className="sr-only" htmlFor="learning-goal">
-            想重点弄清楚什么（可不填）
-          </label>
-          <input
-            id="learning-goal"
-            type="text"
-            maxLength={200}
-            value={goal}
-            placeholder={learning?.status === 'closed' ? '下一轮想弄清楚什么（可不填）' : '想重点弄清楚什么？可不填。'}
-            disabled={busy}
-            onChange={(event) => setGoal(event.target.value)}
-          />
-          <div className="composer-actions">
-            <button type="submit" disabled={busy}>
-              {learning?.status === 'closed' ? '再来一轮' : '让 AI 问我'}
-            </button>
-          </div>
-        </form>
+
+          {learning?.status === 'active' && !current && (
+            <p className="hint">等一下，马上出下一轮…</p>
+          )}
+
+          {(!learning || learning.status === 'closed') && (
+            <form
+              className="composer"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void start();
+              }}
+            >
+              {learning?.status === 'closed' && (
+                <p className="hint">这一轮到这里。想继续的话，可以换个方向再来一轮。</p>
+              )}
+              <label className="sr-only" htmlFor="learning-goal">
+                想重点弄清楚什么（可不填）
+              </label>
+              <input
+                id="learning-goal"
+                type="text"
+                maxLength={200}
+                value={goal}
+                placeholder={
+                  learning?.status === 'closed' ? '下一轮想弄清楚什么（可不填）' : '想重点弄清楚什么？可不填。'
+                }
+                onChange={(event) => setGoal(event.target.value)}
+              />
+              <div className="composer-actions">
+                <button type="submit">
+                  {learning?.status === 'closed' ? '再来一轮' : '让 AI 问我'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
       )}
     </>
   );

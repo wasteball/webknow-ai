@@ -68,6 +68,9 @@ test('首次配置界面', async () => {
 
 test('首屏摘要与话题', async () => {
   test.skip(!liveKey, '需要 DEEPSEEK_KEY 才能生成首屏截图');
+  // 真实模型的用例：这一条要跑导览 + 出题 + 一轮作答，全量跑时前面还有别的真实调用，
+  // 默认的 60 秒不够用（单独跑只要几秒）。
+  test.setTimeout(180_000);
   const worker = context.serviceWorkers()[0];
   if (!worker) throw new Error('缺少 service worker');
 
@@ -75,7 +78,7 @@ test('首屏摘要与话题', async () => {
     await chrome.storage.local.set({
       config: {
         apiKey: key,
-        outbound: { version: '2026-09-18.1', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+        outbound: { version: '2026-09-19.1', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
       },
     });
   }, liveKey);
@@ -103,9 +106,17 @@ test('首屏摘要与话题', async () => {
   await expect(panel.locator('.bubble').first()).toBeVisible();
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-02-guide.png'), fullPage: true });
 
-  // “AI 问我”的第一题
+  // “AI 问我”：真答一轮再截图。只截第一题的话，画面大半是空白，
+  // 看不出"一次一个问题"是怎么一步步推进的——那正是翠色时间线要表达的东西。
   await panel.getByRole('button', { name: '让 AI 问我' }).click();
   await expect(panel.locator('.entry-question').first()).toBeVisible({ timeout: 60_000 });
+
+  await panel.getByLabel('用自己的话回答').fill(
+    '新方案在这个试点里平均用了八十分钟，比原方案的一百分钟少；但作者提醒只有三个受过培训的团队，不能推广。',
+  );
+  await panel.getByRole('button', { name: '回答' }).click();
+  await expect(panel.locator('.entry-feedback').first()).toBeVisible({ timeout: 60_000 });
+  await expect(panel.locator('.entry-question').nth(1)).toBeVisible({ timeout: 60_000 });
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-03-learning.png'), fullPage: true });
   await article.close();
   await panel.close();

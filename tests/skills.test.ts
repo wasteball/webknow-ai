@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BUILTIN_SKILLS, findSkill, resolvePolicy, validateCustomSkill } from '../src/core/skills';
+import { BUILTIN_SKILLS, findSkill, resolvePolicy, validateCustomSkill, type Skill } from '../src/core/skills';
 
 describe('技能（产品化改造 F6）', () => {
   it('内置技能覆盖三个板块且内容完整', () => {
@@ -20,10 +20,25 @@ describe('技能（产品化改造 F6）', () => {
     expect(resolvePolicy('guide', { skillChoices: { guide: custom.id } })).toBe(custom.body);
     expect(
       resolvePolicy('guide', {
-        overrides: { guide: '我自己写的' },
+        prompts: { guide: '我自己写的' },
         skillChoices: { guide: custom.id },
       }),
     ).toBe('我自己写的');
+  });
+
+  it('入参字段名与存储形态一致：Config 直接传入即可读到自定义内容', () => {
+    // 回归：core 曾经叫 overrides/customSkills，调用方按存储名传 prompts/skills
+    // 就永远读不到自定义内容，且没有任何测试会发现。
+    const mine: Skill = {
+      id: 'custom.mine',
+      name: '我的技能',
+      description: '',
+      target: 'answer',
+      body: '我的技能正文',
+    };
+    const config = { prompts: { answer: '我的覆盖' }, skillChoices: { guide: 'custom.mine' }, skills: [mine] };
+    expect(resolvePolicy('answer', config)).toBe('我的覆盖');
+    expect(resolvePolicy('guide', config)).toBe('我的技能正文');
   });
 
   it('选中的技能被删除后静默回退默认', () => {

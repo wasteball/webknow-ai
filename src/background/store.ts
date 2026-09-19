@@ -210,6 +210,7 @@ export async function applySettings(patch: SettingsPatch): Promise<void> {
 
   if (clean.model !== undefined) next.model = clean.model;
   if (clean.learningBudget !== undefined) next.learningBudget = clean.learningBudget;
+  if (clean.learningStyle !== undefined) next.learningStyle = clean.learningStyle;
   if (clean.maxBubbles !== undefined) next.maxBubbles = clean.maxBubbles;
   if (clean.summaryLength !== undefined) next.summaryLength = clean.summaryLength;
   if (clean.fontSize !== undefined) next.appearance = { ...current.appearance, fontSize: clean.fontSize };

@@ -177,7 +177,7 @@ test.beforeAll(async () => {
     await chrome.storage.local.set({
       config: {
         apiKey: 'sk-test-not-real',
-        outbound: { version: '2026-09-18.1', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+        outbound: { version: '2026-09-19.1', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
       },
     });
   });
@@ -242,6 +242,8 @@ test('READY 视图在三种宽度下排版正确', async () => {
     const { panel } = await openPanel(width);
     await expect(panel.getByText('这篇文章讲了什么')).toBeVisible();
     await expect(panel.locator('.bubble').first()).toBeVisible();
+    // 一进来就停在顶部：摘要与话题是这一栏最重要的一段，不该被推到屏幕外。
+    expect(await panel.evaluate(() => window.scrollY)).toBe(0);
     await panel.screenshot({ path: join(OUTPUT_DIR, `ready-${width}.png`), fullPage: true });
     await panel.close();
   }
@@ -264,12 +266,13 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
   await expect(_panel.locator('.entry-question').first()).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-720.png'), fullPage: true });
 
-  // F4 的核心场景：学习进行中切回问答，摘要、对话与输入都还在，学习不被打断。
-  await _panel.getByRole('tab', { name: /问答/ }).click();
+  // F4 的核心场景：学习进行中切回伴读，摘要、对话与输入都还在，学习不被打断。
+  await _panel.getByRole('tab', { name: /网页伴读/ }).click();
   await expect(_panel.getByRole('button', { name: '发送' })).toBeVisible();
+  await expect(_panel.getByText('这篇文章讲了什么')).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-qa-tab-720.png'), fullPage: true });
 
-  // 空闲形态：收束后回到 READY，“AI 问我”Tab 显示新一轮的出题表单。
+  // 空闲形态：收束后回到 READY，“对话学懂”面板显示新一轮的出题表单。
   await context.serviceWorkers()[0]!.evaluate(async (id) => {
     const stored = await chrome.storage.session.get(`sess:${id}`);
     const session = stored[`sess:${id}`] as Record<string, unknown>;
@@ -279,8 +282,8 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
     await chrome.storage.session.set({ [`sess:${id}`]: session });
   }, tabId);
   await pushState(_panel, tabId);
-  // 视图尊重用户所在的位置：收束后不会强行切走，需要自己回到“AI 问我”Tab。
-  await _panel.getByRole('tab', { name: /AI 问我/ }).click();
+  // 视图尊重用户所在的位置：收束后不会强行切走，需要自己回到“对话学懂”面板。
+  await _panel.getByRole('tab', { name: /对话学懂/ }).click();
   await expect(_panel.getByRole('button', { name: '再来一轮' })).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-closed-720.png'), fullPage: true });
 
@@ -346,6 +349,167 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
 
   await settings.close();
   await panel.close();
+});
+
+test('模式切换是完整的 tab 组件：ARIA 关系与方向键都能用', async () => {
+  test.setTimeout(120_000);
+  const { panel } = await openPanel(560);
+  const readTab = panel.getByRole('tab', { name: /网页伴读/ });
+  const learnTab = panel.getByRole('tab', { name: /对话学懂/ });
+  const readPanel = panel.getByRole('tabpanel', { name: /网页伴读/ });
+  const learnPanel = panel.getByRole('tabpanel', { name: /对话学懂/ });
+
+  // 关系成套：tab 指到面板，面板指回 tab，未选中的那个真隐藏（不是只换个颜色）。
+  await expect(readTab).toHaveAttribute('aria-controls', 'mode-panel-qa');
+  await expect(readPanel).toHaveAttribute('id', 'mode-panel-qa');
+  await expect(learnPanel).toBeHidden();
+  // roving tabIndex：Tab 键只停在当前模式上，不把两个都过一遍。
+  await expect(readTab).toHaveAttribute('tabindex', '0');
+  await expect(learnTab).toHaveAttribute('tabindex', '-1');
+
+  // 方向键切换并把焦点带过去（WAI-ARIA tabs 的自动激活约定）。
+  await readTab.focus();
+  await readTab.press('ArrowRight');
+  await expect(learnTab).toHaveAttribute('aria-selected', 'true');
+  await expect(learnTab).toBeFocused();
+  await expect(learnPanel).toBeVisible();
+  await expect(readPanel).toBeHidden();
+
+  await learnTab.press('ArrowLeft');
+  await expect(readTab).toHaveAttribute('aria-selected', 'true');
+  await expect(readTab).toBeFocused();
+
+  await learnTab.press('Home');
+  await expect(readTab).toHaveAttribute('aria-selected', 'true');
+  await expect(readTab).toBeFocused();
+
+  await readTab.press('End');
+  await expect(learnTab).toHaveAttribute('aria-selected', 'true');
+  await expect(learnTab).toBeFocused();
+
+  await panel.close();
+});
+
+test('深色模式跟随系统配色', async () => {
+  test.setTimeout(120_000);
+  const { panel } = await openPanel(560);
+  await panel.emulateMedia({ colorScheme: 'dark' });
+  await expect(panel.getByText('这篇文章讲了什么')).toBeVisible();
+  // 深色不是把浅色反相：只断言"确实变暗了"，具体色值交给令牌本身。
+  expect(await isDark(panel, 'body')).toBe(true);
+  expect(await isDark(panel, '.guide')).toBe(true);
+  await panel.screenshot({ path: join(OUTPUT_DIR, 'ready-560-dark.png'), fullPage: true });
+  await panel.close();
+});
+
+function isDark(page: Page, selector: string): Promise<boolean> {
+  return page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return false;
+    const parts = getComputedStyle(el).backgroundColor.match(/\d+/g)?.map(Number) ?? [];
+    const [r, g, b] = parts;
+    return r !== undefined && g !== undefined && b !== undefined && (r + g + b) / 3 < 90;
+  }, selector);
+}
+
+test('吸顶的两条不重叠也不漏缝', async () => {
+  test.setTimeout(120_000);
+  const { panel } = await openPanel(560);
+  // 压低视口逼出滚动，再滚下去让两条都进入吸住的状态，然后量接缝。
+  await panel.setViewportSize({ width: 560, height: 360 });
+  await panel.evaluate(() => window.scrollTo(0, 600));
+  expect(await panel.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  const header = await panel.locator('.panel-header').boundingBox();
+  const modes = await panel.locator('.modes').boundingBox();
+  expect(header!.y).toBe(0);
+  expect(modes!.y).toBeGreaterThanOrEqual(header!.y + header!.height - 1);
+  expect(modes!.y).toBeLessThanOrEqual(header!.y + header!.height + 1);
+  await panel.close();
+});
+
+test('三种宽度、两个模式下都不出现横向溢出', async () => {
+  test.setTimeout(180_000);
+  for (const width of WIDTHS) {
+    const { panel, tabId } = await openPanel(width);
+    await expect(panel.getByText('这篇文章讲了什么')).toBeVisible();
+    // 侧栏宽度是用户拖出来的，任何宽度都不能出现横向滚动条。
+    expect(await overflowPx(panel)).toBe(0);
+
+    await context.serviceWorkers()[0]!.evaluate(
+      async ([id, learning]) => {
+        const stored = await chrome.storage.session.get(`sess:${id}`);
+        const session = stored[`sess:${id}`] as Record<string, unknown>;
+        session.learning = learning;
+        session.state = 'LEARNING';
+        await chrome.storage.session.set({ [`sess:${id}`]: session });
+      },
+      [tabId, LEARNING] as const,
+    );
+    await pushState(panel, tabId);
+    await panel.getByRole('tab', { name: /对话学懂/ }).click();
+    await expect(panel.locator('.timeline').first()).toBeVisible();
+    expect(await overflowPx(panel)).toBe(0);
+
+    // 长正文与长问题在窄栏里要换行，不能把输入区顶出屏幕。
+    expect(await overflowPx(panel, '.dock')).toBe(0);
+    await panel.close();
+  }
+});
+
+/** 横向溢出的像素数（>0 就是出现了横向滚动）。 */
+function overflowPx(page: Page, selector?: string): Promise<number> {
+  return page.evaluate((sel) => {
+    const target = sel ? document.querySelector(sel) : document.documentElement;
+    if (!target) return -1;
+    return target.scrollWidth - target.clientWidth;
+  }, selector);
+}
+
+test('设置：出题方式改完立刻落盘（真实存储）', async () => {
+  test.setTimeout(120_000);
+  const settings = await context.newPage();
+  await settings.setViewportSize({ width: 1100, height: 900 });
+  await settings.goto(`chrome-extension://${extensionId}/options.html`);
+
+  // 回归：这个下拉在界面上一直存在，但后台曾经没把它写进配置，选了等于没选。
+  await settings.getByLabel('“AI 问我”怎么出题').selectOption('quiz');
+  await expect
+    .poll(async () =>
+      context.serviceWorkers()[0]!.evaluate(async () => {
+        const stored = await chrome.storage.local.get('config');
+        return (stored.config as { learningStyle?: string } | undefined)?.learningStyle ?? null;
+      }),
+    )
+    .toBe('quiz');
+
+  await settings.reload();
+  await expect(settings.getByLabel('“AI 问我”怎么出题')).toHaveValue('quiz');
+  await settings.close();
+});
+
+test('设置：窄窗口下分类导航变成横向可滚动条，正文不横溢', async () => {
+  test.setTimeout(120_000);
+  const settings = await context.newPage();
+  await settings.setViewportSize({ width: 480, height: 820 });
+  await settings.goto(`chrome-extension://${extensionId}/options.html`);
+  await expect(settings.getByText('“AI 问我”一轮最多问几个问题')).toBeVisible();
+
+  // 导航占满一行并且自己能横向滚动，正文区不跟着一起横溢。
+  const nav = settings.getByRole('navigation', { name: '设置分类' });
+  const navBox = await nav.boundingBox();
+  expect(navBox?.width).toBeGreaterThan(400);
+  expect(await nav.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+  expect(await settings.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(480);
+
+  // 跳转链接在窄布局下才有意义：Tab 第一下就能越过导航直达正文。
+  await settings.keyboard.press('Tab');
+  await expect(settings.getByRole('link', { name: '跳到设置内容' })).toBeFocused();
+
+  await nav.getByRole('button', { name: '关于' }).click();
+  await expect(settings.getByRole('heading', { name: '关于' })).toBeVisible();
+  await settings.screenshot({ path: join(OUTPUT_DIR, 'settings-narrow.png'), fullPage: true });
+  await settings.close();
 });
 
 test('模型：先接上供应商，再选模型', async () => {

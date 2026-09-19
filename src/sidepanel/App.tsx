@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { browser } from 'wxt/browser';
 
 import type { Command, PanelState, Reply } from '../core/protocol';
@@ -14,10 +14,19 @@ const START_LABEL: Record<string, string> = {
 };
 
 /**
- * 已就绪后的两个能力（问答 / AI 问我）用 Tab 切换：摘要固定在 Tab 之上，
- * 学习进行中也能随时切回问答（学习会话保留在后台，不因切换而中断）。
+ * 已就绪后的两个能力用分段切换：「网页伴读」是摘要 + 话题 + 问答的完整阅读面，
+ * 「对话学懂」是学习会话。学习进行中也能随时切回伴读（学习会话留在后台，不因切换而中断）；
+ * 两个面板都保持挂载，所以切回来时草稿还在。
  */
 type View = 'qa' | 'learn';
+
+const MODES: { id: View; label: string; busyKind: 'answer' | 'learn' }[] = [
+  { id: 'qa', label: '网页伴读', busyKind: 'answer' },
+  { id: 'learn', label: '对话学懂', busyKind: 'learn' },
+];
+
+const tabDomId = (view: View) => `mode-tab-${view}`;
+const panelDomId = (view: View) => `mode-panel-${view}`;
 
 export function App() {
   const [tabId, setTabId] = useState<number | null>(null);
@@ -25,6 +34,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<View>('qa');
   const learningWasActive = useRef(false);
+  const booted = useRef(false);
   const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
@@ -57,11 +67,17 @@ export function App() {
     void clientRef.current?.send({ type: 'attach', tabId });
   }, [tabId]);
 
-  // 学习会话从无到有（或重新激活）时自动切到“AI 问我”；其余时候尊重用户所在的 Tab。
+  // 学习会话从无到有时自动切到“对话学懂”；其余时候尊重用户所在的位置。
   const learningActive = state?.learning?.status === 'active';
   useEffect(() => {
-    if (learningActive && !learningWasActive.current) setView('learn');
+    if (learningActive && !learningWasActive.current) {
+      setView('learn');
+      // 用户点的是问答区的“让 AI 问我”，那个按钮随即被藏起来：把焦点接到新选中的
+      // 模式上，别让它掉到 body 上。刚打开面板时不算用户动作，不抢焦点。
+      if (booted.current) document.getElementById(tabDomId('learn'))?.focus();
+    }
     learningWasActive.current = learningActive;
+    booted.current = true;
   }, [learningActive]);
 
   const send = useCallback(async (command: Command): Promise<Reply | undefined> => {
@@ -112,6 +128,21 @@ export function App() {
     void browser.tabs.create({ url: state?.tabId != null ? `${url}#${state.tabId}` : url });
   };
 
+  /** WAI-ARIA tabs 的键盘约定：左右移动选择并把焦点带过去，Home/End 到头尾。 */
+  const onModeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = MODES.findIndex((mode) => mode.id === view);
+    let next = -1;
+    if (event.key === 'ArrowRight') next = (index + 1) % MODES.length;
+    else if (event.key === 'ArrowLeft') next = (index - 1 + MODES.length) % MODES.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = MODES.length - 1;
+    if (next < 0) return;
+    event.preventDefault();
+    const target = MODES[next]!;
+    setView(target.id);
+    document.getElementById(tabDomId(target.id))?.focus();
+  };
+
   const phase = state?.phase ?? 'READY_TO_START';
   const busy = state?.busy ?? null;
   const readyShell = phase === 'READY' || phase === 'LEARNING';
@@ -123,7 +154,12 @@ export function App() {
       style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
     >
       <header className="panel-header">
-        <h1>webknow-ai</h1>
+        <h1>
+          <span className="brand-mark" aria-hidden="true">
+            ·
+          </span>
+          webknow-ai
+        </h1>
         <button type="button" className="link" onClick={openSettings}>
           设置
         </button>
@@ -232,53 +268,47 @@ export function App() {
 
           {readyShell && (
             <>
-              {state.guide && (
-                <Section title="这篇文章讲了什么">
-                  <p className="summary">{state.guide.summary}</p>
-                  {state.guide.bubbles.length > 0 && (
-                    <div className="bubbles">
-                      {state.guide.bubbles.map((bubble) => (
-                        <button
-                          key={bubble.id}
-                          type="button"
-                          className="bubble"
-                          disabled={busy !== null}
-                          onClick={() => {
-                            if (state.tabId) void send({ type: 'explore', tabId: state.tabId, bubbleId: bubble.id });
-                          }}
-                        >
-                          {bubble.question}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </Section>
-              )}
-
-              <div className="tabs" role="tablist" aria-label="功能切换">
-                <button
-                  type="button"
-                  role="tab"
-                  className="tab"
-                  aria-selected={view === 'qa'}
-                  onClick={() => setView('qa')}
-                >
-                  问答
-                  {busy?.kind === 'answer' && <span className="dot" aria-hidden="true" />}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  className="tab"
-                  aria-selected={view === 'learn'}
-                  onClick={() => setView('learn')}
-                >
-                  AI 问我
-                  {busy?.kind === 'learn' && <span className="dot" aria-hidden="true" />}
-                </button>
+              <div className="modes" role="tablist" aria-label="功能切换" onKeyDown={onModeKeyDown}>
+                {MODES.map((mode) => (
+                  <button
+                    key={mode.id}
+                    id={tabDomId(mode.id)}
+                    type="button"
+                    role="tab"
+                    className="mode"
+                    aria-selected={view === mode.id}
+                    aria-controls={panelDomId(mode.id)}
+                    tabIndex={view === mode.id ? 0 : -1}
+                    onClick={() => setView(mode.id)}
+                  >
+                    {mode.label}
+                    {busy?.kind === mode.busyKind && (
+                      <>
+                        <span className="dot" aria-hidden="true" />
+                        <span className="sr-only">正在处理</span>
+                      </>
+                    )}
+                  </button>
+                ))}
               </div>
 
-              {view === 'qa' ? <Reading state={state} send={send} /> : <Learning state={state} send={send} />}
+              {/* 两个面板都挂载、只藏未选中的那个：切回来时输入草稿还在（ARIA tabs 的标准形态）。 */}
+              <div
+                id={panelDomId('qa')}
+                role="tabpanel"
+                aria-labelledby={tabDomId('qa')}
+                hidden={view !== 'qa'}
+              >
+                <Reading state={state} send={send} />
+              </div>
+              <div
+                id={panelDomId('learn')}
+                role="tabpanel"
+                aria-labelledby={tabDomId('learn')}
+                hidden={view !== 'learn'}
+              >
+                <Learning state={state} send={send} />
+              </div>
             </>
           )}
         </>

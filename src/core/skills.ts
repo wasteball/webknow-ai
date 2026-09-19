@@ -119,16 +119,20 @@ export function findSkill(id: string, customSkills: Skill[]): Skill | undefined 
 /**
  * 解析某板块实际生效的策略段：自定义文本 > 所选技能 > 内置默认（返回 undefined）。
  * 选中的技能已不存在（被删除）时静默回退，不让一次设置损坏整个板块。
+ *
+ * 入参字段名与 Config（存储形态）一致：`prompts`/`skills`。曾经这里叫
+ * `overrides`/`customSkills`，调用方按存储名传参就永远读不到自定义内容——
+ * 同一个东西有两个名字，是那类 bug 的温床。
  */
 export function resolvePolicy(
   target: SkillTarget,
-  input: { overrides?: Partial<Record<SkillTarget, string>>; skillChoices?: SkillChoice; customSkills?: Skill[] },
+  input: { prompts?: Partial<Record<SkillTarget, string>>; skillChoices?: SkillChoice; skills?: Skill[] },
 ): string | undefined {
-  const override = input.overrides?.[target]?.trim();
+  const override = input.prompts?.[target]?.trim();
   if (override) return override;
   const chosenId = input.skillChoices?.[target];
   if (!chosenId) return undefined;
-  return findSkill(chosenId, input.customSkills ?? [])?.body;
+  return findSkill(chosenId, input.skills ?? [])?.body;
 }
 
 /** 自定义技能的新增/修改校验：不合格直接拒绝，不静默修正。 */

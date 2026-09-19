@@ -72,35 +72,49 @@ export function Settings({
 
   return (
     <div className="settings-page">
-      <nav className="settings-nav" aria-label="设置分类">
-        <p className="settings-brand">webknow-ai</p>
-        {CATEGORIES.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            aria-current={category === item.id ? 'true' : undefined}
-            onClick={() => setCategory(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
-      <main className="settings-content">
-        {notice && <Notice text={notice} onDismiss={onDismissNotice} />}
-        {category === 'general' && (
-          <>
-            <Behavior state={state} send={send} />
-            <Appearance state={state} send={send} />
-          </>
-        )}
-        {category === 'model' && <ModelAndKey state={state} send={send} />}
-        {category === 'prompts' && <Prompts state={state} send={send} />}
-        {category === 'skills' && <Skills state={state} send={send} />}
-        {category === 'search' && <SearchSettings state={state} send={send} />}
-        {category === 'ima' && <ImaSettings state={state} send={send} />}
-        {category === 'data' && <Cleanup state={state} send={send} />}
-        {category === 'about' && <About />}
-      </main>
+      {/* 导航在窄屏会变成可横向滚动的长条，所以给键盘用户一条直通正文的捷径。 */}
+      <a className="skip-link" href="#settings-content">
+        跳到设置内容
+      </a>
+      <header className="settings-topbar">
+        <p className="settings-brand">
+          <span className="brand-mark" aria-hidden="true">
+            ·
+          </span>
+          webknow-ai
+        </p>
+        <p className="settings-tagline">能力设置</p>
+      </header>
+      <div className="settings-shell">
+        <nav className="settings-nav" aria-label="设置分类">
+          {CATEGORIES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              aria-current={category === item.id ? 'true' : undefined}
+              onClick={() => setCategory(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <main className="settings-content" id="settings-content" tabIndex={-1}>
+          {notice && <Notice text={notice} onDismiss={onDismissNotice} />}
+          {category === 'general' && (
+            <>
+              <Behavior state={state} send={send} />
+              <Appearance state={state} send={send} />
+            </>
+          )}
+          {category === 'model' && <ModelAndKey state={state} send={send} />}
+          {category === 'prompts' && <Prompts state={state} send={send} />}
+          {category === 'skills' && <Skills state={state} send={send} />}
+          {category === 'search' && <SearchSettings state={state} send={send} />}
+          {category === 'ima' && <ImaSettings state={state} send={send} />}
+          {category === 'data' && <Cleanup state={state} send={send} />}
+          {category === 'about' && <About />}
+        </main>
+      </div>
     </div>
   );
 }

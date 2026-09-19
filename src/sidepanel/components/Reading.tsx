@@ -7,6 +7,10 @@ import { Busy, Section, SourceTag } from './bits';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
+/**
+ * 「网页伴读」模式：摘要与话题在最上面（读完就知道这页讲什么），
+ * 下面是自由问答，问题输入区吸在底部——滚到哪都能接着问。
+ */
 export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
   const [searchOn, setSearchOn] = useState(false);
@@ -16,9 +20,16 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const busy = state.busy?.kind === 'answer';
   const searchEnabled = state.settings.search.enabled;
   const imaEnabled = state.settings.ima.enabled;
+  const guide = state.guide;
 
+  // 只在对话真的往下走时跟到底部。挂载时不滚：这一栏开头是摘要与话题，
+  // 一进来就被推到最后一轮问答上，等于把最重要的内容藏起来了。
+  const seen = useRef({ turns: state.chat.length, busy });
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' });
+    if (state.chat.length > seen.current.turns || (busy && !seen.current.busy)) {
+      endRef.current?.scrollIntoView({ block: 'end' });
+    }
+    seen.current = { turns: state.chat.length, busy };
   }, [state.chat.length, busy]);
 
   const ask = async (question: string) => {
@@ -36,6 +47,30 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <>
+      {guide && (
+        <section className="guide" aria-labelledby="guide-heading">
+          <h2 id="guide-heading">这篇文章讲了什么</h2>
+          <p className="summary">{guide.summary}</p>
+          {guide.bubbles.length > 0 && (
+            <div className="bubbles">
+              {guide.bubbles.map((bubble) => (
+                <button
+                  key={bubble.id}
+                  type="button"
+                  className="bubble"
+                  disabled={busy}
+                  onClick={() => {
+                    if (tabId) void send({ type: 'explore', tabId, bubbleId: bubble.id });
+                  }}
+                >
+                  {bubble.question}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {imaEnabled && (
         <div className="save-ima">
           <button
@@ -53,6 +88,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
           </p>
         </div>
       )}
+
       <Section title="问答">
         {state.chat.length === 0 && !busy && (
           <p className="hint">可以点上面的话题，也可以自己在下面提问。</p>
@@ -70,52 +106,54 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
         <div ref={endRef} />
       </Section>
 
-      <form
-        className="composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void ask(draft);
-        }}
-      >
-        <label className="sr-only" htmlFor="question">
-          向这篇文章提问
-        </label>
-        <textarea
-          id="question"
-          value={draft}
-          rows={2}
-          maxLength={500}
-          placeholder="想问什么，写在这里…"
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        {searchEnabled && (
-          <label className="search-toggle">
-            <input
-              type="checkbox"
-              checked={searchOn}
-              onChange={(event) => setSearchOn(event.target.checked)}
-            />
-            <span>联网搜索（只把搜索词发给{state.settings.search.providerName ?? '搜索服务'}）</span>
+      <div className="dock">
+        <form
+          className="composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void ask(draft);
+          }}
+        >
+          <label className="sr-only" htmlFor="question">
+            向这篇文章提问
           </label>
-        )}
-        <div className="composer-actions">
-          <button type="submit" disabled={busy || !draft.trim()}>
-            发送
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy || state.phase !== 'READY'}
-            onClick={() => {
-              const goal = draft.trim();
-              setDraft('');
-              if (tabId) void send({ type: 'learnStart', tabId, goal });
-            }}
-          >
-            让 AI 问我
-          </button>
-        </div>
-      </form>
+          <textarea
+            id="question"
+            value={draft}
+            rows={2}
+            maxLength={500}
+            placeholder="想问什么，写在这里…"
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          {searchEnabled && (
+            <label className="search-toggle">
+              <input
+                type="checkbox"
+                checked={searchOn}
+                onChange={(event) => setSearchOn(event.target.checked)}
+              />
+              <span>联网搜索（只把搜索词发给{state.settings.search.providerName ?? '搜索服务'}）</span>
+            </label>
+          )}
+          <div className="composer-actions">
+            <button type="submit" disabled={busy || !draft.trim()}>
+              发送
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy || state.phase !== 'READY'}
+              onClick={() => {
+                const goal = draft.trim();
+                setDraft('');
+                if (tabId) void send({ type: 'learnStart', tabId, goal });
+              }}
+            >
+              让 AI 问我
+            </button>
+          </div>
+        </form>
+      </div>
     </>
   );
 }

@@ -1,34 +1,51 @@
 /*
- * 侧栏样式。设计原则（窄栏 + 阅读伴随场景）：
+ * 侧栏 + 设置页共用样式。设计原则（窄栏 + 阅读伴随场景）：
  *
- * 1. 内容优先：不用卡片边框和阴影划分区块，用留白、字阶和极细分隔线。
- *    窄栏里每加一层框线就少一分可读空间。
- * 2. 单一强调色：全屏只有一个主操作（黑色药丸），蓝色只用于链接与焦点。
- *    颜色要能表达状态，但状态不能只靠颜色表达。
+ * 1. 两种语义色，各有分工：蓝色属于「伴读与动作」（摘要导览、主按钮、焦点），
+ *    翡翠属于「学习与掌握」（时间线、判定、进度）。它们不是装饰，所以不混用。
+ * 2. 只在一个地方用力：蓝色导览块与翡翠学习脊柱是记忆点，其余保持安静——
+ *    细边线、留白、字阶，不用卡片阵列也不加大阴影。
  * 3. 中文排版：正文 15px / 行高 1.75；次级信息靠色阶区分而不是加框。
- * 4. 动效只回应动作：不做入场动画，只让状态变化被看见。
- * 5. 无障碍不打折：3px 焦点环、对比度、prefers-reduced-motion、深浅色都覆盖。
+ * 4. 结构常驻、内容滚动：品牌头与模式切换吸顶，输入区吸底，
+ *    滚动区留出两端内边距，焦点不会被挡住（WCAG 2.2 focus-not-obscured）。
+ * 5. 动效只回应动作，不做入场动画。
+ * 6. 无障碍不打折：3px 焦点环、对比度、prefers-reduced-motion、深浅色都覆盖。
  */
 
 :root {
   color-scheme: light dark;
 
-  --ink: #1d1d1f;
-  --ink-2: #56565c;
-  --ink-3: #86868b;
+  /* 画布与表面 */
+  --canvas: #eef2f7;
   --paper: #ffffff;
-  --paper-2: #f5f5f7;
-  --paper-3: #ececee;
-  --line: #d2d2d7;
-  --accent: #0b6bcb;
-  --action: #1d1d1f;
-  --action-ink: #ffffff;
-  --danger: #b3261e;
-  --highlight: #c2410c;
+  --paper-2: #f7f9fc;
+  --paper-3: #eef2f7;
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  /* 文字三级 */
+  --ink: #182237;
+  --ink-2: #435169;
+  --ink-3: #5c6a80;
+
+  --line: #d9e0ea;
+  --line-soft: #e9edf3;
+
+  /* 蓝：伴读与动作 */
+  --accent: #3159d9;
+  --accent-strong: #2445ad;
+  --accent-soft: #edf2ff;
+  --accent-ink: #ffffff;
+
+  /* 翡翠：学习与掌握 */
+  --jade: #16765f;
+  --jade-strong: #0f5e4a;
+  --jade-soft: #e8f5f0;
+
+  --danger: #a84242;
+  --danger-soft: #fff0f0;
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
   --radius-pill: 999px;
 
   --space-1: 4px;
@@ -38,29 +55,54 @@
   --space-5: 24px;
   --space-6: 32px;
 
+  /* 品牌头高度。下面的模式切换吸在它下沿，两者必须严丝合缝——
+     中间漏一条缝，正文会从缝里穿过去。改动这里只需改这一个数。 */
+  --topbar-h: 50px;
+
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #f5f5f7;
-    --ink-2: #b8b8bd;
-    --ink-3: #8e8e93;
-    --paper: #1c1c1e;
-    --paper-2: #2c2c2e;
-    --paper-3: #3a3a3c;
-    --line: #3a3a3c;
-    --accent: #6cb0ff;
-    --action: #f5f5f7;
-    --action-ink: #1c1c1e;
-    --danger: #ff6961;
-    --highlight: #e8874f;
+    --canvas: #12161d;
+    --paper: #1a1f28;
+    --paper-2: #222833;
+    --paper-3: #262d3a;
+
+    --ink: #eef1f6;
+    --ink-2: #b6bfcd;
+    --ink-3: #8b95a5;
+
+    --line: #2c333f;
+    --line-soft: #232936;
+
+    --accent: #8aa8ff;
+    --accent-strong: #a9c0ff;
+    --accent-soft: #1b2440;
+    --accent-ink: #101725;
+
+    --jade: #6fc9ae;
+    --jade-strong: #8fdcbf;
+    --jade-soft: #142b26;
+
+    --danger: #ff8b8b;
+    --danger-soft: #2e1a1a;
   }
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* 未选中的模式面板必须真正消失（display 规则不能盖过 hidden）。 */
+[hidden] {
+  display: none !important;
+}
+
+/* 焦点滚进视野时要避开吸顶头与吸底输入区，否则键盘用户看不见自己选中的控件。 */
+html {
+  scroll-padding-block: 140px;
 }
 
 body {
@@ -73,16 +115,29 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* 长 URL、代码块、用户粘贴的内容都要能换行，不能让窄栏横溢。 */
+:where(p, li, h1, h2, h3, legend, .tag, .answer-text) {
+  overflow-wrap: anywhere;
+}
+
 .panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-4) var(--space-6);
+  /* 内容短时铺满视口，内容长时由页面滚动：吸顶与吸底都对同一个滚动容器生效。 */
   min-height: 100vh;
+  padding: 0 var(--space-4) 0;
   /* 侧栏宽度由用户拖动浏览器分隔线决定，布局必须适应任意宽度：
      超宽时整体限宽居中，长正文再单独限行宽（见 .summary/.answer/.entry），保证可读性。 */
-  max-width: 720px;
+  max-width: 760px;
   margin-inline: auto;
+}
+
+/* 模式面板是 .panel 与「摘要/对话/输入区」之间的那层，要能把输入区顶到底部。 */
+[role='tabpanel'] {
+  flex: 1 0 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── 顶部：常驻，长对话回滚时仍知道在读哪一页 ───────────────── */
@@ -90,37 +145,99 @@ body {
 .panel-header {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
+  height: var(--topbar-h);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) 0 var(--space-3);
   background: var(--paper);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .panel-header h1 {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-2);
   margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.panel-header h1 .brand-mark {
+  color: var(--accent);
 }
 
 .page-title {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.5;
   margin: 0 0 var(--space-1);
   text-wrap: pretty;
 }
 
 .scope {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ink-3);
   line-height: 1.6;
   margin: 0;
+}
+
+.context {
+  padding: var(--space-3) 0 var(--space-2);
+}
+
+/* ── 模式切换：两段式分段控件，吸在品牌头下面 ───────────────── */
+
+.modes {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 2;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  margin: var(--space-2) 0 var(--space-3);
+  background: var(--paper-3);
+  border-radius: var(--radius);
+}
+
+.mode {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.mode:hover:not(:disabled) {
+  color: var(--ink);
+  opacity: 1;
+}
+
+.mode[aria-selected='true'] {
+  color: var(--accent-strong);
+  background: var(--paper);
+  border-color: var(--line);
+  font-weight: 600;
+}
+
+/* 这个能力正在后台干活时的低调提示；状态不只靠颜色表达，Tab 内还有转圈与按钮态。 */
+.mode .dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 /* ── 区块：靠留白与小节标题分层，不用外框 ───────────────────── */
@@ -134,14 +251,22 @@ body {
 }
 
 .section + .section {
+  margin-top: var(--space-5);
   padding-top: var(--space-5);
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-soft);
 }
 
 h2 {
   font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-3);
+  font-weight: 650;
+  color: var(--ink-2);
+  margin: 0;
+}
+
+/* 段落之间的间距交给 .section 的 gap，不要再叠一层浏览器默认外边距。 */
+.section p,
+.section ul,
+.section ol {
   margin: 0;
 }
 
@@ -150,6 +275,79 @@ details.section summary {
   font-weight: 600;
   color: var(--ink-2);
   cursor: pointer;
+}
+
+/* ── 导读摘要：蓝色导览块。全屏最用力的地方，读的就是它 ────────── */
+
+.guide {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-4);
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.guide h2 {
+  color: var(--accent-strong);
+  margin-bottom: var(--space-2);
+}
+
+.guide .summary {
+  max-width: 40em;
+}
+
+.bubbles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+/* 拖宽侧栏后，话题并排铺开，而不是被拉成一根根长条。 */
+@media (min-width: 560px) {
+  .bubbles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    align-items: start;
+  }
+}
+
+/* 话题是可点的行，不是需要确认的动作：箭头说明它可以继续往下走。 */
+.bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.bubble::before {
+  content: "→";
+  flex: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.bubble:hover:not(:disabled) {
+  background: var(--paper-2);
+  border-color: var(--accent);
+}
+
+.bubble:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ── 正文与摘要 ─────────────────────────────────────────── */
@@ -177,46 +375,14 @@ details.section summary {
   margin: 0;
 }
 
-/* ── 话题：浅色可点卡片，不是需要确认的动作 ─────────────────── */
-
-.bubbles {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-/* 拖宽侧栏后，话题卡片并排铺开，而不是被拉成一根根长条。 */
-@media (min-width: 560px) {
-  .bubbles {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    align-items: start;
-  }
-}
-
-.bubble {
-  display: block;
-  width: 100%;
-  text-align: left;
-  font-family: var(--font);
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--ink);
-  background: var(--paper-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  padding: var(--space-3);
-  cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease;
-}
-
-.bubble:hover:not(:disabled) {
+/* 阶段行是状态播报（live region），不是第二个小节标题——做成一条状态签，
+   和下面的 h2 明显区分开，否则读起来像同一句话说两遍。 */
+.phase {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  padding: 2px var(--space-2);
   background: var(--paper-3);
-}
-
-.bubble:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  border-radius: var(--radius-pill);
 }
 
 /* ── 对话：问题靠右、回答靠左，一眼分清谁说的 ────────────────── */
@@ -230,7 +396,7 @@ details.section summary {
 
 .turn + .turn {
   padding-top: var(--space-4);
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-soft);
 }
 
 .turn .question {
@@ -238,7 +404,7 @@ details.section summary {
   max-width: 88%;
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  background: var(--paper-2);
+  background: var(--paper-3);
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
   font-size: 14px;
   line-height: 1.6;
@@ -276,7 +442,7 @@ details.section summary {
   display: inline-block;
   font-size: 11px;
   line-height: 1.7;
-  color: var(--ink-3);
+  color: var(--ink-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: 0 var(--space-1);
@@ -287,54 +453,113 @@ details.section summary {
 
 /* 只有"原文里说的"是最强主张，给它唯一的强调；其余保持中性。 */
 .tag-original {
-  color: var(--ink);
-  border-color: var(--ink-3);
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--accent-soft);
   font-weight: 600;
 }
 
-/* ── 学习时间线 ─────────────────────────────────────────── */
+.tag-correct {
+  color: var(--jade-strong);
+  border-color: var(--jade);
+  background: var(--jade-soft);
+  font-weight: 600;
+}
+
+.tag-misconception,
+.tag-unknown {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* ── 学习时间线：翡翠脊柱，当前问题在最下面 ─────────────────── */
 
 .timeline {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 var(--space-4);
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
+}
+
+/* 一条线串起整个学习过程，读的时候能看见自己走到哪了。 */
+.timeline::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--jade-soft);
+  border-radius: 1px;
 }
 
 .entry {
+  position: relative;
   font-size: 15px;
   line-height: 1.8;
   white-space: pre-wrap;
-  padding-left: var(--space-3);
-  border-left: 2px solid var(--paper-3);
+}
+
+/* 每个节点是脊柱上的一个圆点；已完成的用实心翡翠，代表"走过的路"。 */
+.entry::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--space-4) + 2px);
+  top: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 2px solid var(--jade);
+}
+
+.entry-skip::before,
+.entry-note::before {
+  border-color: var(--line);
 }
 
 .entry-question {
   font-size: 16px;
   font-weight: 600;
   line-height: 1.65;
-  border-left: 0;
-  padding-left: 0;
-  padding-bottom: var(--space-1);
   color: var(--ink);
-}
-
-.entry-feedback {
-  border-left-color: var(--line);
-}
-
-.entry-summary {
-  border-left-color: var(--accent);
-  background: var(--paper-2);
-  border-radius: 0 var(--radius) var(--radius) 0;
-  padding: var(--space-3);
 }
 
 .entry-answer {
   color: var(--ink-2);
   font-size: 14px;
+}
+
+.entry-feedback .answer,
+.entry-explain {
+  color: var(--ink);
+}
+
+.entry-hint .hint-line,
+.entry-hint {
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+/* 跳过的那一轮不算走过的路：明显退到背景里，别和真正的进展混在一起。 */
+.entry-skip {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+
+.entry-summary {
+  background: var(--jade-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: var(--space-3);
+  margin-left: calc(-1 * var(--space-2));
+}
+
+.entry-summary::before {
+  background: var(--jade);
 }
 
 /* ── 选择题轮（F5）：题目是主角，选项是轻量可点的行 ─────────────── */
@@ -364,7 +589,8 @@ details.section summary {
   line-height: 1.6;
   padding: var(--space-2) var(--space-3);
   background: var(--paper-2);
-  border-radius: var(--radius);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
@@ -372,10 +598,15 @@ details.section summary {
   background: var(--paper-3);
 }
 
+.quiz-option:has(input:checked) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
 .quiz-option input {
   width: auto;
   margin: 3px 0 0;
-  accent-color: var(--action);
+  accent-color: var(--accent);
 }
 
 .quiz-past {
@@ -400,27 +631,41 @@ details.section summary {
 .search-toggle input {
   width: auto;
   margin: 2px 0 0;
-  accent-color: var(--action);
+  accent-color: var(--accent);
 }
 
-/* 存入知识库（K-ima）：问答区顶部的显式动作 + 一句去向说明。 */
+/* 存入知识库（K-ima）：显式动作 + 一句去向说明。 */
 .save-ima {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  align-items: flex-start;
+  gap: var(--space-3);
   padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .save-ima button {
-  align-self: flex-start;
+  flex: none;
 }
 
 .save-ima .hint {
   margin: 0;
 }
 
-/* ── 输入与操作 ─────────────────────────────────────────── */
+/* ── 输入区：吸在底部，滚到哪都能接着问 ────────────────────── */
+
+.dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  /* margin-top:auto 让内容短时输入区也落在底部，而不是吊在半空。 */
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 var(--space-4);
+  background: var(--paper);
+  box-shadow: 0 -1px 0 var(--line-soft);
+}
 
 .composer,
 .composer-actions {
@@ -430,7 +675,7 @@ details.section summary {
 
 .composer {
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .composer-actions {
@@ -446,10 +691,10 @@ select {
   line-height: 1.6;
   color: var(--ink);
   width: 100%;
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   resize: none;
   transition: border-color 120ms ease;
 }
@@ -508,36 +753,41 @@ input:disabled {
 
 button {
   font-family: var(--font);
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   line-height: 1.2;
-  color: var(--action-ink);
-  background: var(--action);
+  color: var(--accent-ink);
+  background: var(--accent);
   border: 1px solid transparent;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-4);
+  min-height: 36px;
   cursor: pointer;
-  transition: opacity 120ms ease, background-color 120ms ease;
+  transition: background-color 120ms ease, opacity 120ms ease;
 }
 
 button:hover:not(:disabled) {
-  opacity: 0.85;
+  background: var(--accent-strong);
+}
+
+button:active:not(:disabled) {
+  opacity: 0.9;
 }
 
 button:disabled {
-  opacity: 0.35;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 button.secondary {
   color: var(--ink);
-  background: transparent;
+  background: var(--paper);
   border-color: var(--line);
 }
 
 button.secondary:hover:not(:disabled) {
   background: var(--paper-2);
-  opacity: 1;
+  border-color: var(--ink-3);
 }
 
 button.danger {
@@ -549,8 +799,7 @@ button.danger {
 }
 
 button.danger:hover:not(:disabled) {
-  background: var(--paper-2);
-  opacity: 1;
+  background: var(--danger-soft);
 }
 
 /* 辅助操作（提示/讲解/跳过/结束）不与主操作抢注意力 */
@@ -560,12 +809,13 @@ button.quiet {
   color: var(--ink-2);
   background: transparent;
   border-color: transparent;
+  min-height: 32px;
   padding: var(--space-1) var(--space-2);
 }
 
 button.quiet:hover:not(:disabled) {
   background: var(--paper-2);
-  opacity: 1;
+  color: var(--ink);
 }
 
 button.link {
@@ -573,14 +823,15 @@ button.link {
   background: none;
   border: 0;
   padding: 0;
+  min-height: 0;
   font-size: 13px;
   font-weight: 400;
   text-decoration: none;
 }
 
 button.link:hover:not(:disabled) {
+  background: none;
   text-decoration: underline;
-  opacity: 1;
 }
 
 :focus-visible {
@@ -589,80 +840,62 @@ button.link:hover:not(:disabled) {
   border-radius: var(--radius-sm);
 }
 
-/* ── 功能切换：下划线式 Tab，学习进行中也不挡住去问答的路 ───────── */
-
-.tabs {
-  display: flex;
-  gap: var(--space-5);
-  border-bottom: 1px solid var(--line);
-}
-
-.tab {
-  background: none;
-  border: 0;
-  border-radius: 0;
-  color: var(--ink-3);
-  font-size: 14px;
-  font-weight: 500;
-  padding: var(--space-2) 0;
-  box-shadow: inset 0 -2px 0 transparent;
-  transition: color 120ms ease, box-shadow 120ms ease;
-}
-
-.tab:hover:not(:disabled) {
-  color: var(--ink-2);
-  opacity: 1;
-}
-
-.tab[aria-selected='true'] {
-  color: var(--ink);
-  font-weight: 600;
-  box-shadow: inset 0 -2px 0 var(--ink);
-}
-
-/* 这个能力正在后台干活时的低调提示；状态不只靠颜色表达，Tab 内还有转圈与按钮态。 */
-.tab .dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-left: var(--space-2);
-  border-radius: 50%;
-  background: var(--accent);
-  vertical-align: 2px;
-}
-
 /* ── 设置页：整页界面，跑在独立标签页里（entrypoints/options）────────
-   非工作时的界面不按侧栏排版：左边分类导航常驻，右边内容限行宽。
+   非工作时的界面不按侧栏排版：产品顶栏 + 左侧分类导航，右边内容限行宽。
    这里也是唯一用 h2 当页面标题的地方（正文区没有 h1 可抢）。 */
 
 .settings-page {
+  min-height: 100vh;
+  background: var(--canvas);
+}
+
+.settings-topbar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-topbar .settings-brand {
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.settings-topbar .settings-brand .brand-mark {
+  color: var(--accent);
+}
+
+.settings-topbar .settings-tagline {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.settings-shell {
   display: flex;
   align-items: flex-start;
-  min-height: 100vh;
-  max-width: 860px;
+  max-width: 1040px;
   margin-inline: auto;
+  padding: 0 var(--space-5) var(--space-6);
 }
 
 .settings-nav {
   flex: none;
   position: sticky;
-  top: 0;
-  width: 200px;
-  max-height: 100vh;
+  top: var(--space-5);
+  width: 176px;
+  max-height: calc(100vh - var(--space-6));
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
   padding: var(--space-5) var(--space-4) var(--space-5) 0;
-}
-
-.settings-brand {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-3);
-  margin: 0 0 var(--space-3);
-  padding-left: var(--space-3);
 }
 
 .settings-nav button {
@@ -673,32 +906,77 @@ button.link:hover:not(:disabled) {
   font-size: 14px;
   font-weight: 400;
   text-align: left;
+  min-height: 34px;
   padding: var(--space-2) var(--space-3);
 }
 
 .settings-nav button:hover:not(:disabled) {
   background: var(--paper-2);
-  opacity: 1;
+  color: var(--ink);
 }
 
 .settings-nav button[aria-current='true'] {
-  background: var(--paper-2);
-  color: var(--ink);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 
 .settings-content {
   flex: 1;
   min-width: 0;
-  min-height: 100vh;
-  padding: var(--space-5) var(--space-5) var(--space-6) var(--space-6);
+  padding: var(--space-5) 0 var(--space-6) var(--space-5);
   border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.settings-content:focus {
+  outline: none;
 }
 
 .settings-content h2 {
   font-size: 17px;
-  font-weight: 600;
+  font-weight: 650;
+  letter-spacing: 0;
   color: var(--ink);
+}
+
+/* 窄布局：分类导航改成横向可滚动的文字条，正文占满整宽。 */
+@media (max-width: 720px) {
+  .settings-topbar {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .settings-shell {
+    display: block;
+    padding: 0 0 var(--space-5);
+  }
+
+  .settings-nav {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    width: 100%;
+    max-height: none;
+    flex-direction: row;
+    gap: var(--space-1);
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: var(--space-2) var(--space-4);
+    background: var(--paper);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .settings-nav button {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .settings-content {
+    padding: var(--space-5) var(--space-4) var(--space-6);
+    border-left: 0;
+  }
 }
 
 /* ── 状态与提示 ─────────────────────────────────────────── */
@@ -707,9 +985,9 @@ button.link:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   background: var(--paper-2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--ink-2);
 }
@@ -720,7 +998,7 @@ button.link:hover:not(:disabled) {
   height: 12px;
   border-radius: 50%;
   border: 2px solid var(--line);
-  border-top-color: var(--ink-3);
+  border-top-color: var(--accent);
   animation: spin 900ms linear infinite;
 }
 
@@ -734,7 +1012,7 @@ button.link:hover:not(:disabled) {
   font-size: 13px;
   line-height: 1.7;
   padding: var(--space-3);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   background: var(--paper-2);
   color: var(--ink-2);
 }
@@ -753,13 +1031,13 @@ button.link:hover:not(:disabled) {
 }
 
 .banner-error {
-  background: transparent;
+  background: var(--danger-soft);
   border: 1px solid var(--danger);
   color: var(--danger);
 }
 
-.banner-info button {
-  margin-top: var(--space-3);
+.banner-info {
+  border-left: 3px solid var(--accent);
 }
 
 .steps {
@@ -780,6 +1058,21 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10;
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 0 0 var(--radius-sm) 0;
+}
+
+.skip-link:focus {
+  left: 0;
 }
 
 .sr-only {
