@@ -8,6 +8,26 @@ import type { ReactNode } from 'react';
  * 只收录界面真正用到的那些：每多一个就多一份要维护的路径数据。
  * 需要新图标时从原型 sprite 里再抄一条（id 形如 `i-xxx`）。
  */
+/** 品牌印：朱红方印里一枚书签。颜色跟 currentColor，外框由调用方设成印色。 */
+export function BrandMark({ size = 28 }: { size?: number }) {
+  return (
+    <svg
+      className="brand-seal"
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <rect width="32" height="32" rx="8" fill="currentColor" />
+      <path
+        fill="#fff"
+        d="M11.2 5.2h9.6v16.4L16 18.2l-4.8 3.4V5.2Z"
+      />
+    </svg>
+  );
+}
+
 export type IconName =
   | 'book'
   | 'chat'

@@ -10,7 +10,7 @@ import type { PromptTarget } from '../../core/settings';
 import { BUILTIN_SKILLS } from '../../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS } from '../../core/search/registry';
 import { Notice, Section } from './bits';
-import { Icon, type IconName } from './Icon';
+import { BrandMark, Icon, type IconName } from './Icon';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
@@ -81,10 +81,8 @@ export function Settings({
       </a>
       <header className="settings-topbar">
         <p className="settings-brand">
-          <span className="brand-mark" aria-hidden="true">
-            ·
-          </span>
-          webknow-ai
+          <BrandMark size={24} />
+          知伴
         </p>
         <p className="settings-tagline">能力设置</p>
       </header>

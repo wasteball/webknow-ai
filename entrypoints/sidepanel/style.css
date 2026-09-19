@@ -1,47 +1,50 @@
 /*
- * 侧栏 + 设置页共用样式。设计原则（窄栏 + 阅读伴随场景）：
+ * 侧栏 + 设置页共用样式。视觉取「页边批注」：纸、墨、朱红印、荧光笔。
+ * 不是聊天机器人蓝，也不做卡片堆砌。
  *
- * 1. 两种语义色，各有分工：蓝色属于「伴读与动作」（摘要导览、主按钮、焦点），
- *    翡翠属于「学习与掌握」（时间线、判定、进度）。它们不是装饰，所以不混用。
- * 2. 只在一个地方用力：蓝色导览块与翡翠学习脊柱是记忆点，其余保持安静——
- *    细边线、留白、字阶，不用卡片阵列也不加大阴影。
- * 3. 中文排版：正文 15px / 行高 1.75；次级信息靠色阶区分而不是加框。
- * 4. 结构常驻、内容滚动：品牌头与模式切换吸顶，输入区吸底，
- *    滚动区留出两端内边距，焦点不会被挡住（WCAG 2.2 focus-not-obscured）。
- * 5. 动效只回应动作，不做入场动画。
- * 6. 无障碍不打折：3px 焦点环、对比度、prefers-reduced-motion、深浅色都覆盖。
+ * 1. 墨色是主操作（发送、确认）；朱红是品牌印和「问我」；荧光笔是可点的话题条。
+ * 2. 中文排版：正文 16px / 行高 1.8；话题条至少 44px 高，点一下就发出去。
+ * 3. 结构常驻、内容滚动：品牌头与模式切换吸顶，输入区吸底。
+ * 4. 动效只回应动作。无障碍：3px 焦点环、对比度、reduced-motion、深浅色。
  */
 
 :root {
   color-scheme: light dark;
 
-  /* 画布与表面 */
-  --canvas: #eef2f7;
-  --paper: #ffffff;
-  --paper-2: #f7f9fc;
-  --paper-3: #eef2f7;
+  --canvas: #ebe6dc;
+  --paper: #f7f4ef;
+  --paper-2: #efeae1;
+  --paper-3: #e7e0d4;
 
-  /* 文字三级 */
-  --ink: #182237;
-  --ink-2: #435169;
-  --ink-3: #5c6a80;
+  --ink: #1c1814;
+  --ink-2: #5a5148;
+  --ink-3: #7a7166;
 
-  --line: #d9e0ea;
-  --line-soft: #e9edf3;
+  --line: #d9d0c3;
+  --line-soft: #ebe4d8;
 
-  /* 蓝：伴读与动作 */
-  --accent: #3159d9;
-  --accent-strong: #2445ad;
-  --accent-soft: #edf2ff;
-  --accent-ink: #ffffff;
+  /* 主操作：墨，不是蓝 */
+  --accent: #1c1814;
+  --accent-strong: #000000;
+  --accent-soft: #efeae1;
+  --accent-ink: #f7f4ef;
 
-  /* 翡翠：学习与掌握 */
-  --jade: #16765f;
-  --jade-strong: #0f5e4a;
-  --jade-soft: #e8f5f0;
+  /* 品牌印 */
+  --seal: #b42318;
+  --seal-strong: #8e1a12;
+  --seal-soft: #f6e4e0;
+
+  /* 荧光笔：话题条 */
+  --mark: #ead28a;
+  --mark-ink: #3d3418;
+
+  /* 问我时间线 */
+  --jade: #2f5c4a;
+  --jade-strong: #214236;
+  --jade-soft: #e4efe9;
 
   --danger: #a84242;
-  --danger-soft: #fff0f0;
+  --danger-soft: #f8eceb;
 
   /* 圆角、阴影、缓动都照原型的标尺来：它比默认值更松、更圆，
      也靠一点极浅的投影把"浮起来的表面"和背景分开——这是它显得精致的主要原因。 */
@@ -66,7 +69,7 @@
 
   /* 品牌头高度。下面的模式切换吸在它下沿，两者必须严丝合缝——
      中间漏一条缝，正文会从缝里穿过去。改动这里只需改这一个数。 */
-  --topbar-h: 56px;
+  --topbar-h: 64px;
 
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
@@ -74,26 +77,33 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas: #12161d;
-    --paper: #1a1f28;
-    --paper-2: #222833;
-    --paper-3: #262d3a;
+    --canvas: #12100e;
+    --paper: #1c1916;
+    --paper-2: #26221d;
+    --paper-3: #2e2923;
 
-    --ink: #eef1f6;
-    --ink-2: #b6bfcd;
-    --ink-3: #8b95a5;
+    --ink: #f3eee6;
+    --ink-2: #c4b8a8;
+    --ink-3: #8f8578;
 
-    --line: #2c333f;
-    --line-soft: #232936;
+    --line: #3a342c;
+    --line-soft: #2a261f;
 
-    --accent: #8aa8ff;
-    --accent-strong: #a9c0ff;
-    --accent-soft: #1b2440;
-    --accent-ink: #101725;
+    --accent: #f3eee6;
+    --accent-strong: #ffffff;
+    --accent-soft: #2a261f;
+    --accent-ink: #1c1916;
 
-    --jade: #6fc9ae;
-    --jade-strong: #8fdcbf;
-    --jade-soft: #142b26;
+    --seal: #e07060;
+    --seal-strong: #f0a090;
+    --seal-soft: #3a221e;
+
+    --mark: #7a6230;
+    --mark-ink: #f6e7b8;
+
+    --jade: #7eb89a;
+    --jade-strong: #a6d4bc;
+    --jade-soft: #1c2a24;
 
     --danger: #ff8b8b;
     --danger-soft: #2e1a1a;
@@ -117,8 +127,8 @@ html {
 body {
   margin: 0;
   font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.75;
+  font-size: 16px;
+  line-height: 1.8;
   color: var(--ink);
   background: var(--paper);
   -webkit-font-smoothing: antialiased;
@@ -180,20 +190,43 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  padding: 0;
   background: var(--paper);
-  border-bottom: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line);
 }
 
-.panel-header h1 {
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.brand-seal {
+  color: var(--seal);
+  flex: none;
+  display: block;
+  border-radius: 8px;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+.panel-header h1,
+.settings-brand {
   margin: 0;
-  font-size: 15px;
-  font-weight: 850;
-  letter-spacing: 0.01em;
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
   color: var(--ink);
 }
 
-.panel-header h1 .brand-mark {
-  color: var(--accent);
+.brand-sub {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-3);
 }
 
 /* 纯图标按钮（"设置"）：正方形、给足点击面积，名字靠 aria-label + title。 */
@@ -251,42 +284,85 @@ body {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
-  gap: var(--space-1);
-  padding: 4px;
+  gap: var(--space-2);
+  padding: 0;
   margin: var(--space-3) 0 var(--space-4);
-  background: var(--paper-3);
-  border: 1px solid var(--line);
-  border-radius: 13px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
 }
 
 .mode {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-2);
-  min-height: 42px;
+  min-height: 52px;
   font-family: var(--font);
-  font-size: 13px;
-  font-weight: 750;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--ink-2);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 9px;
-  padding: 0 var(--space-3);
-  transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+
+.mode-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+}
+
+.mode-label {
+  line-height: 1.2;
+}
+
+.mode-hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
 }
 
 .mode:hover:not(:disabled) {
   color: var(--ink);
+  background: var(--paper);
   opacity: 1;
 }
 
-/* 选中的那一格用一点投影浮起来——原型就是这么把"当前在哪"说清楚的。 */
+.mode[aria-selected='true'][data-mode='qa']:hover:not(:disabled) {
+  background: var(--mark);
+}
+
+.mode[aria-selected='true'][data-mode='learn']:hover:not(:disabled) {
+  background: var(--seal-soft);
+}
+
 .mode[aria-selected='true'] {
   color: var(--ink);
   background: var(--paper);
-  border-color: var(--line);
-  box-shadow: 0 2px 7px rgba(24, 35, 58, 0.07);
+  border-color: var(--ink);
+  box-shadow: none;
+}
+
+.mode[aria-selected='true'][data-mode='qa'] {
+  background: var(--mark);
+  border-color: #c4a44a;
+  color: var(--mark-ink);
+}
+
+.mode[aria-selected='true'][data-mode='learn'] {
+  background: var(--seal-soft);
+  border-color: var(--seal);
+  color: var(--seal-strong);
+}
+
+.mode[aria-selected='true'] .mode-hint {
+  color: inherit;
+  opacity: 0.8;
 }
 
 /* 这个能力正在后台干活时的低调提示；状态不只靠颜色表达，Tab 内还有转圈与按钮态。 */
@@ -295,8 +371,8 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: var(--seal);
+  box-shadow: 0 0 0 3px var(--seal-soft);
 }
 
 /* ── 区块：靠留白与小节标题分层，不用外框 ───────────────────── */
@@ -341,15 +417,19 @@ details.section summary {
    回答都是中性底色，不跟它抢。 */
 
 .bubble-guide {
-  background: var(--accent-soft);
-  border-left: 3px solid var(--accent);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--seal);
 }
 
 .bubble-guide h2 {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  color: var(--accent-strong);
+  color: var(--seal);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   margin-bottom: var(--space-2);
 }
 
@@ -360,35 +440,63 @@ details.section summary {
 /* 话题是一排 chip，不是卡片：它们是"接下来可以聊什么"，点了就进对话。 */
 .chiprow {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  flex-wrap: nowrap;
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--line);
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  max-width: 100%;
-  min-height: 32px;
-  text-align: left;
-  font-family: var(--font);
+.chip-lead {
+  margin: 0 0 var(--space-1);
   font-size: 13px;
   font-weight: 600;
-  line-height: 1.5;
-  color: var(--accent-strong);
-  background: var(--paper);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-pill);
-  padding: var(--space-2) var(--space-3);
+  color: var(--ink-2);
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 100%;
+  min-height: 48px;
+  text-align: left;
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--mark-ink);
+  background: var(--mark);
+  border: 1px solid transparent;
+  border-left: 4px solid #c4a44a;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-3);
   cursor: pointer;
-  transition: background-color 140ms ease, transform 100ms ease;
+  transition: filter 140ms ease, transform 100ms ease;
+}
+
+.chip-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.chip-go {
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--seal);
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 4px 10px;
 }
 
 .chip:hover:not(:disabled) {
-  background: var(--accent-soft);
+  background: var(--mark);
+  filter: brightness(0.97);
 }
 
 /* 按下去要有手感：原型里也是往下一像素。 */
@@ -402,12 +510,14 @@ details.section summary {
 }
 
 .chip-learn {
-  color: var(--jade-strong);
-  border-color: var(--jade);
+  color: var(--seal-strong);
+  background: var(--seal-soft);
+  border-left-color: var(--seal);
 }
 
 .chip-learn:hover:not(:disabled) {
-  background: var(--jade-soft);
+  background: var(--seal-soft);
+  filter: brightness(0.97);
 }
 
 .topic-picker {
@@ -474,7 +584,7 @@ details.section summary {
 
 .bubble.user {
   color: var(--accent-ink);
-  background: var(--accent);
+  background: var(--ink);
   border-radius: var(--radius-lg) var(--radius-sm) var(--radius-lg) var(--radius-lg);
   font-size: 14px;
   line-height: 1.65;
@@ -534,9 +644,9 @@ details.section summary {
 
 /* 只有"原文里说的"是最强主张，给它唯一的强调；其余保持中性。 */
 .tag-original {
-  color: var(--accent-strong);
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--seal-strong);
+  border-color: var(--seal);
+  background: var(--seal-soft);
   font-weight: 600;
 }
 
@@ -776,9 +886,9 @@ details.section summary {
 }
 
 .search-chip[aria-pressed='true'] {
-  color: var(--accent-strong);
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  color: var(--seal-strong);
+  background: var(--seal-soft);
+  border-color: var(--seal);
 }
 
 /* 存入知识库（K-ima）：显式动作 + 一句去向说明。 */
@@ -982,7 +1092,7 @@ button.quiet:hover:not(:disabled) {
 }
 
 button.link {
-  color: var(--accent);
+  color: var(--seal);
   background: none;
   border: 0;
   padding: 0;
@@ -998,7 +1108,7 @@ button.link:hover:not(:disabled) {
 }
 
 :focus-visible {
-  outline: 3px solid var(--accent);
+  outline: 3px solid var(--seal);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
@@ -1014,7 +1124,7 @@ button.link:hover:not(:disabled) {
 
 .settings-topbar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
   background: var(--paper);
@@ -1024,14 +1134,13 @@ button.link:hover:not(:disabled) {
 .settings-topbar .settings-brand {
   margin: 0;
   padding: 0;
-  font-size: 14px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
   color: var(--ink);
-}
-
-.settings-topbar .settings-brand .brand-mark {
-  color: var(--accent);
 }
 
 .settings-topbar .settings-tagline {
@@ -1082,8 +1191,8 @@ button.link:hover:not(:disabled) {
 }
 
 .settings-nav button[aria-current='true'] {
-  background: var(--accent-soft);
-  color: var(--accent-strong);
+  background: var(--seal-soft);
+  color: var(--seal-strong);
   font-weight: 700;
 }
 

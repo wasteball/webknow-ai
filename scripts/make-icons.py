@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """生成扩展图标（纯标准库，无需 Pillow）。
 
-图形：圆角方块 + 白色对话气泡 + 三个点，表示“在旁边说话的 AI”。
+图形：朱红方印 + 白色书签，表示页边批注的阅读搭子。
 16px 下也能辨认，所以细节一律砍掉。
 
     python3 scripts/make-icons.py
@@ -14,7 +14,7 @@ from pathlib import Path
 OUT_DIR = Path(__file__).resolve().parent.parent / "public" / "icon"
 SIZES = (16, 32, 48, 128)
 
-ACCENT = (0x8A, 0x3B, 0x12)
+SEAL = (0xB4, 0x23, 0x18)
 INK = (0xFF, 0xFF, 0xFF)
 
 
@@ -44,24 +44,22 @@ def render(size, scale=8):
         y = py + 0.5
         for px in range(n):
             x = px + 0.5
-            a_bg = rounded_rect(x, y, 0.02 * n, 0.02 * n, 0.98 * n, 0.98 * n, 0.24 * n)
+            a_bg = rounded_rect(x, y, 0.02 * n, 0.02 * n, 0.98 * n, 0.98 * n, 0.22 * n)
             if not a_bg:
                 row.append((0, 0, 0, 0))
                 continue
-            bubble = rounded_rect(x, y, 0.20 * n, 0.22 * n, 0.80 * n, 0.60 * n, 0.20 * n)
-            tail = in_triangle(
-                x, y, (0.34 * n, 0.58 * n), (0.28 * n, 0.76 * n), (0.52 * n, 0.58 * n)
-            )
-            dot = any(
-                (x - cx * n) ** 2 + (y - 0.41 * n) ** 2 <= (0.052 * n) ** 2
-                for cx in (0.36, 0.50, 0.64)
-            )
-            if dot:
-                row.append((*ACCENT, 255))
-            elif bubble or tail:
+            left, right = 0.32 * n, 0.68 * n
+            top, bottom = 0.16 * n, 0.86 * n
+            mid, notch = 0.50 * n, 0.66 * n
+            bookmark = left <= x <= right and top <= y <= bottom
+            if bookmark and y > notch:
+                t = (y - notch) / (bottom - notch)
+                half = (right - left) / 2 * (1 - t)
+                bookmark = abs(x - mid) <= half
+            if bookmark:
                 row.append((*INK, 255))
             else:
-                row.append((*ACCENT, 255))
+                row.append((*SEAL, 255))
         rows.append(row)
 
     pixels = bytearray()

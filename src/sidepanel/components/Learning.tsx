@@ -103,18 +103,16 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <>
-      <Section title="学习过程">
+      <Section title={learning ? `正在问：${learning.goal}` : '点一张，它开始问你'}>
         {learning && (
           <p className="hint">
-            这次要弄清楚「{learning.goal}」。已经问了 {state.budget.used}/{state.budget.total} 轮
-            {state.budget.total - state.budget.used === 0 ? '——问题次数用完了，先给你一个小结。' : '。'}
+            已经问了 {state.budget.used}/{state.budget.total} 轮
+            {state.budget.total - state.budget.used === 0 ? '——次数用完了，先给你一个小结。' : '。卡住了就点「我不知道」。'}
           </p>
         )}
 
         {!learning && (
-          <p className="hint">
-            先选一个点，AI 会围着它问你。一次只问一件事；卡住了可以说「我不知道」，它会先给提示。
-          </p>
+          <p className="hint">一次只问一件事。你答、它再问；不会的话可以说不知道，它会先给提示。</p>
         )}
 
         {learning && (
@@ -316,7 +314,9 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               {learning?.status === 'closed' && (
                 <p className="hint">这一轮到这里。想继续的话，换一个点再来一轮。</p>
               )}
-              <p className="hint">{learning?.status === 'closed' ? '下一轮想弄清楚哪一点？点一张就发出去。' : '想先弄清楚哪一点？点一张卡片就开始。'}</p>
+              <p className="chip-lead">
+                {learning?.status === 'closed' ? '换一个点再来一轮，点一张就发出去：' : '先选要弄懂的那一点：'}
+              </p>
               <div className="chiprow topic-picker">
                 {showCore && (
                   <button
@@ -324,7 +324,8 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
                     className="chip chip-learn"
                     onClick={() => void startWith(DEFAULT_LEARN_GOAL)}
                   >
-                    这篇文章的核心内容
+                    <span className="chip-text">这篇文章的核心内容</span>
+                    <span className="chip-go">开始</span>
                   </button>
                 )}
                 {topics.map((bubble) => (
@@ -334,7 +335,8 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
                     className="chip"
                     onClick={() => void startWith(bubble.question)}
                   >
-                    {bubble.question}
+                    <span className="chip-text">{bubble.question}</span>
+                    <span className="chip-go">开始</span>
                   </button>
                 ))}
               </div>

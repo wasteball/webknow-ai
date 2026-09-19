@@ -71,13 +71,11 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
       {guide && (
         <article className="msg ai">
           <div className="bubble ai bubble-guide">
-            <h2 id="guide-heading">
-              <Icon name="spark" small />
-              这篇文章讲了什么
-            </h2>
+            <h2 id="guide-heading">这篇文章讲了什么</h2>
             <p className="summary">{guide.summary}</p>
             {openTopics.length > 0 && (
               <div className="chiprow">
+                <p className="chip-lead">想接着弄懂，点一张发出去：</p>
                 {openTopics.map((bubble) => (
                   <button
                     key={bubble.id}
@@ -86,7 +84,8 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
                     disabled={busy}
                     onClick={() => void sendTopic(bubble.id)}
                   >
-                    {bubble.question}
+                    <span className="chip-text">{bubble.question}</span>
+                    <span className="chip-go">发出去</span>
                   </button>
                 ))}
               </div>
@@ -128,7 +127,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
             value={draft}
             rows={2}
             maxLength={500}
-            placeholder="想问什么，写在这里… Enter 发送，Shift+Enter 换行"
+            placeholder="把问题写在这里。Enter 发送"
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onComposerKeyDown}
           />

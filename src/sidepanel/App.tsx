@@ -8,7 +8,7 @@ import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
 import { Busy, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
-import { Icon, type IconName } from './components/Icon';
+import { BrandMark, Icon, type IconName } from './components/Icon';
 import { outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
 
 const START_LABEL: Record<string, string> = {
@@ -23,9 +23,9 @@ const START_LABEL: Record<string, string> = {
  */
 type View = 'qa' | 'learn';
 
-const MODES: { id: View; label: string; icon: IconName; busyKind: 'answer' | 'learn' }[] = [
-  { id: 'qa', label: '我问', icon: 'book', busyKind: 'answer' },
-  { id: 'learn', label: '问我', icon: 'chat', busyKind: 'learn' },
+const MODES: { id: View; label: string; hint: string; icon: IconName; busyKind: 'answer' | 'learn' }[] = [
+  { id: 'qa', label: '我问', hint: '你来提问', icon: 'book', busyKind: 'answer' },
+  { id: 'learn', label: '问我', hint: '它来提问', icon: 'chat', busyKind: 'learn' },
 ];
 
 const tabDomId = (view: View) => `mode-tab-${view}`;
@@ -160,14 +160,13 @@ export function App() {
       style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
     >
       <header className="panel-header">
-        <h1>
-          <span className="brand-mark" aria-hidden="true">
-            ·
-          </span>
-          webknow-ai
-        </h1>
-        {/* 纯图标：title 给鼠标用户看，aria-label 给读屏器——两者缺一不可，
-            只有 title 的话读屏器读不出名字。 */}
+        <div className="brand">
+          <BrandMark />
+          <div className="brand-copy">
+            <h1>知伴</h1>
+            <p className="brand-sub">陪你读这一页</p>
+          </div>
+        </div>
         <button
           type="button"
           className="icon-btn"
@@ -292,13 +291,18 @@ export function App() {
                     type="button"
                     role="tab"
                     className="mode"
+                    data-mode={mode.id}
+                    aria-label={mode.label}
                     aria-selected={view === mode.id}
                     aria-controls={panelDomId(mode.id)}
                     tabIndex={view === mode.id ? 0 : -1}
                     onClick={() => setView(mode.id)}
                   >
                     <Icon name={mode.icon} small />
-                    {mode.label}
+                    <span className="mode-copy">
+                      <span className="mode-label">{mode.label}</span>
+                      <span className="mode-hint">{mode.hint}</span>
+                    </span>
                     {busy?.kind === mode.busyKind && (
                       <>
                         <span className="dot" aria-hidden="true" />
