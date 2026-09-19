@@ -15,6 +15,11 @@ export type Clean<T> = { ok: true; value: T } | { ok: false; error: AppError };
 
 const BAD_OUTPUT_RUNAWAY = 4_000;
 
+/** 一次一问：开放问题 / 下一问里最多一个问号。两个问号就是两件事。 */
+export function isSingleQuestion(text: string): boolean {
+  return (text.match(/[？?]/g) ?? []).length <= 1;
+}
+
 function badOutput(what: string): AppError {
   return appError('BAD_OUTPUT', `这次生成的内容格式不对，没有采用。可以再试一次。`, true);
 }
@@ -176,26 +181,39 @@ export function cleanLearn(
   }
 
   switch (data.action) {
-    case 'question':
-      return { ok: true, value: { action: 'question', question: data.question.trim() } };
+    case 'question': {
+      const question = data.question.trim();
+      if (!isSingleQuestion(question)) return { ok: false, error: badOutput('学习反馈') };
+      return { ok: true, value: { action: 'question', question } };
+    }
     case 'quiz': {
       const cleaned = cleanQuizQuestions(data.questions);
       if (!cleaned) return { ok: false, error: badOutput('学习反馈') };
+      if (cleaned.questions.some((question) => !isSingleQuestion(question.text))) {
+        return { ok: false, error: badOutput('学习反馈') };
+      }
       return { ok: true, value: { action: 'quiz', ...cleaned } };
     }
-    case 'feedback':
+    case 'feedback': {
+      const next = data.nextQuestion?.trim() || null;
       return {
         ok: true,
         value: {
           action: 'feedback',
           verdict: data.verdict,
           feedback: data.feedback.trim(),
-          nextQuestion: data.nextQuestion?.trim() || null,
+          nextQuestion: next && isSingleQuestion(next) ? next : null,
         },
       };
+    }
     case 'graded': {
-      // nextQuiz 缺答案钥匙等问题只降级（丢弃下一轮测验），不影响本轮批改的可用性。
-      const nextQuiz = data.nextQuiz ? cleanQuizQuestions(data.nextQuiz.questions) : null;
+      // nextQuiz 缺答案钥匙、或下一问一次问了两件事，只降级丢掉下一轮，本轮批改仍可用。
+      const rawNextQuiz = data.nextQuiz ? cleanQuizQuestions(data.nextQuiz.questions) : null;
+      const nextQuiz =
+        rawNextQuiz && rawNextQuiz.questions.every((question) => isSingleQuestion(question.text))
+          ? rawNextQuiz
+          : null;
+      const next = data.nextQuestion?.trim() || null;
       return {
         ok: true,
         value: {
@@ -204,25 +222,30 @@ export function cleanLearn(
           notes: data.notes
             .map((note) => ({ questionId: note.questionId.trim(), note: note.note.trim() }))
             .filter((note) => note.questionId && note.note),
-          nextQuestion: data.nextQuestion?.trim() || null,
+          nextQuestion: next && isSingleQuestion(next) ? next : null,
           nextQuiz,
         },
       };
     }
-    case 'hint':
+    case 'hint': {
+      const question = data.question.trim();
+      if (!isSingleQuestion(question)) return { ok: false, error: badOutput('学习反馈') };
       return {
         ok: true,
-        value: { action: 'hint', hint: data.hint.trim(), question: data.question.trim() },
+        value: { action: 'hint', hint: data.hint.trim(), question },
       };
-    case 'explain':
+    }
+    case 'explain': {
+      const next = data.nextQuestion?.trim() || null;
       return {
         ok: true,
         value: {
           action: 'explain',
           explanation: data.explanation.trim(),
-          nextQuestion: data.nextQuestion?.trim() || null,
+          nextQuestion: next && isSingleQuestion(next) ? next : null,
         },
       };
+    }
     case 'summary':
       return {
         ok: true,

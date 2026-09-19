@@ -76,6 +76,10 @@ export type LearningState = {
   goal: string;
   /** 启动时固定的教学提示词版本；进行中的会话不随覆盖变化（FR-028）。 */
   promptVersion: string;
+  /** 启动时冻结的策略正文。旧会话可能没有，那时才回退到当前配置。 */
+  policy?: string;
+  /** 启动时冻结的出题方式。 */
+  style?: 'mixed' | 'quiz' | 'open';
   /** 启动时固定的提问预算；旧会话可能没有此字段，此时用默认值。 */
   budget?: number;
   /** 已用提问预算（按“提出一轮问题”计数）。 */

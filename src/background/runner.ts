@@ -3,7 +3,8 @@ import { appError, type AppError } from '../core/errors';
 import { LIMITS } from '../core/limits';
 import { answerMessages } from '../core/prompts/answer';
 import { guideMessages, summaryCharsFor } from '../core/prompts/guide';
-import { LEARN_VERSION, learnMessages, type LearnMode } from '../core/prompts/learn';
+import { freezeLearnPolicy, frozenLearnCall, unknownAssistMode } from '../core/learn-policy';
+import { learnMessages, type LearnMode } from '../core/prompts/learn';
 import { searchWithProvider } from '../core/search/registry';
 import type { SearchResult } from '../core/search/types';
 import { effectiveSettings } from '../core/settings';
@@ -39,7 +40,7 @@ export type Intent =
   | { kind: 'ask'; tabId: number; question: string; search?: boolean }
   | { kind: 'learnStart'; tabId: number; goal: string }
   | { kind: 'learnAnswer'; tabId: number; text: string; choices?: LearnChoiceAnswer[] }
-  | { kind: 'learnAssist'; tabId: number; assist: 'hint' | 'explain' | 'skip' }
+  | { kind: 'learnAssist'; tabId: number; assist: 'hint' | 'explain' | 'skip' | 'unknown' }
   | { kind: 'learnEnd'; tabId: number };
 
 /** 选择题作答：一题多个选项 id。 */
@@ -310,10 +311,13 @@ async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): P
 
   const config = await readConfig();
   const settings = effectiveSettings(config);
+  const frozen = freezeLearnPolicy({
+    resolvedPolicy: resolvePolicy('learn', config),
+    style: settings.learningStyle,
+  });
   const learning: LearningState = {
     goal: goal.trim().slice(0, 200) || '理解这篇文章的核心内容',
-    // 启动时固定提示词版本与预算：进行中的会话不随之后的设置变化（FR-028）。
-    promptVersion: resolvePolicy('learn', config) ? 'custom' : LEARN_VERSION,
+    ...frozen,
     budget: settings.learningBudget,
     used: 0,
     current: null,
@@ -326,7 +330,7 @@ async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): P
 
 async function runAssist(
   tabId: number,
-  assist: 'hint' | 'explain' | 'skip',
+  assist: 'hint' | 'explain' | 'skip' | 'unknown',
   hooks: RunnerHooks,
 ): Promise<AppError | null> {
   if (assist === 'hint') {
@@ -335,6 +339,23 @@ async function runAssist(
     if (session?.learning?.current?.kind === 'quiz') {
       return appError('INTERNAL', '选择题这一轮没有提示。可以跳过这一轮，或直接看讲解。', false);
     }
+  }
+  if (assist === 'unknown') {
+    const session = await getSession(tabId);
+    const learning = session?.learning;
+    if (!session || !learning || learning.status !== 'active') {
+      return appError('INTERNAL', '当前没有进行中的学习会话。', false);
+    }
+    const mode = unknownAssistMode(learning);
+    if (!mode) {
+      return appError('INTERNAL', '这一轮请直接作答、跳过或看讲解。', false);
+    }
+    await putSession({
+      ...session,
+      learning: appendLearn(learning, { role: 'answer', text: '我不知道', independent: false }),
+      updatedAt: Date.now(),
+    });
+    return runLearnStep(tabId, mode, { userAnswer: '我不知道', hintUsed: true }, hooks);
   }
   if (assist === 'skip') {
     // 跳过不发模型请求：只记录用户选择，然后换一个题目（FR-014）。
@@ -373,7 +394,10 @@ async function runLearnStep(
       }
 
       const ctx = contextOf(session);
-      const style = effectiveSettings(config).learningStyle;
+      const frozen = frozenLearnCall(learning, {
+        policy: resolvePolicy('learn', config),
+        style: effectiveSettings(config).learningStyle,
+      });
       let next = await callLearn(
         session,
         learning,
@@ -383,8 +407,8 @@ async function runLearnStep(
         signal,
         hooks,
         tabId,
-        resolvePolicy('learn', config),
-        style,
+        frozen.override,
+        frozen.style,
       );
       // 预算用尽或模型判断应当收束时，本轮直接补一次收束，不留给用户一个悬空状态（FR-012）。
       if (mode !== 'close' && !next.current && next.status === 'active') {
@@ -397,8 +421,8 @@ async function runLearnStep(
           signal,
           hooks,
           tabId,
-          resolvePolicy('learn', config),
-          style,
+          frozen.override,
+          frozen.style,
         );
       }
 

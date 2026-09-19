@@ -71,7 +71,7 @@ export type Command =
   | { type: 'explore'; tabId: number; bubbleId: string }
   | { type: 'learnStart'; tabId: number; goal: string }
   | { type: 'learnAnswer'; tabId: number; text: string; choices?: { questionId: string; choiceIds: string[] }[] }
-  | { type: 'learnAssist'; tabId: number; action: 'hint' | 'explain' | 'skip' }
+  | { type: 'learnAssist'; tabId: number; action: 'hint' | 'explain' | 'skip' | 'unknown' }
   | { type: 'learnEnd'; tabId: number }
   | { type: 'jump'; tabId: number; blockId: string }
   | { type: 'clearSession'; tabId: number }

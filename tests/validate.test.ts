@@ -124,6 +124,30 @@ describe('cleanLearn', () => {
     expect(cleanLearn(graded, 'respond', 'open').ok).toBe(false);
   });
 
+  it('开放问题超过一个问号时判为无效（一次一问）', () => {
+    expect(
+      cleanLearn({ action: 'question', question: '原因是什么？边界在哪？' }, 'ask').ok,
+    ).toBe(false);
+    expect(cleanLearn({ action: 'question', question: '原因是什么？' }, 'ask').ok).toBe(true);
+  });
+
+  it('下一问若超过一个问号，丢掉下一问，本轮反馈仍保留', () => {
+    const result = cleanLearn(
+      {
+        action: 'feedback',
+        verdict: 'partial',
+        feedback: '数字对了，边界还没说。',
+        nextQuestion: '为什么不能外推？培训算不算干扰？',
+      },
+      'respond',
+      'open',
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.action).toBe('feedback');
+    if (result.value.action === 'feedback') expect(result.value.nextQuestion).toBeNull();
+  });
+
   it('quiz 输出：答案必须是选项之一，重复题目 id 判为无效（F5）', () => {
     const valid = {
       action: 'quiz',

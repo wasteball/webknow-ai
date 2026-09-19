@@ -292,6 +292,7 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
   );
   await pushState(_panel, tabId);
   await expect(_panel.locator('.entry-question').first()).toBeVisible();
+  await expect(_panel.getByRole('button', { name: '我不知道' })).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-720.png'), fullPage: true });
 
   // F4 的核心场景：学习进行中切回伴读，摘要、对话与输入都还在，学习不被打断。
@@ -313,6 +314,8 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
   // 视图尊重用户所在的位置：收束后不会强行切走，需要自己回到“对话学懂”面板。
   await _panel.getByRole('tab', { name: /对话学懂/ }).click();
   await expect(_panel.getByRole('button', { name: '再来一轮' })).toBeVisible();
+  await expect(_panel.getByRole('button', { name: '这篇文章的核心内容' })).toBeVisible();
+  await expect(_panel.getByRole('button', { name: BUBBLES[0]!.question })).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-closed-720.png'), fullPage: true });
 
   await _panel.close();

@@ -61,11 +61,17 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
     if (reply?.ok) setPicks({});
   };
 
-  const start = async () => {
+  const startWith = async (nextGoal: string) => {
     if (!tabId) return;
-    const reply = await send({ type: 'learnStart', tabId, goal });
+    const reply = await send({ type: 'learnStart', tabId, goal: nextGoal });
     if (reply?.ok) setGoal('');
   };
+
+  const start = async () => {
+    await startWith(goal);
+  };
+
+  const topics = state.guide?.bubbles ?? [];
 
   const togglePick = (question: QuizQuestion, choiceId: string) => {
     setPicks((currentPicks) => {
@@ -94,8 +100,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
 
         {!learning && (
           <p className="hint">
-            让 AI 出几个问题考考你，看看这篇文章读懂了没有。它可能出选择题，也可能让你用自己的话回答；
-            会根据你的回答调整后续问题，最后告诉你哪些答对了、哪些还没弄清楚。
+            先选一个点，AI 会围着它问你。一次只问一件事；卡住了可以说「我不知道」，它会先给提示。
           </p>
         )}
 
@@ -220,6 +225,13 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               <div className="composer-actions" role="group" aria-label="学习辅助">
                 <button
                   type="button"
+                  className="secondary"
+                  onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'unknown' })}
+                >
+                  我不知道
+                </button>
+                <button
+                  type="button"
                   className="quiet"
                   onClick={() => tabId && void send({ type: 'learnAssist', tabId, action: 'hint' })}
                 >
@@ -289,19 +301,37 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               }}
             >
               {learning?.status === 'closed' && (
-                <p className="hint">这一轮到这里。想继续的话，可以换个方向再来一轮。</p>
+                <p className="hint">这一轮到这里。想继续的话，换一个点再来一轮。</p>
               )}
+              <p className="hint">{learning?.status === 'closed' ? '下一轮想弄清楚哪一点？' : '想先弄清楚哪一点？'}</p>
+              <div className="chiprow topic-picker">
+                <button
+                  type="button"
+                  className="chip chip-learn"
+                  onClick={() => void startWith('理解这篇文章的核心内容')}
+                >
+                  这篇文章的核心内容
+                </button>
+                {topics.map((bubble) => (
+                  <button
+                    key={bubble.id}
+                    type="button"
+                    className="chip"
+                    onClick={() => void startWith(bubble.question)}
+                  >
+                    {bubble.question}
+                  </button>
+                ))}
+              </div>
               <label className="sr-only" htmlFor="learning-goal">
-                想重点弄清楚什么（可不填）
+                自己写一个方向（可不填）
               </label>
               <input
                 id="learning-goal"
                 type="text"
                 maxLength={200}
                 value={goal}
-                placeholder={
-                  learning?.status === 'closed' ? '下一轮想弄清楚什么（可不填）' : '想重点弄清楚什么？可不填。'
-                }
+                placeholder="或者自己写一个方向（可不填）"
                 onChange={(event) => setGoal(event.target.value)}
               />
               <div className="composer-actions">

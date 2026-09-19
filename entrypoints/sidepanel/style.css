@@ -410,6 +410,12 @@ details.section summary {
   background: var(--jade-soft);
 }
 
+.topic-picker {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
 /* ── 正文与摘要 ─────────────────────────────────────────── */
 
 /* 长正文在宽面板下限制每行字数（40 个汉字左右），拖宽也不变成一眼扫不到头的大片文字。 */
