@@ -44,20 +44,20 @@ const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string }[] = [
   },
   {
     key: 'answer',
-    title: '自由问答',
+    title: '我问',
     hint: '决定回答的口径与风格。',
   },
   {
     key: 'learn',
-    title: '“AI 问我”怎么提问',
+    title: '问我',
     hint: '决定它出什么题、怎么回应你的回答。',
   },
 ];
 
 const TARGET_LABEL: Record<PromptTarget, string> = {
   guide: '导读摘要',
-  answer: '自由问答',
-  learn: 'AI 问我',
+  answer: '我问',
+  learn: '问我',
 };
 
 export function Settings({
@@ -556,8 +556,8 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
             onChange={(event) => setTarget(event.target.value as PromptTarget)}
           >
             <option value="guide">导读摘要</option>
-            <option value="answer">自由问答</option>
-            <option value="learn">AI 问我</option>
+            <option value="answer">我问</option>
+            <option value="learn">问我</option>
           </select>
           <label htmlFor="skill-description">一句话说明（可选）</label>
           <input
@@ -883,7 +883,7 @@ function Behavior({ state, send }: { state: PanelState; send: Send }) {
     <Section title="行为偏好">
       <p className="hint">这些只影响你的使用体验，改动立即生效并保存。</p>
       <div className="field">
-        <label htmlFor="learning-budget">“AI 问我”一轮最多问几个问题</label>
+        <label htmlFor="learning-budget">「问我」一轮最多问几个问题</label>
         <select
           id="learning-budget"
           value={String(settings.learningBudget)}
@@ -898,7 +898,7 @@ function Behavior({ state, send }: { state: PanelState; send: Send }) {
         </select>
       </div>
       <div className="field">
-        <label htmlFor="learning-style">“AI 问我”怎么出题</label>
+        <label htmlFor="learning-style">「问我」怎么出题</label>
         <select
           id="learning-style"
           value={settings.learningStyle}

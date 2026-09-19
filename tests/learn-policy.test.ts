@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { freezeLearnPolicy, frozenLearnCall, unknownAssistMode } from '../src/core/learn-policy';
+import {
+  DEFAULT_LEARN_GOAL,
+  freezeLearnPolicy,
+  frozenLearnCall,
+  rememberLearnGoal,
+  unknownAssistMode,
+  usedLearnGoals,
+} from '../src/core/learn-policy';
 import { LEARN_DEFAULT_POLICY } from '../src/core/prompts/learn';
 import type { LearningState } from '../src/core/session';
 
@@ -53,6 +60,24 @@ describe('frozenLearnCall', () => {
       override: '现在的覆盖',
       style: 'quiz',
     });
+  });
+});
+
+describe('rememberLearnGoal', () => {
+  it('点过的方向留下来，再开一轮不会把已经发出去的卡片变回来', () => {
+    expect(rememberLearnGoal(null, DEFAULT_LEARN_GOAL)).toEqual([DEFAULT_LEARN_GOAL]);
+    const first = session({ goal: DEFAULT_LEARN_GOAL, usedGoals: [DEFAULT_LEARN_GOAL], status: 'closed' });
+    expect(rememberLearnGoal(first, '为什么三个团队不能代表其他城市？')).toEqual([
+      DEFAULT_LEARN_GOAL,
+      '为什么三个团队不能代表其他城市？',
+    ]);
+  });
+});
+
+describe('usedLearnGoals', () => {
+  it('旧会话没有 usedGoals 时，当前 goal 也算已经发出去了', () => {
+    expect(usedLearnGoals(session({ goal: DEFAULT_LEARN_GOAL }))).toEqual(new Set([DEFAULT_LEARN_GOAL]));
+    expect(usedLearnGoals(null).size).toBe(0);
   });
 });
 

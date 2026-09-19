@@ -13,7 +13,7 @@ export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: (env) => ({
     name: 'webknow-ai',
-    description: '在公开网页旁生成短摘要与探索气泡，支持自由提问和自愿的“AI 问我”',
+    description: '在公开网页旁生成短摘要与探索气泡，支持我问和问我',
     // activeTab：点工具栏图标时把当前标签页地址交给扩展（无安装警告、不读取浏览历史）。
     // 没有它就拿不到网址，也就不知道该向哪个网站申请读取权限——真实故障就是这样发生的。
     permissions: ['storage', 'sidePanel', 'scripting', 'activeTab'],

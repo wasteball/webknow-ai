@@ -80,6 +80,8 @@ export type LearningState = {
   policy?: string;
   /** 启动时冻结的出题方式。 */
   style?: 'mixed' | 'quiz' | 'open';
+  /** 这一页已经拿去开过一轮的方向；对应的卡片不再出现。 */
+  usedGoals?: string[];
   /** 启动时固定的提问预算；旧会话可能没有此字段，此时用默认值。 */
   budget?: number;
   /** 已用提问预算（按“提出一轮问题”计数）。 */

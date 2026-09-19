@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
+import { DEFAULT_LEARN_GOAL, usedLearnGoals } from '../../core/learn-policy';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { LearnEntry, QuizQuestion } from '../../core/session';
 import { shouldSubmitComposer } from '../composer';
@@ -9,7 +10,7 @@ import { Icon } from './Icon';
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
- * 「对话学懂」面板。四种形态：
+ * 「问我」面板。四种形态：
  * - 空闲（没有学习会话）：学习目标表单；
  * - 开放问题进行中：时间线 + 回答输入 + 辅助操作；
  * - 选择题轮进行中：直接在题目上勾选并提交；
@@ -19,6 +20,7 @@ type Send = (command: Command) => Promise<Reply | undefined>;
 export function Learning({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
   const [goal, setGoal] = useState('');
+  const [sentGoals, setSentGoals] = useState<Set<string>>(new Set());
   /** 当前选择题轮的作答：questionId → 选中的选项 id。 */
   const [picks, setPicks] = useState<Record<string, string[]>>({});
   const tabId = state.tabId;
@@ -63,15 +65,26 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
 
   const startWith = async (nextGoal: string) => {
     if (!tabId) return;
-    const reply = await send({ type: 'learnStart', tabId, goal: nextGoal });
+    const sent = nextGoal.trim() || DEFAULT_LEARN_GOAL;
+    setSentGoals((current) => new Set(current).add(sent));
+    const reply = await send({ type: 'learnStart', tabId, goal: sent });
     if (reply?.ok) setGoal('');
+    else {
+      setSentGoals((current) => {
+        const next = new Set(current);
+        next.delete(sent);
+        return next;
+      });
+    }
   };
 
   const start = async () => {
     await startWith(goal);
   };
 
-  const topics = state.guide?.bubbles ?? [];
+  const usedGoals = new Set([...usedLearnGoals(learning), ...sentGoals]);
+  const topics = (state.guide?.bubbles ?? []).filter((bubble) => !usedGoals.has(bubble.question));
+  const showCore = !usedGoals.has(DEFAULT_LEARN_GOAL);
 
   const togglePick = (question: QuizQuestion, choiceId: string) => {
     setPicks((currentPicks) => {
@@ -303,15 +316,17 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               {learning?.status === 'closed' && (
                 <p className="hint">这一轮到这里。想继续的话，换一个点再来一轮。</p>
               )}
-              <p className="hint">{learning?.status === 'closed' ? '下一轮想弄清楚哪一点？' : '想先弄清楚哪一点？'}</p>
+              <p className="hint">{learning?.status === 'closed' ? '下一轮想弄清楚哪一点？点一张就发出去。' : '想先弄清楚哪一点？点一张卡片就开始。'}</p>
               <div className="chiprow topic-picker">
-                <button
-                  type="button"
-                  className="chip chip-learn"
-                  onClick={() => void startWith('理解这篇文章的核心内容')}
-                >
-                  这篇文章的核心内容
-                </button>
+                {showCore && (
+                  <button
+                    type="button"
+                    className="chip chip-learn"
+                    onClick={() => void startWith(DEFAULT_LEARN_GOAL)}
+                  >
+                    这篇文章的核心内容
+                  </button>
+                )}
                 {topics.map((bubble) => (
                   <button
                     key={bubble.id}
@@ -337,7 +352,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               <div className="composer-actions">
                 <button type="submit">
                   {learning?.status === 'closed' && <Icon name="rotate" small />}
-                  {learning?.status === 'closed' ? '再来一轮' : '让 AI 问我'}
+                  {learning?.status === 'closed' ? '再来一轮' : '开始'}
                 </button>
               </div>
             </form>

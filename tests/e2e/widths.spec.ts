@@ -252,8 +252,7 @@ test('READY 视图在三种宽度下排版正确', async () => {
 test('问过的话题从 chip 行里退休，并作为你的话留在对话里', async () => {
   test.setTimeout(120_000);
   const { panel, tabId } = await openPanel(560);
-  await expect(panel.locator('.chip:not(.chip-learn)')).toHaveCount(3);
-  await expect(panel.getByRole('button', { name: /让 AI 问我/ })).toBeVisible();
+  await expect(panel.locator('.chip:visible')).toHaveCount(3);
 
   // 把已有那一轮的问题改成某个话题的原文：等价于"这个话题已经问过了"。
   // 话题与提问在数据上没有 id 关联（explore 在下游就是一次普通提问），
@@ -269,8 +268,7 @@ test('问过的话题从 chip 行里退休，并作为你的话留在对话里',
   );
   await pushState(panel, tabId);
 
-  await expect(panel.locator('.chip:not(.chip-learn)')).toHaveCount(2);
-  await expect(panel.getByRole('button', { name: /让 AI 问我/ })).toBeVisible();
+  await expect(panel.locator('.chip:visible')).toHaveCount(2);
   await expect(panel.getByRole('button', { name: BUBBLES[0]!.question })).toBeHidden();
   // 退休不等于消失：它变成你说过的那句话，还在记录里。
   await expect(panel.locator('.bubble.user').filter({ hasText: BUBBLES[0]!.question })).toBeVisible();
@@ -296,12 +294,12 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-720.png'), fullPage: true });
 
   // F4 的核心场景：学习进行中切回伴读，摘要、对话与输入都还在，学习不被打断。
-  await _panel.getByRole('tab', { name: /网页伴读/ }).click();
+  await _panel.getByRole('tab', { name: /^我问$/ }).click();
   await expect(_panel.getByRole('button', { name: '发送' })).toBeVisible();
   await expect(_panel.getByText('这篇文章讲了什么')).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-qa-tab-720.png'), fullPage: true });
 
-  // 空闲形态：收束后回到 READY，“对话学懂”面板显示新一轮的出题表单。
+  // 空闲形态：收束后回到 READY，「问我」面板显示新一轮的卡片。已经发出去的方向不再出现。
   await context.serviceWorkers()[0]!.evaluate(async (id) => {
     const stored = await chrome.storage.session.get(`sess:${id}`);
     const session = stored[`sess:${id}`] as Record<string, unknown>;
@@ -311,10 +309,10 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
     await chrome.storage.session.set({ [`sess:${id}`]: session });
   }, tabId);
   await pushState(_panel, tabId);
-  // 视图尊重用户所在的位置：收束后不会强行切走，需要自己回到“对话学懂”面板。
-  await _panel.getByRole('tab', { name: /对话学懂/ }).click();
+  // 视图尊重用户所在的位置：收束后不会强行切走，需要自己回到「问我」。
+  await _panel.getByRole('tab', { name: /^问我$/ }).click();
   await expect(_panel.getByRole('button', { name: '再来一轮' })).toBeVisible();
-  await expect(_panel.getByRole('button', { name: '这篇文章的核心内容' })).toBeVisible();
+  await expect(_panel.getByRole('button', { name: '这篇文章的核心内容' })).toBeHidden();
   await expect(_panel.getByRole('button', { name: BUBBLES[0]!.question })).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-closed-720.png'), fullPage: true });
 
@@ -361,7 +359,7 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
   await expect(settings).toHaveURL(/options\.html(#\d+)?$/);
 
   // 左侧分类导航可切换，右侧内容随分类变化。
-  await expect(settings.getByText('“AI 问我”一轮最多问几个问题')).toBeVisible();
+  await expect(settings.getByText('「问我」一轮最多问几个问题')).toBeVisible();
   const nav = settings.getByRole('navigation', { name: '设置分类' });
   // 这台浏览器里已经有钥匙（beforeAll 放的），所以模型这一步直接可选。
   await nav.getByRole('button', { name: '模型' }).click();
@@ -389,10 +387,10 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
 test('模式切换是完整的 tab 组件：ARIA 关系与方向键都能用', async () => {
   test.setTimeout(120_000);
   const { panel } = await openPanel(560);
-  const readTab = panel.getByRole('tab', { name: /网页伴读/ });
-  const learnTab = panel.getByRole('tab', { name: /对话学懂/ });
-  const readPanel = panel.getByRole('tabpanel', { name: /网页伴读/ });
-  const learnPanel = panel.getByRole('tabpanel', { name: /对话学懂/ });
+  const readTab = panel.getByRole('tab', { name: /我问/ });
+  const learnTab = panel.getByRole('tab', { name: /问我/ });
+  const readPanel = panel.getByRole('tabpanel', { name: /我问/ });
+  const learnPanel = panel.getByRole('tabpanel', { name: /问我/ });
 
   // 关系成套：tab 指到面板，面板指回 tab，未选中的那个真隐藏（不是只换个颜色）。
   await expect(readTab).toHaveAttribute('aria-controls', 'mode-panel-qa');
@@ -482,7 +480,7 @@ test('三种宽度、两个模式下都不出现横向溢出', async () => {
       [tabId, LEARNING] as const,
     );
     await pushState(panel, tabId);
-    await panel.getByRole('tab', { name: /对话学懂/ }).click();
+    await panel.getByRole('tab', { name: /问我/ }).click();
     await expect(panel.locator('.timeline').first()).toBeVisible();
     expect(await overflowPx(panel)).toBe(0);
 
@@ -508,7 +506,7 @@ test('设置：出题方式改完立刻落盘（真实存储）', async () => {
   await settings.goto(`chrome-extension://${extensionId}/options.html`);
 
   // 回归：这个下拉在界面上一直存在，但后台曾经没把它写进配置，选了等于没选。
-  await settings.getByLabel('“AI 问我”怎么出题').selectOption('quiz');
+  await settings.getByLabel('「问我」怎么出题').selectOption('quiz');
   await expect
     .poll(async () =>
       context.serviceWorkers()[0]!.evaluate(async () => {
@@ -519,7 +517,7 @@ test('设置：出题方式改完立刻落盘（真实存储）', async () => {
     .toBe('quiz');
 
   await settings.reload();
-  await expect(settings.getByLabel('“AI 问我”怎么出题')).toHaveValue('quiz');
+  await expect(settings.getByLabel('「问我」怎么出题')).toHaveValue('quiz');
   await settings.close();
 });
 
@@ -528,7 +526,7 @@ test('设置：窄窗口下分类导航变成横向可滚动条，正文不横�
   const settings = await context.newPage();
   await settings.setViewportSize({ width: 480, height: 820 });
   await settings.goto(`chrome-extension://${extensionId}/options.html`);
-  await expect(settings.getByText('“AI 问我”一轮最多问几个问题')).toBeVisible();
+  await expect(settings.getByText('「问我」一轮最多问几个问题')).toBeVisible();
 
   // 导航占满一行并且自己能横向滚动，正文区不跟着一起横溢。
   const nav = settings.getByRole('navigation', { name: '设置分类' });

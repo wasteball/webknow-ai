@@ -3,6 +3,21 @@ import type { LearningState } from './session';
 
 export type LearningStyle = 'mixed' | 'quiz' | 'open';
 
+export const DEFAULT_LEARN_GOAL = '理解这篇文章的核心内容';
+
+/** 点过的方向记下来：卡片已经当对话发出去了，再开一轮不能把它变回来。 */
+export function rememberLearnGoal(previous: LearningState | null, goal: string): string[] {
+  const prior = previous?.usedGoals ?? [];
+  const extra = previous?.goal && !prior.includes(previous.goal) ? [previous.goal] : [];
+  const next = goal.trim();
+  return [...new Set([...prior, ...extra, next].filter(Boolean))];
+}
+
+export function usedLearnGoals(learning: LearningState | null): Set<string> {
+  if (!learning) return new Set();
+  return new Set(rememberLearnGoal(learning, ''));
+}
+
 function hashPolicy(text: string): string {
   let hash = 5381;
   for (let index = 0; index < text.length; index += 1) {

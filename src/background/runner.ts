@@ -3,7 +3,13 @@ import { appError, type AppError } from '../core/errors';
 import { LIMITS } from '../core/limits';
 import { answerMessages } from '../core/prompts/answer';
 import { guideMessages, summaryCharsFor } from '../core/prompts/guide';
-import { freezeLearnPolicy, frozenLearnCall, unknownAssistMode } from '../core/learn-policy';
+import {
+  DEFAULT_LEARN_GOAL,
+  freezeLearnPolicy,
+  frozenLearnCall,
+  rememberLearnGoal,
+  unknownAssistMode,
+} from '../core/learn-policy';
 import { learnMessages, type LearnMode } from '../core/prompts/learn';
 import { searchWithProvider } from '../core/search/registry';
 import type { SearchResult } from '../core/search/types';
@@ -315,9 +321,11 @@ async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): P
     resolvedPolicy: resolvePolicy('learn', config),
     style: settings.learningStyle,
   });
+  const nextGoal = goal.trim().slice(0, 200) || DEFAULT_LEARN_GOAL;
   const learning: LearningState = {
-    goal: goal.trim().slice(0, 200) || '理解这篇文章的核心内容',
+    goal: nextGoal,
     ...frozen,
+    usedGoals: rememberLearnGoal(session.learning, nextGoal),
     budget: settings.learningBudget,
     used: 0,
     current: null,

@@ -10,12 +10,13 @@ import { Icon } from './Icon';
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
- * 「网页伴读」模式：摘要与话题在最上面（读完就知道这页讲什么），
- * 下面是自由问答，问题输入区吸在底部——滚到哪都能接着问。
+ * 「我问」：摘要与话题在最上面，点一张卡片就是发出去一句；
+ * 下面自己接着问。输入区吸在底部。
  */
 export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
   const [searchOn, setSearchOn] = useState(false);
+  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
   const tabId = state.tabId;
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.busy?.kind === 'answer';
@@ -49,7 +50,21 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
   // 问过的话题就退休：ChatTurn 里没有 bubbleId（explore 在下游退化成了一次普通提问），
   // 所以按问题原文匹配。这也正好是用户看到的"我问过了"。
   const asked = new Set(state.chat.map((turn) => turn.question));
-  const openTopics = guide?.bubbles.filter((bubble) => !asked.has(bubble.question)) ?? [];
+  const openTopics =
+    guide?.bubbles.filter((bubble) => !asked.has(bubble.question) && !sentIds.has(bubble.id)) ?? [];
+
+  const sendTopic = async (bubbleId: string) => {
+    if (!tabId) return;
+    setSentIds((current) => new Set(current).add(bubbleId));
+    const reply = await send({ type: 'explore', tabId, bubbleId });
+    if (!reply?.ok) {
+      setSentIds((current) => {
+        const next = new Set(current);
+        next.delete(bubbleId);
+        return next;
+      });
+    }
+  };
 
   return (
     <>
@@ -61,32 +76,21 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
               这篇文章讲了什么
             </h2>
             <p className="summary">{guide.summary}</p>
-            <div className="chiprow">
-              {openTopics.map((bubble) => (
-                <button
-                  key={bubble.id}
-                  type="button"
-                  className="chip"
-                  disabled={busy}
-                  onClick={() => {
-                    if (tabId) void send({ type: 'explore', tabId, bubbleId: bubble.id });
-                  }}
-                >
-                  {bubble.question}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="chip chip-learn"
-                disabled={busy || state.phase !== 'READY'}
-                onClick={() => {
-                  if (tabId) void send({ type: 'learnStart', tabId, goal: '' });
-                }}
-              >
-                <Icon name="chat" small />
-                让 AI 问我，看看是否真懂
-              </button>
-            </div>
+            {openTopics.length > 0 && (
+              <div className="chiprow">
+                {openTopics.map((bubble) => (
+                  <button
+                    key={bubble.id}
+                    type="button"
+                    className="chip"
+                    disabled={busy}
+                    onClick={() => void sendTopic(bubble.id)}
+                  >
+                    {bubble.question}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </article>
       )}

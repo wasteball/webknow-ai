@@ -106,9 +106,10 @@ test('首屏摘要与话题', async () => {
   await expect(panel.locator('.chip').first()).toBeVisible();
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-02-guide.png'), fullPage: true });
 
-  // “AI 问我”：真答一轮再截图。只截第一题的话，画面大半是空白，
+  // 「问我」：真答一轮再截图。只截第一题的话，画面大半是空白，
   // 看不出"一次一个问题"是怎么一步步推进的——那正是翠色时间线要表达的东西。
-  await panel.getByRole('button', { name: '让 AI 问我' }).click();
+  await panel.getByRole('tab', { name: /^问我$/ }).click();
+  await panel.getByRole('button', { name: '这篇文章的核心内容' }).click();
   await expect(panel.locator('.entry-question').first()).toBeVisible({ timeout: 60_000 });
 
   await panel.getByLabel('用自己的话回答').fill(
