@@ -634,7 +634,7 @@ function SearchSettings({ state, send }: { state: PanelState; send: Send }) {
       <p className="hint">
         启用后，问答里会多一个“联网搜索”开关：打开它提问，会把你的搜索词发给下面选的搜索服务，
         拿到结果后连同文章一起回答。<strong>只发搜索词，不发文章正文。</strong>
-        搜索服务和你的 DeepSeek 账号是分开的，换任何模型都不影响它。
+        搜索服务和模型钥匙是分开的，换任何模型都不影响它。
       </p>
       <div className="field">
         <label htmlFor="search-provider">搜索服务</label>
@@ -745,8 +745,8 @@ function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
   return (
     <Section title="知识库（腾讯 ima）">
       <p className="hint">
-        配置后，读到一篇好文章时可以一键“存入知识库”：网页链接存进你的 ima 知识库（重复保存会更新同一条目），
-        同时写一条阅读笔记（摘要、话题和你的问答小结）。这些内容存在你自己的 ima 里，由你在 ima 内管理。
+        可以先在这里填好凭证、选好默认知识库。侧栏里的“存入知识库”这一步还在收尾，本版先不开入口，
+        避免存进去的笔记对不上所选知识库。凭证会留在本机，下一版开放保存时直接用。
       </p>
       {current.enabled ? (
         <>

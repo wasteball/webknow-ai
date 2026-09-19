@@ -76,12 +76,6 @@ export function cleanAnswer(
   }
 
   const unanswered = result.data.unanswered.map((item) => item.trim()).filter(Boolean);
-  let source: AnswerSource = result.data.source;
-  if (source === 'original' && citations.length === 0 && webResults.length === 0) {
-    // 声称来自原文却拿不出可核对依据：降级为“无法确认”，不把模型知识写成作者原话。
-    source = 'unknown';
-    unanswered.push('这条回答未能在当前正文中找到可直接核对的依据，因此未标为原文依据。');
-  }
 
   // references 只能是程序注入的网络结果 URL 原样复制；其余一律丢弃（F3）。
   const knownUrls = new Set(webResults.map((item) => item.url));
@@ -89,6 +83,17 @@ export function cleanAnswer(
     .map((url) => url.trim())
     .filter((url) => knownUrls.has(url))
     .slice(0, 5);
+
+  let source: AnswerSource = result.data.source;
+  if (source === 'original' && citations.length === 0) {
+    // 原文依据必须有本地块。有网络结果也不能让这条规则失效——否则会把网上的话标成作者原话。
+    if (references.length > 0) {
+      source = 'extended';
+    } else {
+      source = 'unknown';
+      unanswered.push('这条回答未能在当前正文中找到可直接核对的依据，因此未标为原文依据。');
+    }
+  }
 
   return { ok: true, value: { answer, source, citations, unanswered, references } };
 }

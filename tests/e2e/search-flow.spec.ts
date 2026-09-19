@@ -145,11 +145,11 @@ async function openPanel(): Promise<Page> {
 
 /** 打开开关、提问、发送。什么时候算"这轮跑完了"由各用例自己等。 */
 async function ask(panel: Page, question: string, withSearch: boolean): Promise<void> {
-  const toggle = panel.getByRole('checkbox', { name: /联网搜索/ });
+  const toggle = panel.getByRole('button', { name: '联网搜索' });
   // 开关只在配置了搜索供应商时出现；它出现了才说明那份配置已经被读到了。
   await expect(toggle).toBeVisible();
-  if (withSearch) await toggle.check();
-  else await toggle.uncheck();
+  const pressed = (await toggle.getAttribute('aria-pressed')) === 'true';
+  if (withSearch !== pressed) await toggle.click();
 
   await panel.getByLabel('向这篇文章提问').fill(question);
   await panel.getByRole('button', { name: '发送' }).click();

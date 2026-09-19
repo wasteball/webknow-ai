@@ -289,13 +289,33 @@ describe('回答 references 校验（F3）', () => {
     if (clean.ok) expect(clean.value.references).toEqual(['https://a.example.com/x']);
   });
 
-  it('没有正文引用但主要依据来自网络资料时，不强行降级为 unknown', () => {
+  it('有网络结果也不能把无本地引用的回答标成原文依据', () => {
     const clean = cleanAnswer(
       { answer: '回答', source: 'original', citations: [], unanswered: [], references: [] },
       blocks,
       [{ title: 'T', url: 'https://a.example.com/x', snippet: 'S' }],
     );
     expect(clean.ok).toBe(true);
-    if (clean.ok) expect(clean.value.source).toBe('original');
+    if (!clean.ok) return;
+    expect(clean.value.source).toBe('unknown');
+    expect(clean.value.unanswered.join()).toContain('未能在当前正文中找到可直接核对的依据');
+  });
+
+  it('列出了注入过的网络链接、但没有正文引用时，标成文章之外的知识', () => {
+    const clean = cleanAnswer(
+      {
+        answer: '回答',
+        source: 'original',
+        citations: [],
+        unanswered: [],
+        references: ['https://a.example.com/x'],
+      },
+      blocks,
+      [{ title: 'T', url: 'https://a.example.com/x', snippet: 'S' }],
+    );
+    expect(clean.ok).toBe(true);
+    if (!clean.ok) return;
+    expect(clean.value.source).toBe('extended');
+    expect(clean.value.references).toEqual(['https://a.example.com/x']);
   });
 });

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { LearnEntry, QuizQuestion } from '../../core/session';
+import { shouldSubmitComposer } from '../composer';
 import { Busy, Section, VerdictTag } from './bits';
 import { Icon } from './Icon';
 
@@ -192,8 +193,22 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
                   rows={2}
                   maxLength={1000}
                   value={draft}
-                  placeholder="用自己的话说说看…"
+                  placeholder="用自己的话说说看… Enter 发送，Shift+Enter 换行"
                   onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+                    if (
+                      !shouldSubmitComposer({
+                        key: event.key,
+                        shiftKey: event.shiftKey,
+                        isComposing: event.nativeEvent.isComposing,
+                        keyCode: event.keyCode,
+                      })
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    void answer();
+                  }}
                 />
                 <div className="composer-actions">
                   <button type="submit" disabled={!draft.trim()}>

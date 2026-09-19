@@ -252,7 +252,8 @@ test('READY 视图在三种宽度下排版正确', async () => {
 test('问过的话题从 chip 行里退休，并作为你的话留在对话里', async () => {
   test.setTimeout(120_000);
   const { panel, tabId } = await openPanel(560);
-  await expect(panel.locator('.chip')).toHaveCount(3);
+  await expect(panel.locator('.chip:not(.chip-learn)')).toHaveCount(3);
+  await expect(panel.getByRole('button', { name: /让 AI 问我/ })).toBeVisible();
 
   // 把已有那一轮的问题改成某个话题的原文：等价于"这个话题已经问过了"。
   // 话题与提问在数据上没有 id 关联（explore 在下游就是一次普通提问），
@@ -268,7 +269,8 @@ test('问过的话题从 chip 行里退休，并作为你的话留在对话里',
   );
   await pushState(panel, tabId);
 
-  await expect(panel.locator('.chip')).toHaveCount(2);
+  await expect(panel.locator('.chip:not(.chip-learn)')).toHaveCount(2);
+  await expect(panel.getByRole('button', { name: /让 AI 问我/ })).toBeVisible();
   await expect(panel.getByRole('button', { name: BUBBLES[0]!.question })).toBeHidden();
   // 退休不等于消失：它变成你说过的那句话，还在记录里。
   await expect(panel.locator('.bubble.user').filter({ hasText: BUBBLES[0]!.question })).toBeVisible();

@@ -9,6 +9,7 @@ import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
 import { Busy, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
 import { Icon, type IconName } from './components/Icon';
+import { outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
 
 const START_LABEL: Record<string, string> = {
   READY_TO_START: '开始伴读',
@@ -226,7 +227,9 @@ export function App() {
                   searchProviderName={state.settings.search.enabled ? state.settings.search.providerName : null}
                 />
               ) : (
-                <p className="hint">你已经确认过：正文和你的问题会发给 DeepSeek，费用从你的账号扣。</p>
+                <p className="hint">
+                  {outboundConfirmedHint(findProvider(state.settings.provider).receiver)}
+                </p>
               )}
               <div className="composer-actions">
                 {/* 未确认时不做成禁用按钮：禁用而不说原因，用户会以为点了没反应。 */}
@@ -341,13 +344,13 @@ function OutboundNotice({
   state: PanelState;
   searchProviderName: string | null;
 }) {
-  const receiver = findProvider(state.settings.provider).receiver;
+  const provider = findProvider(state.settings.provider);
   return (
     <div className="banner banner-info">
       <p>开始之前，请先确认这几件事：</p>
       <ul>
         <li>
-          你正在看的这一页的文字，会发给 <strong>{receiver}</strong> 这家公司（不是发给我们）。
+          你正在看的这一页的文字，会发给 <strong>{provider.receiver}</strong> 这家公司（不是发给我们）。
           你换了模型供应商，接收方就会跟着换——换完之后这里会再问你一次。
         </li>
         <li>发过去的是：这一页的正文、你提的问题，以及前面几轮对话。</li>
@@ -357,18 +360,10 @@ function OutboundNotice({
             文章正文不会发给它。
           </li>
         )}
-        {state.settings.ima.enabled && (
-          <li>
-            你还配置了知识库（腾讯 ima）：点“存入知识库”时，这一页的<strong>网址</strong>和你的
-            <strong>阅读笔记</strong>（摘要、话题、问答小结）会发给腾讯 ima 并存在你自己的 ima 知识库里。
-          </li>
-        )}
-        <li>费用从你自己的 DeepSeek 账号里扣。</li>
+        <li>{outboundFeeLine(provider.name)}</li>
         <li>请只在这一页是公开的、你有权这样使用的时候才用。</li>
       </ul>
-      <p className="hint">
-        DeepSeek 收到内容后怎么保存，由它自己的规则决定，我们没法替你保证它不留存。
-      </p>
+      <p className="hint">{outboundRetentionLine(provider.name)}</p>
     </div>
   );
 }

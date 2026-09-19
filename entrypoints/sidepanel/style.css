@@ -401,6 +401,15 @@ details.section summary {
   cursor: not-allowed;
 }
 
+.chip-learn {
+  color: var(--jade-strong);
+  border-color: var(--jade);
+}
+
+.chip-learn:hover:not(:disabled) {
+  background: var(--jade-soft);
+}
+
 /* ── 正文与摘要 ─────────────────────────────────────────── */
 
 /* 长正文在宽面板下限制每行字数（40 个汉字左右），拖宽也不变成一眼扫不到头的大片文字。 */
@@ -743,21 +752,27 @@ details.section summary {
   margin: 0;
 }
 
-/* 联网搜索开关（F3）：随输入框的次级操作。 */
-.search-toggle {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+/* 联网搜索：输入区里的按压开关，打开时用强调色，不用长说明抢主按钮。 */
+.search-chip {
+  min-height: 36px;
+  padding: 0 var(--space-3);
   font-size: 13px;
-  line-height: 1.6;
+  font-weight: 600;
   color: var(--ink-2);
-  cursor: pointer;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
 }
 
-.search-toggle input {
-  width: auto;
-  margin: 2px 0 0;
-  accent-color: var(--accent);
+.search-chip:hover {
+  color: var(--ink);
+  background: var(--paper-2);
+}
+
+.search-chip[aria-pressed='true'] {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
 /* 存入知识库（K-ima）：显式动作 + 一句去向说明。 */
@@ -807,6 +822,10 @@ details.section summary {
 .composer-actions {
   flex-wrap: wrap;
   align-items: center;
+}
+
+.composer-actions > button[type='submit'] {
+  margin-left: auto;
 }
 
 input,

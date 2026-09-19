@@ -69,6 +69,17 @@ describe('cleanAnswer', () => {
     expect(result.value.source).toBe('unknown');
     expect(result.value.unanswered.join()).toContain('未能在当前正文中找到可直接核对的依据');
   });
+
+  it('有网络资料时，原文依据仍然必须有本地引用', () => {
+    const result = cleanAnswer(
+      { answer: '回答', source: 'original', citations: [], unanswered: [], references: [] },
+      blocks,
+      [{ title: '外部', url: 'https://example.com/a', snippet: '摘要' }],
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.source).toBe('unknown');
+  });
 });
 
 describe('cleanLearn', () => {

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import type { ChatTurn } from '../../core/session';
 import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
+import { shouldSubmitComposer } from '../composer';
 import { Busy, SourceTag } from './bits';
 import { Icon } from './Icon';
 
@@ -15,12 +16,10 @@ type Send = (command: Command) => Promise<Reply | undefined>;
 export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
   const [searchOn, setSearchOn] = useState(false);
-  const [savingToIma, setSavingToIma] = useState(false);
   const tabId = state.tabId;
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.busy?.kind === 'answer';
   const searchEnabled = state.settings.search.enabled;
-  const imaEnabled = state.settings.ima.enabled;
   const guide = state.guide;
 
   // 只在对话真的往下走时跟到底部。挂载时不滚：这一栏开头是摘要与话题，
@@ -39,11 +38,12 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
     if (reply?.ok) setDraft('');
   };
 
-  const saveToIma = async () => {
-    if (!tabId || savingToIma) return;
-    setSavingToIma(true);
-    await send({ type: 'saveToIma', tabId });
-    setSavingToIma(false);
+  const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!shouldSubmitComposer({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode })) {
+      return;
+    }
+    event.preventDefault();
+    if (!busy) void ask(draft);
   };
 
   // 问过的话题就退休：ChatTurn 里没有 bubbleId（explore 在下游退化成了一次普通提问），
@@ -61,44 +61,34 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
               这篇文章讲了什么
             </h2>
             <p className="summary">{guide.summary}</p>
-            {openTopics.length > 0 && (
-              <div className="chiprow">
-                {openTopics.map((bubble) => (
-                  <button
-                    key={bubble.id}
-                    type="button"
-                    className="chip"
-                    disabled={busy}
-                    onClick={() => {
-                      if (tabId) void send({ type: 'explore', tabId, bubbleId: bubble.id });
-                    }}
-                  >
-                    {bubble.question}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="chiprow">
+              {openTopics.map((bubble) => (
+                <button
+                  key={bubble.id}
+                  type="button"
+                  className="chip"
+                  disabled={busy}
+                  onClick={() => {
+                    if (tabId) void send({ type: 'explore', tabId, bubbleId: bubble.id });
+                  }}
+                >
+                  {bubble.question}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="chip chip-learn"
+                disabled={busy || state.phase !== 'READY'}
+                onClick={() => {
+                  if (tabId) void send({ type: 'learnStart', tabId, goal: '' });
+                }}
+              >
+                <Icon name="chat" small />
+                让 AI 问我，看看是否真懂
+              </button>
+            </div>
           </div>
         </article>
-      )}
-
-      {imaEnabled && (
-        <div className="save-ima">
-          <button
-            type="button"
-            className="secondary"
-            disabled={savingToIma || busy}
-            onClick={() => void saveToIma()}
-          >
-            <Icon name="cloud" small />
-            {savingToIma ? '正在保存…' : '存入知识库'}
-          </button>
-          <p className="hint">
-            {state.settings.ima.kbName
-              ? `把这篇网页存进「${state.settings.ima.kbName}」，并写一条阅读笔记（会发给腾讯 ima）。`
-              : '把这篇网页存进 ima 知识库并写一条阅读笔记（会发给腾讯 ima）。还没有选默认知识库，先到设置里选。'}
-          </p>
-        </div>
       )}
 
       <div className="chat">
@@ -134,37 +124,25 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
             value={draft}
             rows={2}
             maxLength={500}
-            placeholder="想问什么，写在这里…"
+            placeholder="想问什么，写在这里… Enter 发送，Shift+Enter 换行"
             onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={onComposerKeyDown}
           />
-          {searchEnabled && (
-            <label className="search-toggle">
-              <input
-                type="checkbox"
-                checked={searchOn}
-                onChange={(event) => setSearchOn(event.target.checked)}
-              />
-              <span>
-                联网搜索（只把搜索词发给{state.settings.search.providerName ?? '搜索服务'}）
-              </span>
-            </label>
-          )}
           <div className="composer-actions">
+            {searchEnabled && (
+              <button
+                type="button"
+                className="search-chip"
+                aria-pressed={searchOn}
+                title={`打开后，只把搜索词发给${state.settings.search.providerName ?? '搜索服务'}，不发这一页正文`}
+                onClick={() => setSearchOn((current) => !current)}
+              >
+                联网搜索
+              </button>
+            )}
             <button type="submit" disabled={busy || !draft.trim()}>
               <Icon name="send" small />
               发送
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy || state.phase !== 'READY'}
-              onClick={() => {
-                const goal = draft.trim();
-                setDraft('');
-                if (tabId) void send({ type: 'learnStart', tabId, goal });
-              }}
-            >
-              让 AI 问我
             </button>
           </div>
         </form>
