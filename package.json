@@ -1,6 +1,6 @@
 {
   "name": "webknow-ai",
-  "version": "0.1.8",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "面向普通读者的网页伴随式 AI：侧栏短摘要、探索气泡、自由问答与自愿的“AI 问我”",
