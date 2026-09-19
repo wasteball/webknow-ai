@@ -403,6 +403,23 @@ details.section summary {
   accent-color: var(--action);
 }
 
+/* 存入知识库（K-ima）：问答区顶部的显式动作 + 一句去向说明。 */
+.save-ima {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.save-ima button {
+  align-self: flex-start;
+}
+
+.save-ima .hint {
+  margin: 0;
+}
+
 /* ── 输入与操作 ─────────────────────────────────────────── */
 
 .composer,

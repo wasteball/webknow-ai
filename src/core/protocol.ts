@@ -28,6 +28,8 @@ export type PanelSettings = {
   learningStyle: 'mixed' | 'quiz' | 'open';
   /** 联网搜索（F3）：只暴露状态，凭证永不进界面。 */
   search: { enabled: boolean; providerName: string | null; hasCredentials: boolean };
+  /** 知识库（K-ima）：只暴露状态；凭证永不进界面。 */
+  ima: { enabled: boolean; kbName: string | null };
   maxBubbles: number;
   summaryLength: SummaryLength;
   fontSize: FontSize;
@@ -76,11 +78,16 @@ export type Command =
   | { type: 'deleteSkill'; id: string }
   | { type: 'saveSearchConfig'; providerId: string | null; credentials?: Record<string, string> }
   | { type: 'testSearch'; providerId: string; credentials?: Record<string, string> }
+  | { type: 'saveImaConfig'; clientId?: string; apiKey?: string }
+  | { type: 'saveImaKb'; kbId: string; kbName: string }
+  | { type: 'listImaKb'; credentials?: { clientId: string; apiKey: string } }
+  | { type: 'deleteImaConfig' }
+  | { type: 'saveToIma'; tabId: number }
   | { type: 'listModels' }
   | { type: 'confirmOutbound' };
 
 export type Reply =
-  | { ok: true; message?: string; data?: { models: string[] } }
+  | { ok: true; message?: string; data?: { models?: string[]; imaKbItems?: { id: string; name: string; contentCount: number }[] } }
   | { ok: false; error: AppError };
 
 export type Event =

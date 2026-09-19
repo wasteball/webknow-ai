@@ -10,10 +10,12 @@ type Send = (command: Command) => Promise<Reply | undefined>;
 export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
   const [searchOn, setSearchOn] = useState(false);
+  const [savingToIma, setSavingToIma] = useState(false);
   const tabId = state.tabId;
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.busy?.kind === 'answer';
   const searchEnabled = state.settings.search.enabled;
+  const imaEnabled = state.settings.ima.enabled;
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
@@ -25,8 +27,32 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
     if (reply?.ok) setDraft('');
   };
 
+  const saveToIma = async () => {
+    if (!tabId || savingToIma) return;
+    setSavingToIma(true);
+    await send({ type: 'saveToIma', tabId });
+    setSavingToIma(false);
+  };
+
   return (
     <>
+      {imaEnabled && (
+        <div className="save-ima">
+          <button
+            type="button"
+            className="secondary"
+            disabled={savingToIma || busy}
+            onClick={() => void saveToIma()}
+          >
+            {savingToIma ? '正在保存…' : '存入知识库'}
+          </button>
+          <p className="hint">
+            {state.settings.ima.kbName
+              ? `把这篇网页存进「${state.settings.ima.kbName}」，并写一条阅读笔记（会发给腾讯 ima）。`
+              : '把这篇网页存进 ima 知识库并写一条阅读笔记（会发给腾讯 ima）。还没有选默认知识库，先到设置里选。'}
+          </p>
+        </div>
+      )}
       <Section title="问答">
         {state.chat.length === 0 && !busy && (
           <p className="hint">可以点上面的话题，也可以自己在下面提问。</p>

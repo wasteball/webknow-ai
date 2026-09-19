@@ -8,6 +8,7 @@ import { effectiveSettings } from '../core/settings';
 import { validateCustomSkill } from '../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS, searchWithProvider } from '../core/search/registry';
 import { createSession, emptySession, markStale } from '../core/session';
+import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
 import { listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
 import { abortRun, handleIntent, type RunnerHooks } from './runner';
@@ -16,6 +17,7 @@ import {
   OUTBOUND_RECEIVER,
   applySettings,
   clearAllSessions,
+  clearImaConfig,
   clearPending,
   deleteApiKey,
   deleteCustomSkill,
@@ -27,6 +29,7 @@ import {
   readSearchCredentials,
   saveApiKey,
   saveCustomSkill,
+  saveImaConfig,
   saveSearchConfig,
   setPending,
   writeConfig,
@@ -68,6 +71,10 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     ...effectiveSettings(config),
     customSkills: config.skills ?? [],
     search: searchStatus(config),
+    ima: {
+      enabled: await hasImaCredentials(),
+      kbName: config.ima?.kbName?.trim() || null,
+    },
   };
   const hasKey = Boolean(config.apiKey?.trim());
   const outboundConfirmed = config.outbound?.version === OUTBOUND_NOTICE_VERSION;
@@ -381,6 +388,48 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
             signal: AbortSignal.timeout(20_000),
           });
           return { ok: true, message: `搜索通了，拿到 ${results.length} 条结果。` };
+        } catch (error) {
+          return { ok: false, error: fromThrown(error) };
+        }
+      }
+
+      case 'saveImaConfig': {
+        await saveImaConfig({ clientId: command.clientId, apiKey: command.apiKey });
+        await pushAllStates();
+        return { ok: true, message: '知识库凭证已保存。' };
+      }
+
+      case 'saveImaKb': {
+        await saveImaConfig({ kbId: command.kbId, kbName: command.kbName });
+        await pushAllStates();
+        return { ok: true, message: '默认知识库已保存。' };
+      }
+
+      case 'listImaKb': {
+        try {
+          const items = await listImaKnowledgeBases(command.credentials);
+          return { ok: true, data: { imaKbItems: items } };
+        } catch (error) {
+          return { ok: false, error: fromThrown(error) };
+        }
+      }
+
+      case 'deleteImaConfig':
+        await clearImaConfig();
+        await pushAllStates();
+        return { ok: true, message: '知识库凭证已删除。已存入 ima 的内容不受影响。' };
+
+      case 'saveToIma': {
+        const session = await getSession(command.tabId);
+        if (!session || session.state !== 'READY') {
+          return { ok: false, error: appError('STALE_PAGE', '这一页还没有可保存的阅读成果。', true) };
+        }
+        try {
+          const outcome = await saveReadingToIma(session);
+          const parts = [outcome.urlSaved ? '网页已入库' : null, outcome.noteSaved ? '笔记已保存' : null].filter(
+            Boolean,
+          );
+          return { ok: true, message: `已保存：${parts.join('，')}。在 ima 里随时查看。` };
         } catch (error) {
           return { ok: false, error: fromThrown(error) };
         }

@@ -50,6 +50,7 @@ export function Settings({ state, send }: { state: PanelState; send: Send }) {
       <Prompts state={state} send={send} />
       <Skills state={state} send={send} />
       <SearchSettings state={state} send={send} />
+      <ImaSettings state={state} send={send} />
       <Behavior state={state} send={send} />
       <Appearance state={state} send={send} />
       <Cleanup state={state} send={send} />
@@ -508,6 +509,169 @@ function SearchSettings({ state, send }: { state: PanelState; send: Send }) {
             停用联网搜索（当前：{current.providerName}）
           </button>
         </div>
+      )}
+    </Section>
+  );
+}
+
+function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
+  const current = state.settings.ima;
+  const [clientId, setClientId] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [items, setItems] = useState<{ id: string; name: string; contentCount: number }[] | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (command: Command) => {
+    setBusy(true);
+    const reply = await send(command);
+    setBusy(false);
+    return reply;
+  };
+
+  /** 连接：先在用户手势里申请 ima.qq.com 权限（第一个异步调用，前面不能有 await），再取知识库列表。 */
+  const connect = async () => {
+    try {
+      const granted = await browser.permissions.request({ origins: ['https://ima.qq.com/*'] });
+      if (!granted) {
+        setHint('没有授予知识库服务访问权限。可以稍后再试。');
+        return;
+      }
+    } catch {
+      setHint('浏览器没有弹出授权窗口。请关掉侧栏重新打开后再试。');
+      return;
+    }
+    const reply = await run({ type: 'listImaKb', credentials: { clientId: clientId.trim(), apiKey: apiKey.trim() } });
+    if (reply?.ok && reply.data?.imaKbItems) {
+      setItems(reply.data.imaKbItems);
+      setHint(`连接成功，找到 ${reply.data.imaKbItems.length} 个知识库。选一个作为默认保存位置。`);
+    } else {
+      setHint(reply && !reply.ok ? reply.error.message : '没能取得知识库列表，请检查凭证。');
+    }
+  };
+
+  return (
+    <Section title="知识库（腾讯 ima）">
+      <p className="hint">
+        配置后，读到一篇好文章时可以一键“存入知识库”：网页链接存进你的 ima 知识库（重复保存会更新同一条目），
+        同时写一条阅读笔记（摘要、话题和你的问答小结）。这些内容存在你自己的 ima 里，由你在 ima 内管理。
+      </p>
+      {current.enabled ? (
+        <>
+          <p className="hint">已连接{current.kbName ? `，默认保存到「${current.kbName}」` : '，还没有选择默认知识库'}。</p>
+          {!current.kbName && (
+            <div className="composer-actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() =>
+                  void run({ type: 'listImaKb' }).then((reply) => {
+                    if (reply?.ok && reply.data?.imaKbItems) setItems(reply.data.imaKbItems);
+                  })
+                }
+              >
+                重新获取知识库列表
+              </button>
+            </div>
+          )}
+          {items && items.length > 0 && (
+            <div className="field">
+              <label htmlFor="ima-kb">默认保存到</label>
+              <select
+                id="ima-kb"
+                disabled={busy}
+                onChange={(event) => {
+                  const option = event.target.selectedOptions[0];
+                  if (option) void run({ type: 'saveImaKb', kbId: option.value, kbName: option.text });
+                }}
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  选择知识库…
+                </option>
+                {items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="composer-actions">
+            <button type="button" className="danger" disabled={busy} onClick={() => void run({ type: 'deleteImaConfig' })}>
+              删除知识库连接
+            </button>
+          </div>
+          <p className="hint">删除连接不影响已存入 ima 的内容。</p>
+        </>
+      ) : (
+        <>
+          <div className="field">
+            <label htmlFor="ima-client-id">Client ID</label>
+            <input
+              id="ima-client-id"
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={clientId}
+              onChange={(event) => setClientId(event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="ima-api-key">API Key</label>
+            <input
+              id="ima-api-key"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+            />
+          </div>
+          <p className="hint">
+            这两项在{' '}
+            <a href="https://ima.qq.com/agent-interface" target="_blank" rel="noreferrer">
+              ima 的开放接口页面
+            </a>{' '}
+            生成（需要先有 ima 账号）。凭证只存在这个浏览器里。
+          </p>
+          {hint && <p className="hint">{hint}</p>}
+          {items && items.length > 0 && (
+            <div className="field">
+              <label htmlFor="ima-kb-first">默认保存到</label>
+              <select
+                id="ima-kb-first"
+                disabled={busy}
+                onChange={(event) => {
+                  const option = event.target.selectedOptions[0];
+                  if (option) {
+                    void run({
+                      type: 'saveImaConfig',
+                      clientId: clientId.trim(),
+                      apiKey: apiKey.trim(),
+                    }).then(() => run({ type: 'saveImaKb', kbId: option.value, kbName: option.text }));
+                  }
+                }}
+                defaultValue=""
+              >
+                <option value="" disabled>
+                  选择知识库…
+                </option>
+                {items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="composer-actions">
+            <button type="button" disabled={busy || !clientId.trim() || !apiKey.trim()} onClick={() => void connect()}>
+              授权并连接
+            </button>
+          </div>
+        </>
       )}
     </Section>
   );

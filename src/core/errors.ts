@@ -27,6 +27,7 @@ export type ErrorCode =
   | 'BUDGET_EXCEEDED'
   | 'STORAGE_FAILED'
   | 'SEARCH_FAILED'
+  | 'IMA_FAILED'
   | 'INTERNAL';
 
 export type AppError = {

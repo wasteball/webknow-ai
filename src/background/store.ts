@@ -19,7 +19,7 @@ import type { PageSession } from '../core/session';
  */
 
 /** 外发告知版本：接收方或发送范围实质变化时必须更新，旧确认随之失效（FR-022）。 */
-export const OUTBOUND_NOTICE_VERSION = '2026-09-18.2';
+export const OUTBOUND_NOTICE_VERSION = '2026-09-19.1';
 export const OUTBOUND_RECEIVER = 'DeepSeek（深度求索）';
 
 /**
@@ -44,6 +44,13 @@ export type Config = {
   search?: {
     providerId?: string;
     credentials?: Record<string, Record<string, string>>;
+  };
+  /** 知识库（K-ima）：凭证与默认知识库；只存这里，只由 background 边界读取。 */
+  ima?: {
+    clientId?: string;
+    apiKey?: string;
+    kbId?: string;
+    kbName?: string;
   };
   /** 首屏探索气泡上限（0–3，默认 3）。 */
   maxBubbles?: number;
@@ -139,6 +146,32 @@ export async function readSearchCredentials(
   providerId: string,
 ): Promise<Record<string, string>> {
   return (await readConfig()).search?.credentials?.[providerId] ?? {};
+}
+
+/** 保存 ima 凭证与默认知识库（K-ima）；空值字段被丢弃，不覆盖已有有效值。 */
+export async function saveImaConfig(patch: {
+  clientId?: string;
+  apiKey?: string;
+  kbId?: string;
+  kbName?: string;
+}): Promise<void> {
+  const current = await readConfig();
+  const ima = { ...current.ima };
+  for (const key of ['clientId', 'apiKey', 'kbId', 'kbName'] as const) {
+    const value = patch[key]?.trim();
+    if (value) ima[key] = value.slice(0, 500);
+  }
+  const next: Config = { ...current, ima };
+  if (!Object.keys(next.ima ?? {}).length) delete next.ima;
+  await storage.setItem(CONFIG_KEY, next);
+}
+
+/** 删除 ima 凭证与默认知识库（独立操作，不触碰 Key、会话与其他设置）。 */
+export async function clearImaConfig(): Promise<void> {
+  const current = await readConfig();
+  if (!current.ima) return;
+  const { ima: _removed, ...rest } = current;
+  await storage.setItem(CONFIG_KEY, rest);
 }
 
 /** 保存自定义技能：同 id 覆盖更新，其余技能不动。 */
