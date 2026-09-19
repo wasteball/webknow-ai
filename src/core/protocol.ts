@@ -1,6 +1,7 @@
 import type { Completeness, DomAnchor } from './blocks';
 import type { AppError } from './errors';
 import type { SummaryLength } from './limits';
+import type { ProviderId } from './model-providers';
 import type { FontSize, PromptOverrides } from './settings';
 import type { Skill, SkillChoice } from './skills';
 import type { Bubble, ChatTurn, LearningState, RequestKind, SessionState } from './session';
@@ -26,6 +27,9 @@ export type PanelSettings = {
   customSkills: Skill[];
   learningBudget: number;
   learningStyle: 'mixed' | 'quiz' | 'open';
+  /** 当前用哪家模型供应商，以及每家是否已经配好钥匙（Key 本身永不进界面）。 */
+  provider: ProviderId;
+  providerKeys: Record<ProviderId, boolean>;
   /** 联网搜索（F3）：只暴露状态，凭证永不进界面。 */
   search: { enabled: boolean; providerName: string | null; hasCredentials: boolean };
   /** 知识库（K-ima）：只暴露状态；凭证永不进界面。 */
@@ -70,9 +74,9 @@ export type Command =
   | { type: 'jump'; tabId: number; blockId: string }
   | { type: 'clearSession'; tabId: number }
   | { type: 'clearAllSessions' }
-  | { type: 'saveKey'; key: string }
-  | { type: 'testKey'; key: string }
-  | { type: 'deleteKey' }
+  | { type: 'saveKey'; provider: ProviderId; key: string }
+  | { type: 'testKey'; provider: ProviderId; key: string }
+  | { type: 'deleteKey'; provider: ProviderId }
   | { type: 'saveSettings'; patch: import('./settings').SettingsPatch }
   | { type: 'saveSkill'; skill: { id?: string; name: string; description: string; target: 'guide' | 'answer' | 'learn'; body: string } }
   | { type: 'deleteSkill'; id: string }
@@ -83,7 +87,7 @@ export type Command =
   | { type: 'listImaKb'; credentials?: { clientId: string; apiKey: string } }
   | { type: 'deleteImaConfig' }
   | { type: 'saveToIma'; tabId: number }
-  | { type: 'listModels' }
+  | { type: 'listModels'; provider: ProviderId }
   | { type: 'confirmOutbound' };
 
 export type Reply =

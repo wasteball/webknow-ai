@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { bingKeyless, bocha, duckduckgo, searxng, tavily } from '../src/core/search/providers';
+import { bingKeyless, bocha, duckduckgo, firecrawl, searxng, tavily } from '../src/core/search/providers';
 import { BUILTIN_SEARCH_PROVIDERS, cleanSearchResults, searchWithProvider } from '../src/core/search/registry';
 import { cleanAnswer } from '../src/core/validate';
 import type { EvidenceBlock } from '../src/core/blocks';
@@ -111,14 +111,15 @@ describe('搜索供应商解析（产品化改造 F3）', () => {
 });
 
 /**
- * 免 Key 供应商：抓公开搜索页并抽结果。
+ * 免 Key 供应商。
  *
- * 下面的 fixture 是**按目标页面的结构写的**，不是从真实页面抓下来的——
- * 这台机器连不上外网（见计划文件）。所以这些用例证明的是"抽取值不对时会被发现"，
- * 不能证明真实页面一定抽得到。真实可达性只能在你自己浏览器里确认；
- * 抽不到时的表现是返回空数组，由上游如实降级，不会污染正文依据。
+ * Firecrawl 那条是照**真实响应结构**写的（2026-09-19 实测匿名调用可用，
+ * 返回 data.web[]）；Bing / DuckDuckGo 那两条的 fixture 只是按目标页面的
+ * 结构写的，不是真实抓取——这台机器连不上外网。所以抓页面那两条证明的是
+ * "抽取值不对时会被发现"，不能证明真实页面一定抽得到。
+ * 抽不到时返回空数组，由上游如实降级，不会污染正文依据。
  */
-describe('免 Key 搜索供应商（抓公开搜索页）', () => {
+describe('免 Key 搜索供应商', () => {
   const htmlResponse = (body: string, status = 200) =>
     (async () => new Response(body, { status, headers: { 'Content-Type': 'text/html' } })) as unknown as typeof fetch;
 
@@ -199,14 +200,46 @@ describe('免 Key 搜索供应商（抓公开搜索页）', () => {
     expect(results).toEqual([]);
   });
 
+  it('Firecrawl：匿名调用（不带 Authorization），解析 data.web', async () => {
+    let captured: RequestInit | undefined;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      captured = init;
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { web: [{ url: 'https://example.com/a', title: '标题甲', description: '摘要甲' }] },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }) as unknown as typeof fetch;
+
+    const results = await firecrawl.search({
+      query: '测试', count: 3, signal, config: {}, fetchImpl,
+    });
+    expect(results).toEqual([{ title: '标题甲', url: 'https://example.com/a', snippet: '摘要甲' }]);
+    // 关键：不带任何鉴权头，这才是"不用注册、不用 Key"。
+    const headers = (captured?.headers ?? {}) as Record<string, string>;
+    expect(Object.keys(headers).map((key) => key.toLowerCase())).not.toContain('authorization');
+    expect(JSON.parse(String(captured?.body))).toMatchObject({ query: '测试', limit: 3 });
+  });
+
+  it('Firecrawl：被限流（非 2xx）时报错，交给上游降级', async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ error: 'rate limited' }), { status: 429 })) as unknown as typeof fetch;
+    await expect(
+      firecrawl.search({ query: 'q', count: 3, signal, config: {}, fetchImpl }),
+    ).rejects.toThrow(/匿名额度可能已被限流/);
+  });
+
   it('注册表：免 Key 供应商排在最前，且不需要任何凭证', () => {
-    expect(BUILTIN_SEARCH_PROVIDERS[0]!.id).toBe('bing');
-    for (const provider of BUILTIN_SEARCH_PROVIDERS.slice(0, 2)) {
+    // 可靠优先：结构化的 Firecrawl 第一，抓页面的两个紧随其后互为备份。
+    const ids = BUILTIN_SEARCH_PROVIDERS.map((provider) => provider.id);
+    expect(ids.slice(0, 3)).toEqual(['firecrawl', 'bing', 'duckduckgo']);
+    for (const provider of BUILTIN_SEARCH_PROVIDERS.slice(0, 3)) {
       expect(provider.configFields).toEqual([]);
       expect(provider.hosts({}).length).toBeGreaterThan(0);
     }
     // 自备服务的三个仍在，作为备选。
-    const ids = BUILTIN_SEARCH_PROVIDERS.map((provider) => provider.id);
     expect(ids).toEqual(expect.arrayContaining(['searxng', 'tavily', 'bocha']));
   });
 

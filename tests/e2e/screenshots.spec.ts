@@ -61,7 +61,7 @@ test.afterAll(async () => {
 test('首次配置界面', async () => {
   panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await expect(panel.getByText('还没有填 DeepSeek 钥匙')).toBeVisible();
+  await expect(panel.getByText(/还没有填 .+ 钥匙/)).toBeVisible();
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-01-setup.png'), fullPage: true });
   await panel.close();
 });
@@ -78,7 +78,7 @@ test('首屏摘要与话题', async () => {
     await chrome.storage.local.set({
       config: {
         apiKey: key,
-        outbound: { version: '2026-09-19.1', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+        outbound: { version: '2026-09-19.2', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
       },
     });
   }, liveKey);

@@ -237,6 +237,44 @@ function parseDuckDuckGo(html: string, count: number): SearchResult[] {
   return zipResults(titles, snippets);
 }
 
+/**
+ * 免 Key：Firecrawl 的匿名搜索接口（`POST /v2/search`，不带 Authorization 即可用）。
+ *
+ * 这是 dsh 插件 @liustack/modsearch 在"免费、无需注册"那条路径上用的同一个后端——
+ * 那个插件本身是 Node CLI，浏览器扩展装不了，但它的后端可以直接调用。
+ * 比抓搜索页好在：返回结构化 JSON，不用解析 HTML，对方改版也不会突然失效。
+ * 匿名额度是有限且可能被限流的（实测连打 6 次都正常，但这不是保证），
+ * 失败时照常走"只依据文章本身回答"的降级路径。
+ */
+export const firecrawl: SearchProvider = {
+  id: 'firecrawl',
+  name: 'Firecrawl',
+  description: '面向 agent 的搜索接口，匿名可用——不用注册、不用填 Key，直接返回结构化结果。',
+  configFields: [],
+  hosts: () => ['https://api.firecrawl.dev/*'],
+  async search(request) {
+    const doFetch = request.fetchImpl ?? fetch;
+    const response = await doFetch('https://api.firecrawl.dev/v2/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: request.query, limit: request.count }),
+      signal: request.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Firecrawl 返回 ${response.status}（匿名额度可能已被限流）`);
+    }
+    const payload: unknown = await response.json();
+    const entries = pickArray(payload, ['data', 'web']) ?? [];
+    return entries
+      .map((entry) => ({
+        title: pickString(entry, ['title']) ?? '',
+        url: pickString(entry, ['url']) ?? '',
+        snippet: pickString(entry, ['description']) ?? '',
+      }))
+      .filter((item): item is SearchResult => Boolean(item.url && item.title));
+  },
+};
+
 export const bocha: SearchProvider = {
   id: 'bocha',
   name: '博查 Bocha',

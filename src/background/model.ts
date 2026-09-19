@@ -1,11 +1,13 @@
-import { chatJson, DEEPSEEK_MODEL, type Message } from '../core/deepseek';
 import { appError } from '../core/errors';
 import { LIMITS } from '../core/limits';
+import { chatJson, type Message } from '../core/model-call';
+import { findProvider, type ModelProvider } from '../core/model-providers';
 import { readApiKey, readConfig } from './store';
 
 /**
  * 唯一允许的模型网络边界（FR-032）。
  * Key 与模型选择在这里读取并直接用于请求，不经过界面、提示词、会话数据、日志或诊断。
+ * 用哪家供应商由配置决定；每家的 Key 分开存，不会把 A 家的 Key 发给 B 家。
  */
 
 const TEST_MESSAGES: Message[] = [
@@ -13,9 +15,9 @@ const TEST_MESSAGES: Message[] = [
   { role: 'user', content: '返回 {"ok":true}' },
 ];
 
-async function resolveModel(): Promise<string> {
-  const model = (await readConfig()).model?.trim();
-  return model || DEEPSEEK_MODEL;
+/** 当前配置选中的供应商。 */
+export async function currentProvider(): Promise<ModelProvider> {
+  return findProvider((await readConfig()).provider);
 }
 
 export async function callModel(
@@ -23,13 +25,16 @@ export async function callModel(
   signal: AbortSignal,
   onProgress: (chars: number) => void,
 ): Promise<unknown> {
-  const apiKey = await readApiKey();
+  const config = await readConfig();
+  const provider = findProvider(config.provider);
+  const apiKey = await readApiKey(provider.id);
   if (!apiKey) {
-    throw appError('NO_KEY', '还没有配置 DeepSeek Key。请在设置中填写自己的 Key 后再开始。', false);
+    throw appError('NO_KEY', `还没有配置 ${provider.name} 的钥匙。请在设置中填写后再开始。`, false);
   }
   return chatJson({
     apiKey,
-    model: await resolveModel(),
+    provider,
+    model: config.models?.[provider.id],
     messages,
     signal,
     onProgress,
@@ -37,11 +42,14 @@ export async function callModel(
   });
 }
 
-/** 连接测试：固定最小请求，不发送网页正文（FR-020）。 */
-export async function testConnection(key: string): Promise<void> {
+/**
+ * 连接测试：用指定供应商与**还没保存的** key 发一次最小请求（保存前先验证）。
+ * 不发送网页正文（FR-020）。
+ */
+export async function testConnection(providerId: string, key: string): Promise<void> {
   await chatJson({
     apiKey: key.trim(),
-    model: await resolveModel(),
+    provider: findProvider(providerId),
     messages: TEST_MESSAGES,
     signal: AbortSignal.timeout(20_000),
     maxTokens: 16,
@@ -49,14 +57,14 @@ export async function testConnection(key: string): Promise<void> {
 }
 
 /**
- * 拉取当前 Key 可用的模型列表（GET /models）。只传回模型 ID 字符串；
- * 拉取失败时回退到内置列表，由界面说明“未能取得完整列表”。
+ * 拉取该供应商可用的模型列表。只传回模型 ID 字符串。
+ * 没有列表接口（智谱）时直接返回内置候选；拉取失败时由界面回退到内置列表并如实说明。
  */
-export async function listModels(): Promise<string[]> {
-  const apiKey = await readApiKey();
-  if (!apiKey) throw appError('NO_KEY', '还没有配置 DeepSeek Key。', false);
-  const response = await fetch('https://api.deepseek.com/models', {
-    headers: { Authorization: `Bearer ${apiKey}` },
+export async function listModels(providerId: string, key: string): Promise<string[]> {
+  const provider = findProvider(providerId);
+  if (!provider.modelsEndpoint) return provider.knownModels;
+  const response = await fetch(provider.modelsEndpoint, {
+    headers: { Authorization: `Bearer ${key.trim()}` },
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {

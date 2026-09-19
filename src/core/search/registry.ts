@@ -1,5 +1,5 @@
 import { appError, type AppError } from '../errors';
-import { bingKeyless, bocha, duckduckgo, searxng, tavily } from './providers';
+import { bingKeyless, bocha, duckduckgo, firecrawl, searxng, tavily } from './providers';
 import type { SearchProvider, SearchResult } from './types';
 
 /**
@@ -7,9 +7,12 @@ import type { SearchProvider, SearchResult } from './types';
  * searchWithProvider 只允许 background 调用：搜索配置与 Key 一样不离开后台边界。
  *
  * 免 Key 的排在最前面：默认选择就是"开箱可用"，用户不必先有账号或实例。
+ * 顺序按"可靠优先"：Firecrawl 是结构化接口，Bing / DuckDuckGo 是抓页面，
+ * 但三者互为备份——任何一个被限流或网络不通时，用户都有别的可选。
  */
 
 export const BUILTIN_SEARCH_PROVIDERS: SearchProvider[] = [
+  firecrawl,
   bingKeyless,
   duckduckgo,
   searxng,

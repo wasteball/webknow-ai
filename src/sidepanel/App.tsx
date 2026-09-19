@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { browser } from 'wxt/browser';
 
+import { findProvider } from '../core/model-providers';
 import type { Command, PanelState, Reply } from '../core/protocol';
 import { activeTabId, createClient, type Client } from './api';
 import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
 import { Busy, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
+import { Icon, type IconName } from './components/Icon';
 
 const START_LABEL: Record<string, string> = {
   READY_TO_START: '开始伴读',
@@ -20,9 +22,9 @@ const START_LABEL: Record<string, string> = {
  */
 type View = 'qa' | 'learn';
 
-const MODES: { id: View; label: string; busyKind: 'answer' | 'learn' }[] = [
-  { id: 'qa', label: '网页伴读', busyKind: 'answer' },
-  { id: 'learn', label: '对话学懂', busyKind: 'learn' },
+const MODES: { id: View; label: string; icon: IconName; busyKind: 'answer' | 'learn' }[] = [
+  { id: 'qa', label: '网页伴读', icon: 'book', busyKind: 'answer' },
+  { id: 'learn', label: '对话学懂', icon: 'chat', busyKind: 'learn' },
 ];
 
 const tabDomId = (view: View) => `mode-tab-${view}`;
@@ -146,7 +148,12 @@ export function App() {
   const phase = state?.phase ?? 'READY_TO_START';
   const busy = state?.busy ?? null;
   const readyShell = phase === 'READY' || phase === 'LEARNING';
-  const phaseText = readyShell ? null : PHASE_TEXT[phase];
+  // 「还没有填钥匙」那句要带上当前供应商的名字，所以它在映射之外单独拼。
+  const phaseText = readyShell
+    ? null
+    : phase === 'UNCONFIGURED'
+      ? `还没有填 ${findProvider(state?.settings.provider).name} 钥匙。`
+      : PHASE_TEXT[phase];
 
   return (
     <div
@@ -160,8 +167,16 @@ export function App() {
           </span>
           webknow-ai
         </h1>
-        <button type="button" className="link" onClick={openSettings}>
-          设置
+        {/* 纯图标：title 给鼠标用户看，aria-label 给读屏器——两者缺一不可，
+            只有 title 的话读屏器读不出名字。 */}
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={openSettings}
+          aria-label="设置"
+          title="设置"
+        >
+          <Icon name="settings" />
         </button>
       </header>
 
@@ -281,6 +296,7 @@ export function App() {
                     tabIndex={view === mode.id ? 0 : -1}
                     onClick={() => setView(mode.id)}
                   >
+                    <Icon name={mode.icon} small />
                     {mode.label}
                     {busy?.kind === mode.busyKind && (
                       <>
@@ -325,11 +341,15 @@ function OutboundNotice({
   state: PanelState;
   searchProviderName: string | null;
 }) {
+  const receiver = findProvider(state.settings.provider).receiver;
   return (
     <div className="banner banner-info">
       <p>开始之前，请先确认这几件事：</p>
       <ul>
-        <li>你正在看的这一页的文字，会发给 DeepSeek 这家公司（不是发给我们）。</li>
+        <li>
+          你正在看的这一页的文字，会发给 <strong>{receiver}</strong> 这家公司（不是发给我们）。
+          你换了模型供应商，接收方就会跟着换——换完之后这里会再问你一次。
+        </li>
         <li>发过去的是：这一页的正文、你提的问题，以及前面几轮对话。</li>
         {searchProviderName && (
           <li>
@@ -363,7 +383,6 @@ function safeOrigin(url: string): string | null {
 }
 
 const PHASE_TEXT: Record<string, string> = {
-  UNCONFIGURED: '还没有填 DeepSeek 钥匙。',
   PERMISSION_REQUIRED: '等你在浏览器里允许读取这个网站。',
   READY_TO_START: '准备好了。你点开始，我才读这一页。',
   ANALYZING: '正在读这一页，马上给你摘要。',

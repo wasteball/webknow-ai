@@ -43,10 +43,19 @@
   --danger: #a84242;
   --danger-soft: #fff0f0;
 
-  --radius-sm: 8px;
-  --radius: 12px;
-  --radius-lg: 16px;
+  /* 圆角、阴影、缓动都照原型的标尺来：它比默认值更松、更圆，
+     也靠一点极浅的投影把"浮起来的表面"和背景分开——这是它显得精致的主要原因。 */
+  --radius-sm: 10px;
+  --radius: 14px;
+  --radius-lg: 20px;
   --radius-pill: 999px;
+
+  --sh-1: 0 1px 2px rgba(11, 32, 39, 0.06), 0 1px 3px rgba(11, 32, 39, 0.05);
+  --sh-2: 0 6px 20px rgba(11, 32, 39, 0.1);
+
+  --ease: cubic-bezier(0.2, 0.75, 0.25, 1);
+  --fast: 150ms;
+  --normal: 240ms;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -57,7 +66,7 @@
 
   /* 品牌头高度。下面的模式切换吸在它下沿，两者必须严丝合缝——
      中间漏一条缝，正文会从缝里穿过去。改动这里只需改这一个数。 */
-  --topbar-h: 50px;
+  --topbar-h: 56px;
 
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
@@ -140,6 +149,26 @@ body {
   flex-direction: column;
 }
 
+/* ── 图标：描边不填充，颜色一律跟 currentColor ──────────────── */
+
+.icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.icon-sm {
+  width: 16px;
+  height: 16px;
+}
+
 /* ── 顶部：常驻，长对话回滚时仍知道在读哪一页 ───────────────── */
 
 .panel-header {
@@ -150,21 +179,41 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2);
   background: var(--paper);
   border-bottom: 1px solid var(--line-soft);
 }
 
 .panel-header h1 {
   margin: 0;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: 15px;
+  font-weight: 850;
   letter-spacing: 0.01em;
   color: var(--ink);
 }
 
 .panel-header h1 .brand-mark {
   color: var(--accent);
+}
+
+/* 纯图标按钮（"设置"）：正方形、给足点击面积，名字靠 aria-label + title。 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  color: var(--ink-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  transition: color var(--fast) var(--ease), background-color var(--fast) var(--ease);
+}
+
+.icon-btn:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--paper-2);
 }
 
 .page-title {
@@ -176,10 +225,17 @@ body {
 }
 
 .scope {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
   font-size: 12px;
   color: var(--ink-3);
   line-height: 1.6;
   margin: 0;
+}
+
+.scope .icon-sm {
+  margin-top: 2px;
 }
 
 .context {
@@ -196,10 +252,11 @@ body {
   grid-auto-flow: column;
   grid-auto-columns: 1fr;
   gap: var(--space-1);
-  padding: var(--space-1);
-  margin: var(--space-2) 0 var(--space-3);
+  padding: 4px;
+  margin: var(--space-3) 0 var(--space-4);
   background: var(--paper-3);
-  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-radius: 13px;
 }
 
 .mode {
@@ -207,16 +264,16 @@ body {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  min-height: 34px;
+  min-height: 42px;
   font-family: var(--font);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 750;
   color: var(--ink-2);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-3);
-  transition: background-color 120ms ease, color 120ms ease;
+  border-radius: 9px;
+  padding: 0 var(--space-3);
+  transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease);
 }
 
 .mode:hover:not(:disabled) {
@@ -224,11 +281,12 @@ body {
   opacity: 1;
 }
 
+/* 选中的那一格用一点投影浮起来——原型就是这么把"当前在哪"说清楚的。 */
 .mode[aria-selected='true'] {
-  color: var(--accent-strong);
+  color: var(--ink);
   background: var(--paper);
   border-color: var(--line);
-  font-weight: 600;
+  box-shadow: 0 2px 7px rgba(24, 35, 58, 0.07);
 }
 
 /* 这个能力正在后台干活时的低调提示；状态不只靠颜色表达，Tab 内还有转圈与按钮态。 */
@@ -238,6 +296,7 @@ body {
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* ── 区块：靠留白与小节标题分层，不用外框 ───────────────────── */
@@ -287,6 +346,9 @@ details.section summary {
 }
 
 .bubble-guide h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   color: var(--accent-strong);
   margin-bottom: var(--space-2);
 }
@@ -816,18 +878,22 @@ input:disabled {
 }
 
 button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
   font-family: var(--font);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.2;
   color: var(--accent-ink);
   background: var(--accent);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
-  min-height: 36px;
+  padding: 0 var(--space-4);
+  min-height: 42px;
   cursor: pointer;
-  transition: background-color 120ms ease, opacity 120ms ease;
+  transition: background-color var(--fast) var(--ease), opacity var(--fast) var(--ease);
 }
 
 button:hover:not(:disabled) {
@@ -869,12 +935,20 @@ button.danger:hover:not(:disabled) {
 /* 辅助操作（提示/讲解/跳过/结束）不与主操作抢注意力 */
 button.quiet {
   font-size: 13px;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--ink-2);
   background: transparent;
   border-color: transparent;
   min-height: 32px;
   padding: var(--space-1) var(--space-2);
+}
+
+/* 图标比文字矮一点，视觉上才和字面中线对齐 */
+button .icon-sm,
+.link .icon-sm,
+.bubble-guide h2 .icon-sm {
+  width: 15px;
+  height: 15px;
 }
 
 button.quiet:hover:not(:disabled) {
@@ -963,15 +1037,18 @@ button.link:hover:not(:disabled) {
 }
 
 .settings-nav button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   background: none;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--ink-2);
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 500;
   text-align: left;
-  min-height: 34px;
-  padding: var(--space-2) var(--space-3);
+  min-height: 40px;
+  padding: 0 var(--space-3);
 }
 
 .settings-nav button:hover:not(:disabled) {
@@ -982,7 +1059,7 @@ button.link:hover:not(:disabled) {
 .settings-nav button[aria-current='true'] {
   background: var(--accent-soft);
   color: var(--accent-strong);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .settings-content {
@@ -1082,7 +1159,14 @@ button.link:hover:not(:disabled) {
 }
 
 .banner p {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
   margin: 0 0 var(--space-2);
+}
+
+.banner p .icon-sm {
+  margin-top: 3px;
 }
 
 .banner p:last-child {
@@ -1116,8 +1200,16 @@ button.link:hover:not(:disabled) {
 }
 
 a {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   color: var(--accent);
   text-decoration: none;
+}
+
+/* 行内的外链图标不参与换行，否则会掉到下一行单独站着 */
+a .icon-sm {
+  vertical-align: -2px;
 }
 
 a:hover {

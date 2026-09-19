@@ -4,6 +4,7 @@ import type { ChatTurn } from '../../core/session';
 import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { Busy, SourceTag } from './bits';
+import { Icon } from './Icon';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
@@ -55,7 +56,10 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
       {guide && (
         <article className="msg ai">
           <div className="bubble ai bubble-guide">
-            <h2 id="guide-heading">这篇文章讲了什么</h2>
+            <h2 id="guide-heading">
+              <Icon name="spark" small />
+              这篇文章讲了什么
+            </h2>
             <p className="summary">{guide.summary}</p>
             {openTopics.length > 0 && (
               <div className="chiprow">
@@ -86,6 +90,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
             disabled={savingToIma || busy}
             onClick={() => void saveToIma()}
           >
+            <Icon name="cloud" small />
             {savingToIma ? '正在保存…' : '存入知识库'}
           </button>
           <p className="hint">
@@ -139,11 +144,14 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
                 checked={searchOn}
                 onChange={(event) => setSearchOn(event.target.checked)}
               />
-              <span>联网搜索（只把搜索词发给{state.settings.search.providerName ?? '搜索服务'}）</span>
+              <span>
+                联网搜索（只把搜索词发给{state.settings.search.providerName ?? '搜索服务'}）
+              </span>
             </label>
           )}
           <div className="composer-actions">
             <button type="submit" disabled={busy || !draft.trim()}>
+              <Icon name="send" small />
               发送
             </button>
             <button
@@ -197,7 +205,8 @@ function Turn({ turn, tabId, send }: { turn: ChatTurn; tabId: number | null; sen
               网络资料：
               {turn.references.map((url, index) => (
                 <a key={url} href={url} target="_blank" rel="noreferrer" className="link">
-                  链接{index + 1}{' '}
+                  链接{index + 1}
+                  <Icon name="external" small />
                 </a>
               ))}
             </p>

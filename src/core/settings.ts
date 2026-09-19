@@ -1,5 +1,5 @@
-import { DEEPSEEK_MODEL } from './deepseek';
 import { LIMITS, SUMMARY_LENGTH_CHARS, type SummaryLength } from './limits';
+import { MODEL_PROVIDERS, findProvider, type ProviderId } from './model-providers';
 import type { SkillChoice, SkillTarget } from './skills';
 
 /**
@@ -15,6 +15,8 @@ export type PromptOverrides = Partial<Record<PromptTarget, string>>;
 export type FontSize = 'normal' | 'large';
 
 export type SettingsPatch = {
+  /** 切换模型供应商；切换只影响之后的请求。 */
+  provider?: ProviderId;
   model?: string;
   prompts?: PromptOverrides;
   /** 每个板块选择的技能 ID；空字符串 = 取消技能选择（回退到默认/自定义文本）。 */
@@ -39,7 +41,7 @@ export type EffectiveSettings = {
 };
 
 export const DEFAULT_SETTINGS: EffectiveSettings = {
-  model: DEEPSEEK_MODEL,
+  model: findProvider(undefined).defaultModel,
   prompts: {},
   skillChoices: {},
   learningBudget: LIMITS.learningBudget,
@@ -54,6 +56,10 @@ const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 /** 设置项归一化：数值夹进硬上限范围内，非法条目被丢弃而不是报错中止整个保存。 */
 export function normalizeSettings(patch: SettingsPatch): SettingsPatch {
   const clean: SettingsPatch = {};
+  if (patch.provider !== undefined) {
+    const known = MODEL_PROVIDERS.some((provider) => provider.id === patch.provider);
+    if (known) clean.provider = patch.provider;
+  }
   if (patch.model !== undefined) {
     const model = patch.model.trim();
     if (model && MODEL_PATTERN.test(model)) clean.model = model;
@@ -105,9 +111,13 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
 }
 
-/** Config（存储形态）→ 界面与流水线使用的生效设置。 */
+/**
+ * Config（存储形态）→ 界面与流水线使用的生效设置。
+ * 模型按当前供应商取：换供应商不会把上一家的模型 ID 带过去。
+ */
 export function effectiveSettings(config: {
-  model?: string;
+  provider?: string;
+  models?: Partial<Record<ProviderId, string>>;
   prompts?: PromptOverrides;
   skillChoices?: SkillChoice;
   learningBudget?: number;
@@ -116,8 +126,9 @@ export function effectiveSettings(config: {
   summaryLength?: SummaryLength;
   appearance?: { fontSize?: FontSize };
 }): EffectiveSettings {
+  const provider = findProvider(config.provider);
   return {
-    model: config.model?.trim() || DEFAULT_SETTINGS.model,
+    model: config.models?.[provider.id]?.trim() || provider.defaultModel,
     prompts: config.prompts ?? {},
     skillChoices: config.skillChoices ?? {},
     learningBudget: clamp(

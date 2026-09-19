@@ -56,7 +56,7 @@ test.describe('主路径', () => {
       await chrome.storage.local.set({
         config: {
           apiKey: key,
-          outbound: { version: '2026-09-19.1', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+          outbound: { version: '2026-09-19.2', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
         },
       });
     }, apiKey);

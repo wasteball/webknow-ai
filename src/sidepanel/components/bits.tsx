@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { Completeness } from '../../core/blocks';
 import type { AppError } from '../../core/errors';
 import type { AnswerSource, Verdict } from '../../core/session';
+import { Icon } from './Icon';
 
 /** 来源与判断标签：不只靠颜色表达，颜色只是附加层（NFR-008/FR-036）。 */
 
@@ -49,13 +50,21 @@ export function ScopeLine({ completeness }: { completeness: Completeness | null 
   if (completeness.truncated) parts.push('没有读完整篇');
   // 未展开的内容、无法定位的块等，都在这里如实告诉用户。
   parts.push(...completeness.warnings);
-  return <p className="scope">读取范围：{parts.join('；')}</p>;
+  return (
+    <p className="scope">
+      <Icon name="file" small />
+      读取范围：{parts.join('；')}
+    </p>
+  );
 }
 
 export function ErrorBanner({ error, onDismiss }: { error: AppError; onDismiss?: () => void }) {
   return (
     <div className="banner banner-error" role="alert">
-      <p>{error.message}</p>
+      <p>
+        <Icon name="info" small />
+        {error.message}
+      </p>
       {onDismiss && (
         <button type="button" className="link" onClick={onDismiss}>
           关闭提示
@@ -68,7 +77,10 @@ export function ErrorBanner({ error, onDismiss }: { error: AppError; onDismiss?:
 export function Notice({ text, onDismiss }: { text: string; onDismiss?: () => void }) {
   return (
     <div className="banner banner-info" role="status">
-      <p>{text}</p>
+      <p>
+        <Icon name="info" small />
+        {text}
+      </p>
       {onDismiss && (
         <button type="button" className="link" onClick={onDismiss}>
           关闭

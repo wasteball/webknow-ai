@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { describeCompleteness, type EvidenceBlock } from '../src/core/blocks';
-import { chatJson } from '../src/core/deepseek';
+import { chatJson } from '../src/core/model-call';
+import { findProvider } from '../src/core/model-providers';
 import { LIMITS } from '../src/core/limits';
 import { answerMessages } from '../src/core/prompts/answer';
 import { guideMessages } from '../src/core/prompts/guide';
@@ -81,6 +82,7 @@ async function call(messages: { role: 'system' | 'user'; content: string }[], la
   const startedAt = Date.now();
   const result = await chatJson({
     apiKey: key,
+    provider: findProvider('deepseek'),
     messages,
     signal: AbortSignal.timeout(60_000),
     maxTokens: LIMITS.maxOutputTokens,
@@ -95,6 +97,7 @@ live('A0 真实 DeepSeek 接入', () => {
     await expect(
       chatJson({
         apiKey: key,
+        provider: findProvider('deepseek'),
         messages: [
           { role: 'system', content: '你是连接测试端点。只返回 JSON。' },
           { role: 'user', content: '返回 {"ok":true}' },
@@ -250,6 +253,7 @@ live('A0 真实 DeepSeek 接入', () => {
     for (const [label, answer] of cases) {
       const parsed = await chatJson({
         apiKey: key,
+        provider: findProvider('deepseek'),
         messages: learnMessages({
           mode: 'respond',
           title: '城市配送试点研究',

@@ -177,7 +177,7 @@ test.beforeAll(async () => {
     await chrome.storage.local.set({
       config: {
         apiKey: 'sk-test-not-real',
-        outbound: { version: '2026-09-19.1', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+        outbound: { version: '2026-09-19.2', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
       },
     });
   });
@@ -361,7 +361,9 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
   // 这台浏览器里已经有钥匙（beforeAll 放的），所以模型这一步直接可选。
   await nav.getByRole('button', { name: '模型' }).click();
   await expect(nav.getByRole('button', { name: '模型' })).toHaveAttribute('aria-current', 'true');
-  await expect(settings.getByRole('heading', { name: 'DeepSeek' })).toBeVisible();
+  await expect(settings.getByRole('heading', { name: '模型供应商' })).toBeVisible();
+  // 第二家（智谱）也在选择器里——这是这次改动的意义所在。
+  await expect(settings.getByLabel('用哪家').locator('option')).toHaveCount(2);
   await expect(settings.getByLabel('用哪个模型')).toBeVisible();
   // 提示词：选“自己写”必须立刻出现输入框——没保存过自写内容时也不能点了没反应。
   await nav.getByRole('button', { name: '提示词' }).click();

@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { browser } from 'wxt/browser';
 
-import { KNOWN_MODELS } from '../../core/deepseek';
 import { ANSWER_DEFAULT_POLICY } from '../../core/prompts/answer';
 import { GUIDE_DEFAULT_POLICY, summaryCharsFor } from '../../core/prompts/guide';
 import { LEARN_DEFAULT_POLICY } from '../../core/prompts/learn';
 import type { Command, PanelState, Reply } from '../../core/protocol';
+import { MODEL_PROVIDERS, findProvider, type ProviderId } from '../../core/model-providers';
 import type { PromptTarget } from '../../core/settings';
 import { BUILTIN_SKILLS } from '../../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS } from '../../core/search/registry';
 import { Notice, Section } from './bits';
+import { Icon, type IconName } from './Icon';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
@@ -22,15 +23,17 @@ type Send = (command: Command) => Promise<Reply | undefined>;
 
 type CategoryId = 'general' | 'model' | 'prompts' | 'skills' | 'search' | 'ima' | 'data' | 'about';
 
-const CATEGORIES: { id: CategoryId; label: string }[] = [
-  { id: 'general', label: '通用' },
-  { id: 'model', label: '模型' },
-  { id: 'prompts', label: '提示词' },
-  { id: 'skills', label: '技能' },
-  { id: 'search', label: '联网搜索' },
-  { id: 'ima', label: '知识库' },
-  { id: 'data', label: '数据' },
-  { id: 'about', label: '关于' },
+// 分类带图标（照原型）。原型在窄屏会把文字隐藏、只留图标，这里不跟：
+// 读者是普通用户，一排认不出的图形比窄一点更糟。
+const CATEGORIES: { id: CategoryId; label: string; icon: IconName }[] = [
+  { id: 'general', label: '通用', icon: 'settings' },
+  { id: 'model', label: '模型', icon: 'cpu' },
+  { id: 'prompts', label: '提示词', icon: 'file' },
+  { id: 'skills', label: '技能', icon: 'puzzle' },
+  { id: 'search', label: '联网搜索', icon: 'globe' },
+  { id: 'ima', label: '知识库', icon: 'cloud' },
+  { id: 'data', label: '数据', icon: 'grid' },
+  { id: 'about', label: '关于', icon: 'info' },
 ];
 
 const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string }[] = [
@@ -94,6 +97,7 @@ export function Settings({
               aria-current={category === item.id ? 'true' : undefined}
               onClick={() => setCategory(item.id)}
             >
+              <Icon name={item.icon} small />
               {item.label}
             </button>
           ))}
@@ -120,13 +124,17 @@ export function Settings({
 }
 
 /**
- * 模型供应商（2026-09-19 反馈改版，参照 Dify / WorkBuddy 的顺序）：
- * 先把供应商接上（填钥匙、试连一次），接上之后再选模型。
+ * 模型供应商（2026-09-19 加入第二家）。
+ * 顺序照 Dify / WorkBuddy：先把供应商接上（填钥匙、试连一次），接上之后再选模型。
  * 反过来先摆模型选择器是错的：没有钥匙时拉不到模型列表，用户只会看到一句误导人的失败。
- * 目前只有 DeepSeek 一家，所以“装供应商”和“填钥匙”本来就是一步，不假装分成两步。
+ *
+ * 每家的钥匙与模型分开存：来回换供应商不会互相覆盖，也不会把 A 家的钥匙发给 B 家。
+ * 与具体供应商有关的一切（地址、Key 形态、模型候选、外发接收方）都在
+ * core/model-providers.ts，这里只负责按当前那家渲染。
  */
 function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
   const { settings } = state;
+  const provider = findProvider(settings.provider);
   const [models, setModels] = useState<string[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [customMode, setCustomMode] = useState(false);
@@ -141,18 +149,17 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
     return reply;
   };
 
-  const connected = state.hasKey;
+  const connected = settings.providerKeys[provider.id] === true;
 
-  // 接上之后才拉模型列表；断开就把列表清掉，免得留下过期的选项。
+  // 接上之后才拉模型列表；断开或换供应商就把列表清掉，免得留下别家的选项。
   useEffect(() => {
-    if (!connected) {
-      setModels(null);
-      setLoadFailed(false);
-      return;
-    }
+    setModels(null);
+    setLoadFailed(false);
+    setKey('');
+    if (!connected) return;
     let alive = true;
     void (async () => {
-      const reply = await send({ type: 'listModels' });
+      const reply = await send({ type: 'listModels', provider: provider.id });
       if (!alive) return;
       if (reply?.ok && reply.data?.models?.length) setModels(reply.data.models);
       else setLoadFailed(true);
@@ -160,26 +167,48 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
     return () => {
       alive = false;
     };
-    // send 是稳定引用；只有“接上了没有”变化时才需要重新拉。
+    // send 是稳定引用；只有"接上了没有 / 换没换供应商"变化时才需要重新拉。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected]);
+  }, [connected, provider.id]);
 
-  const known = models ?? KNOWN_MODELS;
+  const known = models ?? provider.knownModels;
   const modelInList = known.includes(settings.model);
 
   return (
-    <Section title="DeepSeek">
+    <Section title="模型供应商">
+      <div className="field">
+        <label htmlFor="provider-select">用哪家</label>
+        <select
+          id="provider-select"
+          value={provider.id}
+          disabled={busy}
+          onChange={(event) =>
+            void run({ type: 'saveSettings', patch: { provider: event.target.value as ProviderId } })
+          }
+        >
+          {MODEL_PROVIDERS.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+              {settings.providerKeys[item.id] ? '（已连接）' : ''}
+            </option>
+          ))}
+        </select>
+        <p className="hint">
+          每家的钥匙和模型是分开存的，来回换不会互相覆盖。换供应商只影响之后的请求，已经读出来的内容不动。
+        </p>
+      </div>
+
       <p className="hint">
         {connected
-          ? '已连接。这个插件借你自己的 DeepSeek 账号干活，费用从你的账号里扣。'
-          : '还没有连接。这个插件不提供 AI，它借你自己的 DeepSeek 账号干活，费用从你的账号里扣。'}
+          ? `已连接。这个插件借你自己的 ${provider.name} 账号干活，费用从你的账号里扣。`
+          : `还没有连接。这个插件不提供 AI，它借你自己的 ${provider.name} 账号干活，费用从你的账号里扣。`}
       </p>
 
       {!connected ? (
         <div className="field">
-          <label htmlFor="deepseek-key">DeepSeek 钥匙（以 sk- 开头）</label>
+          <label htmlFor="provider-key">{provider.name} 的钥匙（{provider.keyHint}）</label>
           <input
-            id="deepseek-key"
+            id="provider-key"
             type="password"
             autoComplete="off"
             spellCheck={false}
@@ -190,7 +219,9 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
             <button
               type="button"
               disabled={busy || !key.trim()}
-              onClick={() => void run({ type: 'saveKey', key }).then(() => setKey(''))}
+              onClick={() =>
+                void run({ type: 'saveKey', provider: provider.id, key }).then(() => setKey(''))
+              }
             >
               {busy ? '正在确认这把钥匙…' : '连接'}
             </button>
@@ -198,10 +229,10 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
           <p className="hint">
             连接时会先试连一次，确认这把钥匙能用——试连不发送你正在看的网页，但会有极少量费用。
             还没有钥匙？先到{' '}
-            <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">
-              DeepSeek 的钥匙页面
+            <a href={provider.keyPage} target="_blank" rel="noreferrer">
+              {provider.name} 的钥匙页面
             </a>{' '}
-            创建一个（没有账号就先注册并充值一点金额）。
+            创建一个。
           </p>
         </div>
       ) : (
@@ -275,7 +306,9 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
               <button
                 type="button"
                 disabled={busy || !key.trim()}
-                onClick={() => void run({ type: 'saveKey', key }).then(() => setKey(''))}
+                onClick={() =>
+                  void run({ type: 'saveKey', provider: provider.id, key }).then(() => setKey(''))
+                }
               >
                 保存并确认能用
               </button>
@@ -283,7 +316,7 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
                 type="button"
                 className="secondary"
                 disabled={busy || !key.trim()}
-                onClick={() => void run({ type: 'testKey', key })}
+                onClick={() => void run({ type: 'testKey', provider: provider.id, key })}
               >
                 只试试连得上不
               </button>
@@ -291,12 +324,14 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
                 type="button"
                 className="danger"
                 disabled={busy}
-                onClick={() => void run({ type: 'deleteKey' })}
+                onClick={() => void run({ type: 'deleteKey', provider: provider.id })}
               >
                 断开并删掉钥匙
               </button>
             </div>
-            <p className="hint">删掉钥匙不会清掉你读过的内容，也不会动其他设置。</p>
+            <p className="hint">
+              删掉钥匙不会清掉你读过的内容，也不会动其他设置，更不会动另一家的钥匙。
+            </p>
           </div>
         </>
       )}

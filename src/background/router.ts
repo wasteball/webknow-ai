@@ -4,6 +4,7 @@ import { appError, fromThrown, type AppError } from '../core/errors';
 import { derivePhase } from '../core/phase';
 import type { Command, Event, PanelState, PortRequest, Reply } from '../core/protocol';
 import { LIMITS } from '../core/limits';
+import { MODEL_PROVIDERS, findProvider } from '../core/model-providers';
 import { effectiveSettings } from '../core/settings';
 import { validateCustomSkill } from '../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS, searchWithProvider } from '../core/search/registry';
@@ -14,7 +15,6 @@ import { extractPage, jumpToOriginal, watchPage } from './page';
 import { abortRun, handleIntent, type RunnerHooks } from './runner';
 import {
   OUTBOUND_NOTICE_VERSION,
-  OUTBOUND_RECEIVER,
   applySettings,
   clearAllSessions,
   clearImaConfig,
@@ -25,6 +25,7 @@ import {
   getPending,
   getSession,
   putSession,
+  readApiKey,
   readConfig,
   readSearchCredentials,
   saveApiKey,
@@ -43,6 +44,11 @@ import {
 type PanelPort = { raw: { postMessage: (message: Event) => void }; tabId: number | null };
 
 const ports = new Set<PanelPort>();
+
+/** 当前供应商对应的外发接收方名称；确认记录与界面文案都用它。 */
+export async function currentReceiver(): Promise<string> {
+  return findProvider((await readConfig()).provider).receiver;
+}
 
 export function originOf(url: string): string | null {
   try {
@@ -67,8 +73,15 @@ async function permissionFor(url: string | null): Promise<'granted' | 'missing' 
 
 export async function buildPanelState(tabId: number | null): Promise<PanelState> {
   const config = await readConfig();
+  const provider = findProvider(config.provider);
+  const providerKeys = Object.fromEntries(
+    MODEL_PROVIDERS.map((item) => [item.id, Boolean(config.apiKeys?.[item.id]?.trim())]),
+  ) as Record<string, boolean>;
+  const hasKey = providerKeys[provider.id] === true;
   const settings = {
     ...effectiveSettings(config),
+    provider: provider.id,
+    providerKeys,
     customSkills: config.skills ?? [],
     search: searchStatus(config),
     ima: {
@@ -76,8 +89,9 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       kbName: config.ima?.kbName?.trim() || null,
     },
   };
-  const hasKey = Boolean(config.apiKey?.trim());
-  const outboundConfirmed = config.outbound?.version === OUTBOUND_NOTICE_VERSION;
+  // 换供应商 = 换接收方：旧确认只对原来那家有效，换个名字就要重新确认一次。
+  const outboundConfirmed =
+    config.outbound?.version === OUTBOUND_NOTICE_VERSION && config.outbound?.receiver === provider.receiver;
 
   if (tabId === null) {
     return {
@@ -331,21 +345,22 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
 
       case 'saveKey': {
         const key = command.key.trim();
-        if (!key) return { ok: false, error: appError('NO_KEY', '先填上 DeepSeek 钥匙。', false) };
+        const provider = findProvider(command.provider);
+        if (!key) return { ok: false, error: appError('NO_KEY', `先填上 ${provider.name} 的钥匙。`, false) };
         // 保存前执行固定的最小连接测试；测试不发送网页正文（FR-020）。
-        await testConnection(key);
-        await saveApiKey(key);
+        await testConnection(provider.id, key);
+        await saveApiKey(provider.id, key);
         await pushAllStates();
-        return { ok: true, message: '确认能用，钥匙已经存在这个浏览器里了。' };
+        return { ok: true, message: `确认能用，${provider.name} 的钥匙已经存在这个浏览器里了。` };
       }
 
       case 'testKey': {
-        await testConnection(command.key);
+        await testConnection(command.provider, command.key);
         return { ok: true, message: '连得上。这次测试没有发送网页内容，只花极少的钱。' };
       }
 
       case 'deleteKey':
-        await deleteApiKey();
+        await deleteApiKey(command.provider);
         await pushAllStates();
         return { ok: true, message: '钥匙删掉了。页面内容和设置都没有动。' };
 
@@ -443,7 +458,12 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
 
       case 'listModels': {
         try {
-          const models = await listModels();
+          const key = await readApiKey(command.provider);
+          if (!key) {
+            // 没有钥匙就退回内置候选，而不是报错——设置页只是想把选择器填满。
+            return { ok: true, data: { models: findProvider(command.provider).knownModels } };
+          }
+          const models = await listModels(command.provider, key);
           return { ok: true, data: { models } };
         } catch (error) {
           return { ok: false, error: fromThrown(error) };
@@ -452,7 +472,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
 
       case 'confirmOutbound':
         await writeConfig({
-          outbound: { version: OUTBOUND_NOTICE_VERSION, acceptedAt: Date.now(), receiver: OUTBOUND_RECEIVER },
+          outbound: { version: OUTBOUND_NOTICE_VERSION, acceptedAt: Date.now(), receiver: await currentReceiver() },
         });
         return { ok: true };
 

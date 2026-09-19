@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { chatJson, createSseReader, parseJsonLoose } from '../src/core/deepseek';
+import { chatJson, createSseReader, parseJsonLoose } from '../src/core/model-call';
+import { findProvider } from '../src/core/model-providers';
 
 function sseResponse(chunks: string[], status = 200): typeof fetch {
   const encoder = new TextEncoder();
@@ -22,6 +23,7 @@ function delta(text: string): string {
 
 const base = {
   apiKey: 'test-key',
+  provider: findProvider('deepseek'),
   messages: [{ role: 'user' as const, content: 'hi' }],
   signal: new AbortController().signal,
 };

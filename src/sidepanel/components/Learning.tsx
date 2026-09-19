@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { LearnEntry, QuizQuestion } from '../../core/session';
 import { Busy, Section, VerdictTag } from './bits';
+import { Icon } from './Icon';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
@@ -167,6 +168,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               ))}
               <div className="composer-actions">
                 <button type="submit" disabled={!allAnswered}>
+                  <Icon name="check" small />
                   提交答案
                 </button>
               </div>
@@ -195,6 +197,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
                 />
                 <div className="composer-actions">
                   <button type="submit" disabled={!draft.trim()}>
+                    <Icon name="send" small />
                     回答
                   </button>
                 </div>
@@ -288,6 +291,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               />
               <div className="composer-actions">
                 <button type="submit">
+                  {learning?.status === 'closed' && <Icon name="rotate" small />}
                   {learning?.status === 'closed' ? '再来一轮' : '让 AI 问我'}
                 </button>
               </div>

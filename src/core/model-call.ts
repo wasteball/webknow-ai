@@ -1,40 +1,23 @@
 import { appError, fromHttpStatus, fromNetworkFailure } from './errors';
 import { LIMITS } from './limits';
+import type { ModelProvider } from './model-providers';
 
 /**
- * DeepSeek 是首版唯一允许的外发目标（FR-019）。
+ * 模型调用的共用传输层（DeepSeek 与智谱都是 OpenAI 兼容的 chat/completions + SSE）。
  * 本模块只负责“把一次请求变成一段文本”，不接触会话状态；它由 background 调用，
  * 是唯一读取 Key 的地方（FR-032）。
  *
- * A0 未实测前不冻结契约（PRD 第 9 节）：
- * - DEEPSEEK_MODEL 按 2026-09 官方文档记录（deepseek-chat/deepseek-reasoner 已于 2026-07-24 停用）。
- * - 不发送任何供应商特有的采样/思考参数；先用最小可验证载荷，实测后再决定。
+ * 与供应商有关的差异（地址、请求体默认值、默认模型、外发接收方）全部在
+ * `core/model-providers.ts`；这里只按传入的 provider 组装请求。
  */
-
-export const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/chat/completions';
-export const DEEPSEEK_MODEL = 'deepseek-flash';
-
-/** 模型列表拉取失败时设置页的回退选项（2026-09-18 /models 实测）。 */
-export const KNOWN_MODELS = [DEEPSEEK_MODEL, 'deepseek-v4-pro'];
-
-/**
- * A0 实测（2026-09-18，真实 Key）：
- * - `deepseek-flash` 默认开启思考，每个分片同时带 reasoning_content 与 content；
- *   思考文本会占用 max_tokens 预算，实测同一请求思考 1325～2697 字符。
- * - 显式关闭思考被接受，且同一请求从 3.4s 降到 1.7s，摘要与气泡质量无可见下降。
- * - `response_format: {"type":"json_object"}` 与流式同时可用。
- * 因此首版固定关闭思考：本产品的三类请求都是短结构化输出，不需要长链推理。
- */
-export const DEEPSEEK_BODY_DEFAULTS = {
-  response_format: { type: 'json_object' },
-  thinking: { type: 'disabled' },
-} as const;
 
 export type Message = { role: 'system' | 'user'; content: string };
 
 export type ChatOptions = {
   apiKey: string;
-  /** 模型 ID；缺省用内置默认。设置里选择的模型在这里生效。 */
+  /** 用哪家供应商：决定地址、鉴权头、请求体默认值与默认模型。 */
+  provider: ModelProvider;
+  /** 模型 ID；缺省用该供应商的默认模型。设置里选择的模型在这里生效。 */
   model?: string;
   messages: Message[];
   signal: AbortSignal;
@@ -123,25 +106,25 @@ export function parseJsonLoose(text: string): unknown {
  * 取消、超时、HTTP 错误和网络失败都归一成 AppError，不把原始响应正文带进界面或日志。
  */
 export async function chatJson(options: ChatOptions): Promise<unknown> {
-  const { apiKey, messages, signal, onProgress } = options;
+  const { apiKey, provider, messages, signal, onProgress } = options;
   const doFetch = options.fetchImpl ?? fetch;
   const timeout = AbortSignal.timeout(LIMITS.requestTimeoutMs);
   const combined = AbortSignal.any([signal, timeout]);
 
   let response: Response;
   try {
-    response = await doFetch(DEEPSEEK_ENDPOINT, {
+    response = await doFetch(provider.endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: options.model?.trim() || DEEPSEEK_MODEL,
+        model: options.model?.trim() || provider.defaultModel,
         messages,
         stream: true,
         max_tokens: options.maxTokens ?? LIMITS.maxOutputTokens,
-        ...DEEPSEEK_BODY_DEFAULTS,
+        ...provider.bodyDefaults,
       }),
       signal: combined,
     });

@@ -61,8 +61,8 @@ test('未配置 Key 时侧栏进入配置状态', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   // 断言输入框而不是小节标题：标题属于会变的文案，输入框是功能本身。
-  await expect(page.getByLabel('把以 sk- 开头的那串字符粘贴到这里')).toBeVisible();
-  await expect(page.getByText('还没有填 DeepSeek 钥匙')).toBeVisible();
+  await expect(page.getByLabel(/把 .+ 的那串字符粘贴到这里/)).toBeVisible();
+  await expect(page.getByText(/还没有填 .+ 钥匙/)).toBeVisible();
   // 第一次打开的样子是普通读者看到的第一屏，留一张截图供人工复核文案。
   await page.screenshot({ path: 'test-results/panel-first-run.png', fullPage: true });
   await page.close();

@@ -2,6 +2,7 @@ import { storage } from 'wxt/utils/storage';
 
 import { appError } from '../core/errors';
 import type { SummaryLength } from '../core/limits';
+import { findProvider, type ProviderId } from '../core/model-providers';
 import {
   normalizeSettings,
   type FontSize,
@@ -18,19 +19,27 @@ import type { PageSession } from '../core/session';
  * - Key、有效配置、外发确认放 storage.local，且不使用浏览器同步存储。
  */
 
-/** 外发告知版本：接收方或发送范围实质变化时必须更新，旧确认随之失效（FR-022）。 */
-export const OUTBOUND_NOTICE_VERSION = '2026-09-19.1';
-export const OUTBOUND_RECEIVER = 'DeepSeek（深度求索）';
+/**
+ * 外发告知版本：接收方或发送范围实质变化时必须更新，旧确认随之失效（FR-022）。
+ *
+ * 2026-09-19.2：加入智谱。此前接收方恒为 DeepSeek，现在取决于用户选哪家——
+ * 接收方集合发生实质变化，因此提版，让老用户对新边界重新确认一次。
+ * 具体接收方名称不在这里写死，改由所选供应商给出（core/model-providers.ts）。
+ */
+export const OUTBOUND_NOTICE_VERSION = '2026-09-19.2';
 
 /**
  * 用户设置（产品化改造 F2）。非敏感设置通过 saveSettings 命令整体保存；
  * Key 仍走独立命令。数值类设置只能在 limits.ts 的硬上限内生效（core/settings.ts 归一化）。
  */
 export type Config = {
-  apiKey?: string;
+  /** 当前用哪家模型供应商；缺省 DeepSeek。 */
+  provider?: ProviderId;
+  /** 每家的 Key 分开存：换供应商不用重填，也不会把 A 家的 Key 发给 B 家。 */
+  apiKeys?: Partial<Record<ProviderId, string>>;
+  /** 每家的模型选择；缺省用该供应商的内置默认。 */
+  models?: Partial<Record<ProviderId, string>>;
   outbound?: { version: string; acceptedAt: number; receiver: string };
-  /** 模型 ID；缺省用内置默认（DEEPSEEK_MODEL）。 */
-  model?: string;
   prompts?: PromptOverrides;
   /** 每个板块选择的技能 ID（技能=提示词预设）。 */
   skillChoices?: SkillChoice;
@@ -66,8 +75,10 @@ const CONFIG_KEY: `local:${string}` = 'local:config';
 const sessionKey = (tabId: number): `session:${string}` => `session:sess:${tabId}`;
 const pendingKey = (tabId: number): `session:${string}` => `session:pending:${tabId}`;
 
+type LegacyConfig = Config & { teachingPrompt?: string; apiKey?: string; model?: string };
+
 export async function readConfig(): Promise<Config> {
-  const stored = await storage.getItem<Config & { teachingPrompt?: string }>(CONFIG_KEY);
+  const stored = await storage.getItem<LegacyConfig>(CONFIG_KEY);
   if (!stored) return {};
   // 一次性迁移：旧版只有教学提示词覆盖（teachingPrompt），新版是三板块 prompts.learn。
   if (typeof stored.teachingPrompt === 'string') {
@@ -80,6 +91,16 @@ export async function readConfig(): Promise<Config> {
     await storage.setItem(CONFIG_KEY, migrated);
     return migrated;
   }
+  // 一次性迁移：单供应商时代的单个 apiKey / model，拆成按供应商存的那两份。
+  // 不迁移的话老用户升级后会变成"没有 Key"，等于把已经配好的东西弄丢了。
+  if (stored.apiKey !== undefined || stored.model !== undefined) {
+    const { apiKey, model, ...rest } = stored;
+    const migrated: Config = { ...rest };
+    if (apiKey) migrated.apiKeys = { ...(rest.apiKeys ?? {}), deepseek: apiKey };
+    if (model) migrated.models = { ...(rest.models ?? {}), deepseek: model };
+    await storage.setItem(CONFIG_KEY, migrated);
+    return migrated;
+  }
   return stored;
 }
 
@@ -89,23 +110,33 @@ export async function writeConfig(patch: Partial<Config>): Promise<void> {
 }
 
 /** 仅在 background 的网络边界内调用；返回值不得进入界面、日志或提示词（FR-032）。 */
-export async function readApiKey(): Promise<string | null> {
-  const key = (await readConfig()).apiKey?.trim();
+export async function readApiKey(provider: ProviderId): Promise<string | null> {
+  const key = (await readConfig()).apiKeys?.[provider]?.trim();
   return key ? key : null;
 }
 
-export async function hasApiKey(): Promise<boolean> {
-  return (await readApiKey()) !== null;
+/** 当前供应商有没有配好钥匙——界面据此决定是"连接"还是"选模型"。 */
+export async function hasApiKey(provider: ProviderId): Promise<boolean> {
+  return (await readApiKey(provider)) !== null;
 }
 
-export async function saveApiKey(key: string): Promise<void> {
-  await writeConfig({ apiKey: key.trim() });
-}
-
-export async function deleteApiKey(): Promise<void> {
+export async function saveApiKey(provider: ProviderId, key: string): Promise<void> {
   const current = await readConfig();
-  const { apiKey: _removed, ...rest } = current;
-  await storage.setItem(CONFIG_KEY, rest);
+  await storage.setItem(CONFIG_KEY, {
+    ...current,
+    apiKeys: { ...(current.apiKeys ?? {}), [provider]: key.trim() },
+  });
+}
+
+/** 只删这一家的钥匙，另一家的不动（独立清除，FR-033）。 */
+export async function deleteApiKey(provider: ProviderId): Promise<void> {
+  const current = await readConfig();
+  const apiKeys = { ...(current.apiKeys ?? {}) };
+  delete apiKeys[provider];
+  const next: Config = { ...current };
+  if (Object.keys(apiKeys).length) next.apiKeys = apiKeys;
+  else delete next.apiKeys;
+  await storage.setItem(CONFIG_KEY, next);
 }
 
 /** 清除单个板块的提示词覆盖（恢复默认）；不触碰 Key、会话与其他设置。 */
@@ -208,7 +239,12 @@ export async function applySettings(patch: SettingsPatch): Promise<void> {
   const clean = normalizeSettings(patch);
   const next: Config = { ...current };
 
-  if (clean.model !== undefined) next.model = clean.model;
+  if (clean.provider !== undefined) next.provider = clean.provider;
+  // 模型按供应商存：切供应商时各自记住各自的选择。
+  if (clean.model !== undefined) {
+    const provider = findProvider(next.provider).id;
+    next.models = { ...(next.models ?? {}), [provider]: clean.model };
+  }
   if (clean.learningBudget !== undefined) next.learningBudget = clean.learningBudget;
   if (clean.learningStyle !== undefined) next.learningStyle = clean.learningStyle;
   if (clean.maxBubbles !== undefined) next.maxBubbles = clean.maxBubbles;
