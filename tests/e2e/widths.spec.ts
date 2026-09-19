@@ -359,7 +359,7 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
   await expect(settings).toHaveURL(/options\.html(#\d+)?$/);
 
   // 左侧分类导航可切换，右侧内容随分类变化。
-  await expect(settings.getByText('「问我」一轮最多问几个问题')).toBeVisible();
+  await expect(settings.getByLabel('「问我」一轮最多问几个问题')).toBeVisible();
   const nav = settings.getByRole('navigation', { name: '设置分类' });
   // 这台浏览器里已经有钥匙（beforeAll 放的），所以模型这一步直接可选。
   await nav.getByRole('button', { name: '模型' }).click();
@@ -373,7 +373,7 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
   // 提示词：选“自己写”必须立刻出现输入框——没保存过自写内容时也不能点了没反应。
   await nav.getByRole('button', { name: '提示词' }).click();
   await expect(settings.getByLabel('导读摘要：我自己写的写法')).toBeHidden();
-  await settings.getByLabel('导读摘要').selectOption('__custom__');
+  await settings.getByRole('radiogroup', { name: '导读摘要' }).getByRole('radio', { name: '自己写' }).click();
   await expect(settings.getByLabel('导读摘要：我自己写的写法')).toBeVisible();
 
   await nav.getByRole('button', { name: '知识库' }).click();
@@ -506,7 +506,7 @@ test('设置：出题方式改完立刻落盘（真实存储）', async () => {
   await settings.goto(`chrome-extension://${extensionId}/options.html`);
 
   // 回归：这个下拉在界面上一直存在，但后台曾经没把它写进配置，选了等于没选。
-  await settings.getByLabel('「问我」怎么出题').selectOption('quiz');
+  await settings.getByRole('radiogroup', { name: '「问我」怎么出题' }).getByRole('radio', { name: '选择题' }).click();
   await expect
     .poll(async () =>
       context.serviceWorkers()[0]!.evaluate(async () => {
@@ -517,7 +517,9 @@ test('设置：出题方式改完立刻落盘（真实存储）', async () => {
     .toBe('quiz');
 
   await settings.reload();
-  await expect(settings.getByLabel('「问我」怎么出题')).toHaveValue('quiz');
+  await expect(
+    settings.getByRole('radiogroup', { name: '「问我」怎么出题' }).getByRole('radio', { name: '选择题' }),
+  ).toHaveAttribute('aria-checked', 'true');
   await settings.close();
 });
 
@@ -526,7 +528,7 @@ test('设置：窄窗口下分类导航变成横向可滚动条，正文不横�
   const settings = await context.newPage();
   await settings.setViewportSize({ width: 480, height: 820 });
   await settings.goto(`chrome-extension://${extensionId}/options.html`);
-  await expect(settings.getByText('「问我」一轮最多问几个问题')).toBeVisible();
+  await expect(settings.getByLabel('「问我」一轮最多问几个问题')).toBeVisible();
 
   // 导航占满一行并且自己能横向滚动，正文区不跟着一起横溢。
   const nav = settings.getByRole('navigation', { name: '设置分类' });

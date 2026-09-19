@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { browser } from 'wxt/browser';
 
 import { ANSWER_DEFAULT_POLICY } from '../../core/prompts/answer';
@@ -21,20 +21,81 @@ type Send = (command: Command) => Promise<Reply | undefined>;
  * 清除这一页、清除全部、删掉钥匙、恢复默认提示词，互不牵连（FR-033）。
  */
 
-type CategoryId = 'general' | 'model' | 'prompts' | 'skills' | 'search' | 'ima' | 'data' | 'about';
+type CategoryId = 'general' | 'model' | 'prompts' | 'search' | 'ima' | 'data' | 'about';
 
-// 分类带图标（照原型）。原型在窄屏会把文字隐藏、只留图标，这里不跟：
-// 读者是普通用户，一排认不出的图形比窄一点更糟。
 const CATEGORIES: { id: CategoryId; label: string; icon: IconName }[] = [
-  { id: 'general', label: '通用', icon: 'settings' },
+  { id: 'general', label: '阅读', icon: 'book' },
   { id: 'model', label: '模型', icon: 'cpu' },
   { id: 'prompts', label: '提示词', icon: 'file' },
-  { id: 'skills', label: '技能', icon: 'puzzle' },
   { id: 'search', label: '联网搜索', icon: 'globe' },
   { id: 'ima', label: '知识库', icon: 'cloud' },
-  { id: 'data', label: '数据', icon: 'grid' },
+  { id: 'data', label: '清除', icon: 'grid' },
   { id: 'about', label: '关于', icon: 'info' },
 ];
+
+function PageLead({ title, lead }: { title: string; lead: string }) {
+  return (
+    <header className="page-head">
+      <h2>{title}</h2>
+      <p>{lead}</p>
+    </header>
+  );
+}
+
+function SetList({ children }: { children: ReactNode }) {
+  return <div className="set-list">{children}</div>;
+}
+
+function SetRow({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="set-row">
+      <div className="set-row-copy">
+        <p className="set-row-title">{title}</p>
+        {hint ? <p className="set-row-hint">{hint}</p> : null}
+      </div>
+      <div className="set-row-control">{children}</div>
+    </div>
+  );
+}
+
+function Seg<T extends string>({
+  name,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  name: string;
+  value: T;
+  options: { value: T; label: string }[];
+  disabled?: boolean;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="seg" role="radiogroup" aria-label={name}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          role="radio"
+          aria-checked={value === option.value}
+          disabled={disabled}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string }[] = [
   {
@@ -84,7 +145,7 @@ export function Settings({
           <BrandMark size={24} />
           知伴
         </p>
-        <p className="settings-tagline">能力设置</p>
+        <p className="settings-tagline">设置</p>
       </header>
       <div className="settings-shell">
         <nav className="settings-nav" aria-label="设置分类">
@@ -102,15 +163,14 @@ export function Settings({
         </nav>
         <main className="settings-content" id="settings-content" tabIndex={-1}>
           {notice && <Notice text={notice} onDismiss={onDismissNotice} />}
-          {category === 'general' && (
+          {category === 'general' && <ReadingPrefs state={state} send={send} />}
+          {category === 'model' && <ModelAndKey state={state} send={send} />}
+          {category === 'prompts' && (
             <>
-              <Behavior state={state} send={send} />
-              <Appearance state={state} send={send} />
+              <Prompts state={state} send={send} />
+              <Skills state={state} send={send} />
             </>
           )}
-          {category === 'model' && <ModelAndKey state={state} send={send} />}
-          {category === 'prompts' && <Prompts state={state} send={send} />}
-          {category === 'skills' && <Skills state={state} send={send} />}
           {category === 'search' && <SearchSettings state={state} send={send} />}
           {category === 'ima' && <ImaSettings state={state} send={send} />}
           {category === 'data' && <Cleanup state={state} send={send} />}
@@ -141,10 +201,7 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <Section title="模型供应商">
-      <p className="hint">
-        用哪家就是把这页文字发给哪家。两家的钥匙和模型分开存，来回换不会互相覆盖；
-        换一家之后，下一次开始伴读会重新问你确认（因为接收方变了）。
-      </p>
+      <p className="hint">点一张卡接上，文字就发给那一家。两家的钥匙分开存，换一家下次会再问你确认。</p>
       <div className="provider-grid">
         {MODEL_PROVIDERS.map((provider) => (
           <ProviderCard
@@ -402,37 +459,57 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <Section title="提示词">
-      <p className="hint">
-        每个板块都可以选一套预设写法（技能），或完全自己写。自己写的内容优先于预设；
-        安全边界不受影响：内容的去向、费用上限和输出格式仍由程序控制。
-      </p>
+      <p className="hint">三块各选一种写法。自己写的优先；去向、费用和格式仍由程序管。</p>
       {PROMPT_TARGETS.map(({ key, title, hint }) => {
         const chosen = settings.skillChoices[key] ?? '';
         const custom = settings.prompts[key] ?? '';
         const isWriting = writing[key] ?? Boolean(custom);
+        const current = isWriting ? '__custom__' : chosen || '__default__';
         return (
-          <div className="field" key={key}>
-            <label htmlFor={`preset-${key}`}>{title}</label>
-            <p className="hint">{hint}</p>
-            <select
-              id={`preset-${key}`}
-              value={isWriting ? '__custom__' : chosen || '__default__'}
-              disabled={busy}
-              onChange={(event) => {
-                const value = event.target.value;
-                setWriting((current) => ({ ...current, [key]: value === '__custom__' }));
-                if (value === '__custom__') return;
-                void run({ type: 'saveSettings', patch: { skillChoices: { [key]: value === '__default__' ? '' : value } } });
-              }}
-            >
-              <option value="__default__">默认写法</option>
+          <article className="set-card" key={key}>
+            <div className="set-card-head">
+              <h3>{title}</h3>
+              <p>{hint}</p>
+            </div>
+            <div className="choice-row" role="radiogroup" aria-label={title}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={current === '__default__'}
+                disabled={busy}
+                onClick={() => {
+                  setWriting((item) => ({ ...item, [key]: false }));
+                  void run({ type: 'saveSettings', patch: { skillChoices: { [key]: '' } } });
+                }}
+              >
+                默认
+              </button>
               {skillsFor(key).map((skill) => (
-                <option key={skill.id} value={skill.id}>
-                  技能：{skill.name}
-                </option>
+                <button
+                  key={skill.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={current === skill.id}
+                  disabled={busy}
+                  title={skill.description}
+                  onClick={() => {
+                    setWriting((item) => ({ ...item, [key]: false }));
+                    void run({ type: 'saveSettings', patch: { skillChoices: { [key]: skill.id } } });
+                  }}
+                >
+                  {skill.name}
+                </button>
               ))}
-              <option value="__custom__">自己写（优先于预设）</option>
-            </select>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={current === '__custom__'}
+                disabled={busy}
+                onClick={() => setWriting((item) => ({ ...item, [key]: true }))}
+              >
+                自己写
+              </button>
+            </div>
             {isWriting && (
               <>
                 <textarea
@@ -442,7 +519,7 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
                   maxLength={8000}
                   value={drafts[key]}
                   placeholder="写你希望它怎么写。保存后会盖过上面选的写法。"
-                  onChange={(event) => setDrafts((current) => ({ ...current, [key]: event.target.value }))}
+                  onChange={(event) => setDrafts((currentDrafts) => ({ ...currentDrafts, [key]: event.target.value }))}
                 />
                 <div className="composer-actions">
                   <button
@@ -457,8 +534,8 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
                     className="secondary"
                     disabled={busy}
                     onClick={() => {
-                      setDrafts((current) => ({ ...current, [key]: '' }));
-                      setWriting((current) => ({ ...current, [key]: false }));
+                      setDrafts((currentDrafts) => ({ ...currentDrafts, [key]: '' }));
+                      setWriting((item) => ({ ...item, [key]: false }));
                       if (custom) void run({ type: 'saveSettings', patch: { prompts: { [key]: '' } } });
                     }}
                   >
@@ -471,7 +548,7 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
               <summary className="link">看看当前生效的是什么</summary>
               <p className="hint">{custom || defaults[key]}</p>
             </details>
-          </div>
+          </article>
         );
       })}
     </Section>
@@ -505,20 +582,10 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
   };
 
   return (
-    <Section title="技能">
-      <p className="hint">
-        技能是一套现成的写法。内置的随插件更新；下面的自定义技能可以把你自己的用法存成模板。
-      </p>
+    <Section title="我的写法模板">
+      <p className="hint">上面点选的是现成模板。这里可以把常用写法存下来，下次直接点。</p>
       <ul className="skill-list">
-        {BUILTIN_SKILLS.map((skill) => (
-          <li key={skill.id}>
-            <p className="skill-name">
-              {skill.name}
-              <span className="tag">{TARGET_LABEL[skill.target]}</span>
-            </p>
-            <p className="hint">{skill.description}</p>
-          </li>
-        ))}
+        {customs.length === 0 && !adding && <li className="hint">还没有自己存的模板。</li>}
         {customs.map((skill) => (
           <li key={skill.id}>
             <p className="skill-name">
@@ -627,30 +694,49 @@ function SearchSettings({ state, send }: { state: PanelState; send: Send }) {
     if (reply?.ok) await run({ type: 'testSearch', providerId: selected.id });
   };
 
+  const pick = (id: string) => {
+    setProviderId(id);
+    setCredentials({});
+    setHint(null);
+  };
+
   return (
     <Section title="联网搜索">
       <p className="hint">
-        启用后，问答里会多一个“联网搜索”开关：打开它提问，会把你的搜索词发给下面选的搜索服务，
-        拿到结果后连同文章一起回答。<strong>只发搜索词，不发文章正文。</strong>
-        搜索服务和模型钥匙是分开的，换任何模型都不影响它。
+        打开「我问」里的联网开关，只把搜索词发出去，正文仍只给模型。免费的不用注册。
       </p>
-      <div className="field">
-        <label htmlFor="search-provider">搜索服务</label>
-        <select
-          id="search-provider"
-          value={providerId || (current.enabled ? '已启用' : '')}
+      {current.enabled && (
+        <p className="status-banner">现在用 {current.providerName}。换一家先点下面一张卡。</p>
+      )}
+      <div className="choice-grid" role="radiogroup" aria-label="搜索服务">
+        <button
+          type="button"
+          role="radio"
+          className="choice-card"
+          aria-checked={!providerId}
           disabled={busy}
-          onChange={(event) => setProviderId(event.target.value)}
+          onClick={() => pick('')}
         >
-          <option value="">不启用{current.enabled ? '（当前已启用，更改请先选择）' : ''}</option>
-          {BUILTIN_SEARCH_PROVIDERS.map((provider) => (
-            <option key={provider.id} value={provider.id}>
-              {/* 免 Key 的标在选项上：一眼看出哪个不用注册就能用。 */}
-              {provider.configFields.length ? provider.name : `${provider.name}（免费，无需注册）`}
-            </option>
-          ))}
-          {current.enabled && <option value="已启用">已启用：{current.providerName}</option>}
-        </select>
+          <strong>先不查网上</strong>
+          <span>只根据这一页回答</span>
+        </button>
+        {BUILTIN_SEARCH_PROVIDERS.map((provider) => (
+          <button
+            key={provider.id}
+            type="button"
+            role="radio"
+            className="choice-card"
+            aria-checked={providerId === provider.id}
+            disabled={busy}
+            onClick={() => pick(provider.id)}
+          >
+            <strong>
+              {provider.name}
+              {!provider.configFields.length ? ' · 免费' : ''}
+            </strong>
+            <span>{provider.description}</span>
+          </button>
+        ))}
       </div>
       {selected && (
         <>
@@ -742,10 +828,7 @@ function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <Section title="知识库（腾讯 ima）">
-      <p className="hint">
-        可以先在这里填好凭证、选好默认知识库。侧栏里的“存入知识库”这一步还在收尾，本版先不开入口，
-        避免存进去的笔记对不上所选知识库。凭证会留在本机，下一版开放保存时直接用。
-      </p>
+      <p className="hint">先连上、选一个库。侧栏保存入口还在收尾，凭证先留在这台电脑。</p>
       {current.enabled ? (
         <>
           <p className="hint">已连接{current.kbName ? `，默认保存到「${current.kbName}」` : '，还没有选择默认知识库'}。</p>
@@ -798,7 +881,9 @@ function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
       ) : (
         <>
           <div className="field">
-            <label htmlFor="ima-client-id">Client ID</label>
+            <label htmlFor="ima-client-id">
+              应用编号 <span className="set-code">Client ID</span>
+            </label>
             <input
               id="ima-client-id"
               type="text"
@@ -809,7 +894,9 @@ function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="ima-api-key">API Key</label>
+            <label htmlFor="ima-api-key">
+              钥匙 <span className="set-code">API Key</span>
+            </label>
             <input
               id="ima-api-key"
               type="password"
@@ -867,90 +954,7 @@ function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
   );
 }
 
-function Behavior({ state, send }: { state: PanelState; send: Send }) {
-  const { settings } = state;
-  const [busy, setBusy] = useState(false);
-
-  const change = (patch: Parameters<typeof send>[0]) => {
-    if (patch.type !== 'saveSettings') return;
-    setBusy(true);
-    void send(patch).finally(() => setBusy(false));
-  };
-
-  return (
-    <Section title="行为偏好">
-      <p className="hint">这些只影响你的使用体验，改动立即生效并保存。</p>
-      <div className="field">
-        <label htmlFor="learning-budget">「问我」一轮最多问几个问题</label>
-        <select
-          id="learning-budget"
-          value={String(settings.learningBudget)}
-          disabled={busy}
-          onChange={(event) => change({ type: 'saveSettings', patch: { learningBudget: Number(event.target.value) } })}
-        >
-          {Array.from({ length: 10 }, (_, index) => index + 1).map((count) => (
-            <option key={count} value={String(count)}>
-              {count} 个
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor="learning-style">「问我」怎么出题</label>
-        <select
-          id="learning-style"
-          value={settings.learningStyle}
-          disabled={busy}
-          onChange={(event) =>
-            change({
-              type: 'saveSettings',
-              patch: { learningStyle: event.target.value as 'mixed' | 'quiz' | 'open' },
-            })
-          }
-        >
-          <option value="mixed">自动（按内容选择，默认）</option>
-          <option value="quiz">总是出选择题</option>
-          <option value="open">总是让我用自己的话答</option>
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor="summary-length">摘要长度</label>
-        <select
-          id="summary-length"
-          value={settings.summaryLength}
-          disabled={busy}
-          onChange={(event) =>
-            change({
-              type: 'saveSettings',
-              patch: { summaryLength: event.target.value as 'short' | 'medium' | 'long' },
-            })
-          }
-        >
-          <option value="short">短（两三句话）</option>
-          <option value="medium">中（默认）</option>
-          <option value="long">长（多讲一些）</option>
-        </select>
-      </div>
-      <div className="field">
-        <label htmlFor="max-bubbles">话题卡片数量上限</label>
-        <select
-          id="max-bubbles"
-          value={String(settings.maxBubbles)}
-          disabled={busy}
-          onChange={(event) => change({ type: 'saveSettings', patch: { maxBubbles: Number(event.target.value) } })}
-        >
-          {Array.from({ length: 4 }, (_, index) => index).map((count) => (
-            <option key={count} value={String(count)}>
-              {count === 0 ? '不给话题卡片' : `最多 ${count} 个`}
-            </option>
-          ))}
-        </select>
-      </div>
-    </Section>
-  );
-}
-
-function Appearance({ state, send }: { state: PanelState; send: Send }) {
+function ReadingPrefs({ state, send }: { state: PanelState; send: Send }) {
   const { settings } = state;
   const [busy, setBusy] = useState(false);
   const change = (patch: Parameters<typeof send>[0]) => {
@@ -958,23 +962,89 @@ function Appearance({ state, send }: { state: PanelState; send: Send }) {
     setBusy(true);
     void send(patch).finally(() => setBusy(false));
   };
+  const budget = String(settings.learningBudget) as '3' | '5' | '8' | string;
+  const budgetValue = budget === '3' || budget === '5' || budget === '8' ? budget : '5';
+
   return (
-    <Section title="外观">
-      <div className="field">
-        <label htmlFor="font-size">文字大小</label>
-        <select
-          id="font-size"
-          value={settings.fontSize}
-          disabled={busy}
-          onChange={(event) =>
-            change({ type: 'saveSettings', patch: { fontSize: event.target.value as 'normal' | 'large' } })
-          }
-        >
-          <option value="normal">标准</option>
-          <option value="large">大</option>
-        </select>
-      </div>
-    </Section>
+    <>
+      <PageLead title="阅读" lead="摘要多长、问你几轮、字大不大。改完立刻生效。" />
+      <SetList>
+        <SetRow title="「问我」一轮几题" hint="问完就给小结，不会无限追问。">
+          <Seg
+            name="「问我」一轮最多问几个问题"
+            value={budgetValue}
+            options={[
+              { value: '3', label: '3' },
+              { value: '5', label: '5' },
+              { value: '8', label: '8' },
+            ]}
+            disabled={busy}
+            onChange={(value) => change({ type: 'saveSettings', patch: { learningBudget: Number(value) } })}
+          />
+        </SetRow>
+        <SetRow title="它怎么问你" hint="选择题好勾；开口答能看出你是不是真懂。">
+          <Seg
+            name="「问我」怎么出题"
+            value={settings.learningStyle}
+            options={[
+              { value: 'mixed', label: '自动' },
+              { value: 'quiz', label: '选择题' },
+              { value: 'open', label: '开口答' },
+            ]}
+            disabled={busy}
+            onChange={(value) =>
+              change({ type: 'saveSettings', patch: { learningStyle: value as 'mixed' | 'quiz' | 'open' } })
+            }
+          />
+        </SetRow>
+        <SetRow title="摘要长短" hint="打开侧栏最先看到的那一段。">
+          <Seg
+            name="摘要长度"
+            value={settings.summaryLength}
+            options={[
+              { value: 'short', label: '短' },
+              { value: 'medium', label: '中' },
+              { value: 'long', label: '长' },
+            ]}
+            disabled={busy}
+            onChange={(value) =>
+              change({
+                type: 'saveSettings',
+                patch: { summaryLength: value as 'short' | 'medium' | 'long' },
+              })
+            }
+          />
+        </SetRow>
+        <SetRow title="话题条" hint="摘要下面那几张可点的卡片。">
+          <Seg
+            name="话题卡片数量上限"
+            value={String(settings.maxBubbles)}
+            options={[
+              { value: '0', label: '不要' },
+              { value: '2', label: '2' },
+              { value: '3', label: '3' },
+              { value: '4', label: '4' },
+            ]}
+            disabled={busy}
+            onChange={(value) => change({ type: 'saveSettings', patch: { maxBubbles: Number(value) } })}
+          />
+        </SetRow>
+        <SetRow title="文字大小">
+          <Seg
+            name="文字大小"
+            value={settings.fontSize}
+            options={[
+              { value: 'normal', label: '标准' },
+              { value: 'large', label: '大' },
+            ]}
+            disabled={busy}
+            onChange={(value) =>
+              change({ type: 'saveSettings', patch: { fontSize: value as 'normal' | 'large' } })
+            }
+          />
+        </SetRow>
+      </SetList>
+    </>
   );
 }
 
@@ -987,35 +1057,24 @@ function Cleanup({ state, send }: { state: PanelState; send: Send }) {
     setBusy(false);
   };
   return (
-    <Section title="内容保留与清理">
-      <p className="hint">
-        你读过的网页文字、摘要、对话和学习记录，只在这次浏览器开着的时候保留：
-        关掉标签页就清掉那一页，关掉浏览器就全部清掉。钥匙和上面的设置不受影响。
-      </p>
-      <div className="composer-actions">
-        {/* 从浏览器自带的“扩展选项”进来时不知道你在读哪一页：给一句说明，不留一个禁用按钮。 */}
-        {tabId !== null ? (
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            onClick={() => void run({ type: 'clearSession', tabId })}
-          >
-            清掉这一页的内容
+    <Section title="清除">
+      <p className="hint">摘要和对话只在这次打开浏览器时留着。钥匙和设置不受影响。</p>
+      <SetList>
+        <SetRow title="这一页" hint={tabId === null ? '从扩展选项进来时不知道你在读哪一页，请到那一页的侧栏里清。' : '清掉当前页的摘要、对话和问我记录。'}>
+          {tabId !== null ? (
+            <button type="button" className="secondary" disabled={busy} onClick={() => void run({ type: 'clearSession', tabId })}>
+              清掉这一页
+            </button>
+          ) : (
+            <span className="set-row-hint">到侧栏里操作</span>
+          )}
+        </SetRow>
+        <SetRow title="所有页面" hint="关浏览器本来也会清。现在立刻清。">
+          <button type="button" className="danger" disabled={busy} onClick={() => void run({ type: 'clearAllSessions' })}>
+            全部清掉
           </button>
-        ) : (
-          <p className="hint">想只清掉某一页？在那一页的侧栏里点“清掉这一页的内容”。</p>
-        )}
-        <button
-          type="button"
-          className="danger"
-          disabled={busy}
-          onClick={() => void run({ type: 'clearAllSessions' })}
-        >
-          清掉所有页面的内容
-        </button>
-      </div>
-      <p className="hint">这两个操作都不会删掉钥匙，也不会改上面的设置。</p>
+        </SetRow>
+      </SetList>
     </Section>
   );
 }
@@ -1024,8 +1083,9 @@ function About() {
   const version = browser.runtime.getManifest().version;
   return (
     <Section title="关于">
+      <p className="hint">知伴（webknow-ai）{version}。</p>
       <p className="hint">
-        webknow-ai 版本 {version}。使用说明与常见问题见{' '}
+        使用说明见{' '}
         <a href="https://github.com/wasteball/webknow-ai#readme" target="_blank" rel="noreferrer">
           项目主页
         </a>
