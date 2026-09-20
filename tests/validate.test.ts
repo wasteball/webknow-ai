@@ -70,6 +70,30 @@ describe('cleanAnswer', () => {
     expect(result.value.unanswered.join()).toContain('未能在当前正文中找到可直接核对的依据');
   });
 
+  it('答完后的联想问题去重、一次一问，塞进 followUps', () => {
+    const result = cleanAnswer(
+      {
+        answer: '回答',
+        source: 'supplement',
+        citations: [],
+        unanswered: [],
+        followUps: [
+          { question: '为什么不能外推？', kind: 'boundary' },
+          { question: '为什么不能外推？', kind: 'boundary' },
+          { question: '原因是什么？边界在哪？', kind: 'reason' },
+          { question: '培训算不算干扰？', kind: 'premise' },
+        ],
+      },
+      blocks,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.followUps.map((item) => item.question)).toEqual([
+      '为什么不能外推？',
+      '培训算不算干扰？',
+    ]);
+  });
+
   it('有网络资料时，原文依据仍然必须有本地引用', () => {
     const result = cleanAnswer(
       { answer: '回答', source: 'original', citations: [], unanswered: [], references: [] },

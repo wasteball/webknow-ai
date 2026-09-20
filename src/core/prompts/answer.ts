@@ -10,7 +10,7 @@ import { HARNESS_RULES, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from 
  * 产品化改造 F3：开启联网搜索时附带 webResults，并叠加固定的网络资料纪律。
  */
 
-export const ANSWER_VERSION = '2026-09-18.2';
+export const ANSWER_VERSION = '2026-09-20.1';
 
 export const ANSWER_SOURCES = ['original', 'supplement', 'example', 'extended', 'unknown'] as const;
 
@@ -22,6 +22,8 @@ export const AnswerSchema = z.object({
   unanswered: z.array(z.string()),
   /** 用到的网络资料链接（F5/F3）：必须是程序注入的 webResults 里的 URL 原样复制。 */
   references: z.array(z.string()).optional(),
+  /** 顺着这一轮接着问的方向；没有就空着。 */
+  followUps: z.array(z.object({ question: z.string().min(1), kind: z.string().optional() })).optional(),
 });
 
 export type AnswerOutput = z.infer<typeof AnswerSchema>;
@@ -32,10 +34,11 @@ export const ANSWER_DEFAULT_POLICY = [
   '问题超出文章内容时，可以给出标注清楚的补充解释、假设例子或延伸知识，并在 source 与 unanswered 中如实体现。',
   '你没有联网能力：不要把模型记忆当作实时查证结果，涉及实时事实、最新数据或你无法确认的内容时，写进 unanswered 并说明首版无法确认。',
   '回答使用简体中文，语言平实，不要堆砌小标题，不要写与问题无关的背景介绍。',
+  'followUps：顺着这一轮再给 0 到 3 个值得接着问的具体问题。不要重复读者刚问过的，也不要退回去用开场那几张卡片。',
 ].join('\n');
 
 const ANSWER_CONTRACT = [
-  '只返回 JSON：{"answer":"...","source":"original|supplement|example|extended|unknown","citations":["块id"],"unanswered":["..."],"references":["..."]}（references 只在确实使用了网络资料时给出）',
+  '只返回 JSON：{"answer":"...","source":"original|supplement|example|extended|unknown","citations":["块id"],"unanswered":["..."],"references":["..."],"followUps":[{"question":"...","kind":"concept|reason|premise|example|counter|boundary"}]}（references 只在确实使用了网络资料时给出；followUps 可空）',
 ].join('\n');
 
 /** 网络资料纪律由代码拼接，不受用户覆盖影响（F3）。 */

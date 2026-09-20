@@ -16,7 +16,7 @@ type Send = (command: Command) => Promise<Reply | undefined>;
 export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
   const [searchOn, setSearchOn] = useState(false);
-  const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [hidingSuggests, setHidingSuggests] = useState(false);
   const tabId = state.tabId;
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.busy?.kind === 'answer';
@@ -33,11 +33,17 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
     seen.current = { turns: state.chat.length, busy };
   }, [state.chat.length, busy]);
 
+  useEffect(() => {
+    setHidingSuggests(false);
+  }, [state.chat.length]);
+
   const quote = state.quote;
   const ask = async (question: string) => {
     if (!tabId || !question.trim()) return;
+    setHidingSuggests(true);
     const reply = await send({ type: 'ask', tabId, question, search: searchEnabled && searchOn });
     if (reply?.ok) setDraft('');
+    else setHidingSuggests(false);
   };
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -48,23 +54,26 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
     if (!busy) void ask(draft);
   };
 
-  // 问过的话题就退休：ChatTurn 里没有 bubbleId（explore 在下游退化成了一次普通提问），
-  // 所以按问题原文匹配。这也正好是用户看到的"我问过了"。
-  const asked = new Set(state.chat.map((turn) => turn.question));
-  const openTopics =
-    guide?.bubbles.filter((bubble) => !asked.has(bubble.question) && !sentIds.has(bubble.id)) ?? [];
+  // 开场卡片只在还没开口时出现。点一张（或自己发出去）就全部收起，
+  // 下一排联想问题跟在最新回答后面，不倒回去点剩下的开场卡。
+  const showOpeners = state.chat.length === 0 && !busy && !hidingSuggests;
+  const openTopics = showOpeners ? (guide?.bubbles ?? []) : [];
+  const lastTurn = state.chat[state.chat.length - 1];
+  const followUps =
+    !busy && !hidingSuggests && lastTurn?.followUps?.length ? lastTurn.followUps : [];
 
   const sendTopic = async (bubbleId: string) => {
     if (!tabId) return;
-    setSentIds((current) => new Set(current).add(bubbleId));
+    setHidingSuggests(true);
     const reply = await send({ type: 'explore', tabId, bubbleId });
-    if (!reply?.ok) {
-      setSentIds((current) => {
-        const next = new Set(current);
-        next.delete(bubbleId);
-        return next;
-      });
-    }
+    if (!reply?.ok) setHidingSuggests(false);
+  };
+
+  const sendFollowUp = async (question: string) => {
+    if (!tabId) return;
+    setHidingSuggests(true);
+    const reply = await send({ type: 'ask', tabId, question, search: searchEnabled && searchOn });
+    if (!reply?.ok) setHidingSuggests(false);
   };
 
   return (
@@ -75,33 +84,29 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
             <h2 id="guide-heading">这篇文章讲了什么</h2>
             <p className="summary">{guide.summary}</p>
             {openTopics.length > 0 && (
-              <div className="chiprow">
-                <p className="chip-lead">想接着弄懂，点一张发出去：</p>
-                {openTopics.map((bubble) => (
-                  <button
-                    key={bubble.id}
-                    type="button"
-                    className="chip"
-                    disabled={busy}
-                    onClick={() => void sendTopic(bubble.id)}
-                  >
-                    <span className="chip-text">{bubble.question}</span>
-                    <span className="chip-go">发出去</span>
-                  </button>
-                ))}
-              </div>
+              <SuggestRow
+                lead="想接着弄懂，点一张发出去："
+                items={openTopics}
+                disabled={busy}
+                onPick={(item) => void sendTopic(item.id)}
+              />
             )}
           </div>
         </article>
       )}
 
       <div className="chat">
-        {guide && state.chat.length === 0 && !busy && openTopics.length === 0 && (
-          <p className="hint">话题都聊完了。下面接着问就行。</p>
-        )}
         {state.chat.map((turn) => (
           <Turn key={turn.id} turn={turn} tabId={tabId} send={send} />
         ))}
+        {followUps.length > 0 && (
+          <SuggestRow
+            lead="可以接着问："
+            items={followUps}
+            disabled={busy}
+            onPick={(item) => void sendFollowUp(item.question)}
+          />
+        )}
         {busy && (
           <Busy
             label="正在回答"
@@ -174,6 +179,36 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
         </form>
       </div>
     </>
+  );
+}
+
+function SuggestRow({
+  lead,
+  items,
+  disabled,
+  onPick,
+}: {
+  lead: string;
+  items: { id: string; question: string }[];
+  disabled: boolean;
+  onPick: (item: { id: string; question: string }) => void;
+}) {
+  return (
+    <div className="chiprow">
+      <p className="chip-lead">{lead}</p>
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className="chip"
+          disabled={disabled}
+          onClick={() => onPick(item)}
+        >
+          <span className="chip-text">{item.question}</span>
+          <span className="chip-go">发出去</span>
+        </button>
+      ))}
+    </div>
   );
 }
 

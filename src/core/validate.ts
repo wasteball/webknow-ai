@@ -37,22 +37,30 @@ export function cleanGuide(
   }
 
   const cap = Math.min(Math.max(0, Math.round(maxBubbles)), LIMITS.maxBubbles);
+  return { ok: true, value: { summary, bubbles: takeBubbles(result.data.bubbles, cap, 'bub') } };
+}
+
+function takeBubbles(
+  raw: { question: string; kind?: string }[],
+  cap: number,
+  prefix: string,
+): Bubble[] {
   const seen = new Set<string>();
   const bubbles: Bubble[] = [];
-  for (const [index, bubble] of result.data.bubbles.entries()) {
-    const question = bubble.question.trim();
+  for (const [index, item] of raw.entries()) {
+    const question = item.question.trim();
     if (!question || question.length > LIMITS.bubbleQuestionMaxChars * 4) continue;
+    if (!isSingleQuestion(question)) continue;
     const key = question.replace(/\s+/g, '').replace(/[？?。.!！]/g, '');
     if (seen.has(key)) continue;
     seen.add(key);
-    const kind = (BUBBLE_KINDS as readonly string[]).includes(bubble.kind)
-      ? (bubble.kind as BubbleKind)
+    const kind = (BUBBLE_KINDS as readonly string[]).includes(item.kind ?? '')
+      ? (item.kind as BubbleKind)
       : 'concept';
-    bubbles.push({ id: `bub_${index}`, question, kind });
+    bubbles.push({ id: `${prefix}_${index}`, question, kind });
     if (bubbles.length >= cap) break;
   }
-
-  return { ok: true, value: { summary, bubbles } };
+  return bubbles;
 }
 
 export function cleanAnswer(
@@ -65,6 +73,7 @@ export function cleanAnswer(
   citations: Citation[];
   unanswered: string[];
   references: string[];
+  followUps: Bubble[];
 }> {
   const result = AnswerSchema.safeParse(parsed);
   if (!result.success) return { ok: false, error: badOutput('回答') };
@@ -100,7 +109,9 @@ export function cleanAnswer(
     }
   }
 
-  return { ok: true, value: { answer, source, citations, unanswered, references } };
+  const followUps = takeBubbles(result.data.followUps ?? [], LIMITS.maxBubbles, 'next');
+
+  return { ok: true, value: { answer, source, citations, unanswered, references, followUps } };
 }
 
 export type LearnResult =

@@ -38,6 +38,10 @@ const CHAT = [
     citations: [{ blockId: 'blk_2' }],
     unanswered: ['具体是装载还是行驶环节省了时间，正文没有说。'],
     references: [],
+    followUps: [
+      { id: 'next_0', question: '三个团队的试点为什么不能代表其他城市？', kind: 'boundary' },
+      { id: 'next_1', question: '工具培训本身会不会就是时间缩短的原因？', kind: 'premise' },
+    ],
     at: 0,
   },
 ];
@@ -271,29 +275,23 @@ test('READY 视图在三种宽度下排版正确', async () => {
   }
 });
 
-test('问过的话题从 chip 行里退休，并作为你的话留在对话里', async () => {
+test('点开一张卡片后开场卡全部收起，联想问题只跟在最新回答后面', async () => {
   test.setTimeout(120_000);
   const { panel, tabId } = await openPanel(560);
-  await expect(panel.locator('.chip:visible')).toHaveCount(3);
-
-  // 把已有那一轮的问题改成某个话题的原文：等价于"这个话题已经问过了"。
-  // 话题与提问在数据上没有 id 关联（explore 在下游就是一次普通提问），
-  // 所以退休判定靠问题原文，这条用例守住的就是它。
-  await context.serviceWorkers()[0]!.evaluate(
-    async ([id, question]) => {
-      const stored = await chrome.storage.session.get(`sess:${id}`);
-      const session = stored[`sess:${id}`] as Record<string, unknown>;
-      (session.chat as { question: string }[])[0]!.question = question;
-      await chrome.storage.session.set({ [`sess:${id}`]: session });
-    },
-    [tabId, BUBBLES[0]!.question] as const,
-  );
-  await pushState(panel, tabId);
-
-  await expect(panel.locator('.chip:visible')).toHaveCount(2);
+  // 有对话时，开场那三张不再出现；最新回答后面才是联想。
   await expect(panel.getByRole('button', { name: BUBBLES[0]!.question })).toBeHidden();
-  // 退休不等于消失：它变成你说过的那句话，还在记录里。
-  await expect(panel.locator('.bubble.user').filter({ hasText: BUBBLES[0]!.question })).toBeVisible();
+  await expect(panel.locator('.chip:visible')).toHaveCount(2);
+  await expect(panel.getByText('可以接着问：')).toBeVisible();
+
+  await context.serviceWorkers()[0]!.evaluate(async (id) => {
+    const stored = await chrome.storage.session.get(`sess:${id}`);
+    const session = stored[`sess:${id}`] as Record<string, unknown>;
+    session.chat = [];
+    await chrome.storage.session.set({ [`sess:${id}`]: session });
+  }, tabId);
+  await pushState(panel, tabId);
+  await expect(panel.locator('.chip:visible')).toHaveCount(3);
+  await expect(panel.getByText('想接着弄懂，点一张发出去：')).toBeVisible();
   await panel.close();
 });
 

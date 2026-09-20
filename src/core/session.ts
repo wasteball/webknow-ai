@@ -32,6 +32,8 @@ export type ChatTurn = {
   references: string[];
   /** 这一问针对网页上划出的原文。 */
   quote?: Quote;
+  /** 答完后顺着这一轮接着问的方向；点一张就发出去，上一排全部收起。 */
+  followUps?: Bubble[];
   at: number;
 };
 

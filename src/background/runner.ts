@@ -253,6 +253,8 @@ async function runAsk(
         unanswered.push('联网搜索没有可用的结果，这次只依据文章本身回答。');
       }
       const citations = withQuoteCitation(clean.value.citations, session.blocks, quote);
+      const asked = new Set([...session.chat.map((turn) => turn.question), question]);
+      const followUps = clean.value.followUps.filter((item) => !asked.has(item.question));
       return writeBack(tabId, session, runId, (fresh) => ({
         ...fresh,
         chat: [
@@ -266,6 +268,7 @@ async function runAsk(
             unanswered,
             references: clean.value.references,
             quote: quote ?? undefined,
+            followUps,
             at: Date.now(),
           },
         ].slice(-LIMITS.maxChatTurns),
