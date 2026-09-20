@@ -1,6 +1,9 @@
 /**
  * 划词提问：用户划完一段，旁边出现「问这句」。
  * 只在开始伴读（watch）之后听选取，不扫描页面、不把划词自动外发。
+ *
+ * 点按钮必须在 mousedown 里发出：真实顺序是 mousedown → 窗口 mouseup → click。
+ * 窗口 mouseup 若按划词重建按钮，原来的节点已经不在，click 永远打不到。
  */
 
 const HOST_ID = 'wka-quote-ask';
@@ -13,6 +16,20 @@ function usable(text: string): boolean {
 function hide(): void {
   document.getElementById(HOST_ID)?.remove();
 }
+
+function fromOwnUi(event: Event): boolean {
+  return event.composedPath().some((node) => node instanceof Element && node.id === HOST_ID);
+}
+
+function ask(text: string): void {
+  skipMouseUp = true;
+  hide();
+  void browser.runtime.sendMessage({ type: 'quoteSelected', text }).catch(() => {
+    // 后台暂时不可达时忽略：用户再点一次即可。
+  });
+}
+
+let skipMouseUp = false;
 
 function show(range: Range, text: string): void {
   hide();
@@ -39,22 +56,25 @@ function show(range: Range, text: string): void {
     <button type="button">问这句</button>
   `;
   const button = root.querySelector('button');
-  button?.addEventListener('mousedown', (event) => event.preventDefault());
-  button?.addEventListener('click', () => {
-    hide();
-    void browser.runtime.sendMessage({ type: 'quoteSelected', text });
+  button?.addEventListener('mousedown', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    ask(text);
   });
   document.documentElement.append(host);
 }
 
-function onMouseUp(): void {
+function onMouseUp(event: MouseEvent): void {
+  if (skipMouseUp) {
+    skipMouseUp = false;
+    return;
+  }
+  if (fromOwnUi(event)) return;
   const selection = document.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     hide();
     return;
   }
-  const node = selection.anchorNode;
-  if (node && (node instanceof Element ? node : node.parentElement)?.closest(`#${HOST_ID}`)) return;
   const text = selection.toString();
   if (!usable(text)) {
     hide();
