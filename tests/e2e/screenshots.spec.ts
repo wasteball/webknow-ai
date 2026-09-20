@@ -61,7 +61,7 @@ test.afterAll(async () => {
 test('首次配置界面', async () => {
   panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await expect(panel.getByText(/还没有填 .+ 钥匙/)).toBeVisible();
+  await expect(panel.getByRole('button', { name: '去设置里填钥匙' })).toBeVisible();
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-01-setup.png'), fullPage: true });
   await panel.close();
 });

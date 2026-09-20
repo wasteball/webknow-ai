@@ -376,7 +376,7 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
     panel.getByRole('button', { name: '设置' }).click(),
   ]);
   await settings.setViewportSize({ width: 1100, height: 900 });
-  await expect(settings).toHaveURL(/options\.html(#\d+)?$/);
+  await expect(settings).toHaveURL(/options\.html/);
 
   // 左侧分类导航可切换，右侧内容随分类变化。
   await expect(settings.getByLabel('「问我」一轮最多问几个问题')).toBeVisible();

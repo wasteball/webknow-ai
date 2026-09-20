@@ -57,14 +57,24 @@ test('声明了 activeTab（否则扩展拿不到当前页地址，无法申请�
   expect(permissions).not.toContain('tabs');
 });
 
-test('未配置 Key 时侧栏进入配置状态', async () => {
+test('未配置 Key 时侧栏引导去设置，不在侧栏里填钥匙', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  // 断言输入框而不是小节标题：标题属于会变的文案，输入框是功能本身。
-  await expect(page.getByLabel(/把 .+ 的那串字符粘贴到这里/)).toBeVisible();
-  await expect(page.getByText(/还没有填 .+ 钥匙/)).toBeVisible();
-  // 第一次打开的样子是普通读者看到的第一屏，留一张截图供人工复核文案。
+  await expect(page.getByText('还没有填钥匙。去设置里配一下，顺带看看都能做什么。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '去设置里填钥匙' })).toBeVisible();
+  // 钥匙输入不在侧栏：那是设置页的事，好让用户先看见还有哪些能力。
+  await expect(page.getByLabel(/把 .+ 的那串字符粘贴到这里/)).toHaveCount(0);
+  const [settings] = await Promise.all([
+    context.waitForEvent('page'),
+    page.getByRole('button', { name: '去设置里填钥匙' }).click(),
+  ]);
+  await expect(settings).toHaveURL(/options\.html.*#model/);
+  await expect(settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '模型' })).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
   await page.screenshot({ path: 'test-results/panel-first-run.png', fullPage: true });
+  await settings.close();
   await page.close();
 });
 

@@ -132,7 +132,10 @@ export function Settings({
   notice: string | null;
   onDismissNotice: () => void;
 }) {
-  const [category, setCategory] = useState<CategoryId>('general');
+  const [category, setCategory] = useState<CategoryId>(() => {
+    const id = location.hash.replace(/^#/, '');
+    return CATEGORIES.some((item) => item.id === id) ? (id as CategoryId) : 'general';
+  });
 
   return (
     <div className="settings-page">

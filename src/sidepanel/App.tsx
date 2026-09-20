@@ -131,9 +131,11 @@ export function App() {
    */
   // ponytail: 连点两次会开两个设置标签页。要复用已有那个得用 runtime.getContexts 找出来再聚焦，
   // 现在不值得。真的烦了再加。
-  const openSettings = () => {
-    const url = browser.runtime.getURL('/options.html');
-    void browser.tabs.create({ url: state?.tabId != null ? `${url}#${state.tabId}` : url });
+  const openSettings = (category?: string) => {
+    const url = new URL(browser.runtime.getURL('/options.html'));
+    if (state?.tabId != null) url.searchParams.set('tab', String(state.tabId));
+    if (category) url.hash = category;
+    void browser.tabs.create({ url: url.toString() });
   };
 
   /** WAI-ARIA tabs 的键盘约定：左右移动选择并把焦点带过去，Home/End 到头尾。 */
@@ -158,7 +160,7 @@ export function App() {
   const phaseText = readyShell
     ? null
     : phase === 'UNCONFIGURED'
-      ? `还没有填 ${findProvider(state?.settings.provider).name} 钥匙。`
+      ? '还没有填钥匙。去设置里配一下，顺带看看都能做什么。'
       : PHASE_TEXT[phase];
 
   return (
@@ -177,7 +179,7 @@ export function App() {
         <button
           type="button"
           className="icon-btn"
-          onClick={openSettings}
+          onClick={() => openSettings()}
           aria-label="设置"
           title="设置"
         >
@@ -205,7 +207,7 @@ export function App() {
             </p>
           )}
 
-          {phase === 'UNCONFIGURED' && <Setup state={state} send={send} />}
+          {phase === 'UNCONFIGURED' && <Setup onOpenSettings={() => openSettings('model')} />}
 
           {(phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE') && (
             <Section title={phase === 'STALE' ? '页面换了' : '开始读这一页'}>

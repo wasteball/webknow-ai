@@ -19,7 +19,7 @@ function Options() {
   useEffect(() => {
     const client = createClient({ onState: setState, onProgress: () => {} });
     clientRef.current = client;
-    const parsed = Number.parseInt(location.hash.slice(1), 10);
+    const parsed = Number.parseInt(new URLSearchParams(location.search).get('tab') ?? location.hash.slice(1), 10);
     void client.send({ type: 'attach', tabId: Number.isFinite(parsed) ? parsed : null });
     return () => client.dispose();
   }, []);
