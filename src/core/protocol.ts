@@ -46,7 +46,7 @@ export type PanelState = {
   tabId: number | null;
   pageUrl: string | null;
   pageTitle: string;
-  /** 当前站点读取权限；unknown 表示无法读取地址（尚未授权）。 */
+  /** 是否已经能读当前页：点过工具栏打开产品就会 granted；unknown 表示还没拿到地址。 */
   permission: 'granted' | 'missing' | 'unknown';
   phase: Phase;
   sessionState: SessionState | null;

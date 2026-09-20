@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { browser } from 'wxt/browser';
 
-import { PAGE_READ_ORIGINS } from '../core/hosts';
 import { findProvider } from '../core/model-providers';
 import type { Command, PanelState, Reply } from '../core/protocol';
 import { activeTabId, createClient, type Client } from './api';
@@ -97,28 +96,11 @@ export function App() {
   }, []);
 
   /**
-   * 授权必须在用户手势里作为第一个异步调用发出，前面不能有 await（Chrome 侧栏约束）；
-   * 因此外发确认与开始伴读合并成一个按钮时，顺序必须是：授权 → 记录确认 → 开始。
-   *
-   * 合并的原因：分成两个按钮时，“开始伴读”处于禁用状态且不说明原因，
-   * 真实用户点了没反应，不知道要先点上面那个确认。
+   * 不向 Chrome 申请站点权限。读网页靠用户点工具栏图标时的 activeTab。
+   * 外发确认与开始伴读仍合成一个按钮：分成两个时，“开始伴读”曾经禁用且不说明原因。
    */
   const startReading = async (options?: { confirm?: boolean }) => {
     if (!state || state.tabId === null) return;
-    const origin = state.pageUrl ? safeOrigin(state.pageUrl) : null;
-    if (origin && state.permission !== 'granted') {
-      try {
-        const granted = await browser.permissions.request({ origins: PAGE_READ_ORIGINS });
-        if (!granted) {
-          setNotice('没有授予读取网页的权限，因此没有读取或外发任何正文。可以稍后再试。');
-          return;
-        }
-      } catch {
-        // 浏览器没有弹出授权窗口时（例如侧栏不在前台），给出下一步而不是静默失败。
-        setNotice('浏览器没有弹出授权窗口。请点击工具栏图标重新打开侧栏，再点一次开始伴读。');
-        return;
-      }
-    }
     if (options?.confirm) {
       const reply = await send({ type: 'confirmOutbound' });
       if (!reply?.ok) return;
@@ -212,21 +194,16 @@ export function App() {
 
           {(phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE') && (
             <Section title={phase === 'STALE' ? '页面换了' : '开始读这一页'}>
-              {phase === 'PERMISSION_REQUIRED' &&
-                (state.pageUrl ? (
-                  <p>
-                    要读这一页的文字才能给你摘要。接下来浏览器会问一次是否允许读取你打开的网页——同意之后换网站不用再授权。
-                    每一页仍要你点开始伴读，我才会读、才会外发。
-                  </p>
-                ) : (
-                  // 拿不到网址时给可执行的下一步：点工具栏图标会把当前页地址交给扩展。
-                  <p>
-                    还不知道你正在看哪个网站。请先点一下浏览器右上角的{' '}
-                    <strong>webknow-ai 图标</strong>，再回来点下面的按钮。
-                  </p>
-                ))}
+              {phase === 'PERMISSION_REQUIRED' && (
+                <p>
+                  请点一下浏览器右上角的 <strong>知伴图标</strong>
+                  。我们不是常驻的：只有你打开产品时才读当前这一页。
+                </p>
+              )}
               {phase === 'STALE' && (
-                <p>你已经换了页面（或者这一页的内容变了）。上一页的结果作废了，不会拿来充数。</p>
+                <p>
+                  你已经换了页面（或者这一页的内容变了）。上一页的结果作废了。再点一下工具栏上的知伴图标，就会读现在这一页。
+                </p>
               )}
               {!state.outboundConfirmed ? (
                 <OutboundNotice
@@ -390,7 +367,7 @@ function safeOrigin(url: string): string | null {
 }
 
 const PHASE_TEXT: Record<string, string> = {
-  PERMISSION_REQUIRED: '等你允许读取网页。只问这一次，之后换网站不用再授权。',
+  PERMISSION_REQUIRED: '点一下工具栏上的知伴图标，就会读你正在看的这一页。',
   READY_TO_START: '准备好了。你点开始，我才读这一页。',
   ANALYZING: '正在读这一页，马上给你摘要。',
   STALE: '页面换了，之前的内容已经作废。',

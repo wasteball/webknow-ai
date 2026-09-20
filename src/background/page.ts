@@ -2,7 +2,6 @@ import { browser } from 'wxt/browser';
 
 import type { BlocksPayload, DomAnchor, JumpOutcome } from '../core/blocks';
 import { appError, fromThrown, isAppError, type AppError } from '../core/errors';
-import { PAGE_READ_ORIGINS } from '../core/hosts';
 import type { ContentReply, ContentRequest } from '../core/protocol';
 import type { PageSession } from '../core/session';
 
@@ -20,8 +19,8 @@ export async function ensureInjected(tabId: number): Promise<void> {
     throw isAppError(error)
       ? error
       : appError(
-          'PAGE_UNSUPPORTED',
-          '这一页读不了：可能是浏览器内部页面、扩展商店页面或文件页。请换一篇公开的文章页面。',
+          'PERMISSION_MISSING',
+          '读不了这一页。请点一下工具栏上的知伴图标——我们只在你打开产品时读当前这一页，不会一直盯着网页。',
           false,
         );
   }
@@ -39,7 +38,7 @@ async function send(tabId: number, request: ContentRequest): Promise<ContentRepl
       ok: false,
       error: appError(
         'STALE_PAGE',
-        '这一页已经变了或者关掉了。重新点一次开始伴读。',
+        '这一页已经变了或者关掉了。再点一下工具栏上的知伴图标。',
         true,
       ),
     };
@@ -54,31 +53,10 @@ function unwrap<T>(reply: ContentReply): T {
 /**
  * 提取正文；这一步之后才第一次产生可以外发的正文（FR-006）。
  *
- * 先自查站点权限，再注入：权限缺失和“这类页面读不了”是两种完全不同的处境，
- * 分别给不同的下一步，而不是统一报“读不到”。（真实故障：漏了 activeTab，
- * 扩展拿不到网址，于是既没申请权限也没告诉用户该点哪里。）
+ * 不向 Chrome 申请站点权限。读取靠用户点工具栏图标时的 activeTab：
+ * 打开产品 = 读当前这一页，换页后再点一次图标。不是常驻监听。
  */
-export async function canReadPage(origin: string | null): Promise<boolean> {
-  if (!origin) return false;
-  try {
-    if (await browser.permissions.contains({ origins: PAGE_READ_ORIGINS })) return true;
-    return await browser.permissions.contains({ origins: [`${origin}/*`] });
-  } catch {
-    return false;
-  }
-}
-
-export async function extractPage(tabId: number, expectedOrigin: string | null): Promise<BlocksPayload> {
-  if (expectedOrigin) {
-    const granted = await canReadPage(expectedOrigin);
-    if (!granted) {
-      throw appError(
-        'PERMISSION_MISSING',
-        `还没有允许我们读网页。请点一下开始伴读，浏览器会问一次授权。`,
-        false,
-      );
-    }
-  }
+export async function extractPage(tabId: number): Promise<BlocksPayload> {
   await ensureInjected(tabId);
   const payload = unwrap<BlocksPayload>(await send(tabId, { type: 'extract' }));
   if (!payload?.blocks?.length) {

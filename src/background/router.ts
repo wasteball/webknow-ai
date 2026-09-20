@@ -12,7 +12,7 @@ import { prepareQuote } from '../core/quote';
 import { createSession, emptySession, markStale } from '../core/session';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
 import { listModels, testConnection } from './model';
-import { canReadPage, extractPage, jumpToOriginal, watchPage } from './page';
+import { extractPage, jumpToOriginal, watchPage } from './page';
 import { abortRun, handleIntent, type RunnerHooks } from './runner';
 import {
   OUTBOUND_NOTICE_VERSION,
@@ -61,14 +61,9 @@ export function originOf(url: string): string | null {
   }
 }
 
-async function permissionFor(url: string | null): Promise<'granted' | 'missing' | 'unknown'> {
-  const origin = url ? originOf(url) : null;
-  if (!origin) return 'unknown';
-  try {
-    return (await canReadPage(origin)) ? 'granted' : 'missing';
-  } catch {
-    return 'unknown';
-  }
+/** 拿得到地址，就说明用户打开过产品（工具栏点击留下了记录）或标签页本身可读。 */
+function permissionFor(url: string | null): 'granted' | 'missing' | 'unknown' {
+  return url ? 'granted' : 'missing';
 }
 
 export async function buildPanelState(tabId: number | null): Promise<PanelState> {
@@ -120,7 +115,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
   const session = await getSession(tabId);
   const pending = await getPending(tabId);
   const url = await urlForTab(tabId, session?.url ?? null, pending?.url ?? null);
-  const permission = url ? await permissionFor(url) : 'missing';
+  const permission = permissionFor(url);
   // 可可靠识别的“不支持页面”才给 UNSUPPORTED，其余失败仍走 ERROR（FR-003/FR-035）。
   const unsupportedReason =
     session?.error && ['PAGE_UNSUPPORTED', 'EXTRACT_FAILED'].includes(session.error.code)
@@ -180,8 +175,8 @@ function searchStatus(config: { search?: { providerId?: string; credentials?: Re
 }
 
 /**
- * 页面地址的三个来源：本标签页的会话 → 工具栏点击留下的记录 → 已授权站点的标签页查询。
- * 第三条是白送的：站点权限已授予时，`tabs.get` 直接就能给出地址，用户不必再点工具栏图标。
+ * 页面地址的三个来源：本标签页的会话 → 工具栏点击留下的记录 → 当前标签页查询。
+ * 点工具栏打开产品时 activeTab 会把地址交给扩展；不申请常驻站点权限。
  */
 async function urlForTab(tabId: number, sessionUrl: string | null, pendingUrl: string | null): Promise<string | null> {
   if (sessionUrl) return sessionUrl;
@@ -550,15 +545,14 @@ async function startSession(tabId: number): Promise<Reply> {
     const pending = await getPending(tabId);
     const knownUrl = await urlForTab(tabId, existing?.url ?? null, pending?.url ?? null);
     const expectedOrigin = knownUrl ? originOf(knownUrl) : null;
-    // 连地址都不知道就没法申请权限，也不该去尝试读取再报一个误导人的“这类页面读不了”。
     if (!expectedOrigin) {
       throw appError(
         'PERMISSION_MISSING',
-        '还不知道你正在看哪个网站。请先点一下浏览器右上角的 webknow-ai 图标，再点下面的按钮。',
+        '还不知道你正在看哪个网站。请点一下工具栏上的知伴图标——打开产品时才会读这一页。',
         false,
       );
     }
-    const payload = await extractPage(tabId, expectedOrigin);
+    const payload = await extractPage(tabId);
     const session = createSession(tabId, payload);
     await putSession(session);
     await watchPage(tabId);
@@ -604,7 +598,10 @@ export async function onTabRemoved(tabId: number): Promise<void> {
   await clearPending(tabId);
 }
 
-/** 工具栏点击：先同步打开侧栏（必须无 await），再用 activeTab 记录当前页地址。 */
+/**
+ * 工具栏点击 = 打开产品。先同步打开侧栏（必须无 await），
+ * 再用这次点击自带的 activeTab 记下当前页；钥匙和外发都齐了就直接读这一页。
+ */
 export async function onActionClicked(tab: { id?: number; url?: string }): Promise<void> {
   const tabId = tab.id;
   if (tabId === undefined) return;
@@ -613,5 +610,15 @@ export async function onActionClicked(tab: { id?: number; url?: string }): Promi
   const url = tab.url;
   const origin = url ? originOf(url) : null;
   if (url && origin) await setPending(tabId, { url, origin, at: Date.now() });
+
+  const config = await readConfig();
+  const provider = findProvider(config.provider);
+  const hasKey = Boolean(config.apiKeys?.[provider.id]?.trim());
+  const outboundConfirmed =
+    config.outbound?.version === OUTBOUND_NOTICE_VERSION && config.outbound?.receiver === provider.receiver;
+  if (hasKey && outboundConfirmed && origin) {
+    await startSession(tabId);
+    return;
+  }
   await pushState(tabId);
 }

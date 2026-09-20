@@ -106,7 +106,7 @@ test.describe('主路径', () => {
 
     // 关键合同：点击前不提取、不外发（FR-005）。此时要么等授权，要么等明确启动，
     // 但无论如何都不能已经出现摘要或读取范围。
-    await expect(panel.getByText(/准备好了。你点开始|等你在浏览器里允许读取这个网站/)).toBeVisible();
+    await expect(panel.getByText(/准备好了。你点开始|点一下工具栏上的知伴图标/)).toBeVisible();
     await expect(panel.getByText('这篇文章讲了什么')).toBeHidden();
     await expect(panel.getByText(/读取范围：/)).toBeHidden();
 
