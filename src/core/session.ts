@@ -1,4 +1,5 @@
 import type { BlocksPayload, Completeness, EvidenceBlock } from './blocks';
+import type { Quote } from './quote';
 import { appError, type AppError } from './errors';
 import { LIMITS } from './limits';
 
@@ -29,6 +30,8 @@ export type ChatTurn = {
   unanswered: string[];
   /** 用到的网络资料链接（F3）：已由程序校验只能来自注入的搜索结果。 */
   references: string[];
+  /** 这一问针对网页上划出的原文。 */
+  quote?: Quote;
   at: number;
 };
 
@@ -106,6 +109,8 @@ export type PageSession = {
   guide: { summary: string; bubbles: Bubble[] } | null;
   chat: ChatTurn[];
   learning: LearningState | null;
+  /** 划词后还没发出去的原文，写在提问框上面。 */
+  quote?: Quote | null;
   /** 在途请求；写回必须与之匹配，否则丢弃迟到结果（FR-024）。 */
   run: Run | null;
   error: AppError | null;
@@ -133,6 +138,7 @@ export function createSession(tabId: number, page: BlocksPayload): PageSession {
     guide: null,
     chat: [],
     learning: null,
+    quote: null,
     run: null,
     error: null,
     updatedAt: Date.now(),
@@ -162,6 +168,7 @@ export function emptySession(tabId: number, url: string): PageSession {
     guide: null,
     chat: [],
     learning: null,
+    quote: null,
     run: null,
     error: null,
     updatedAt: Date.now(),
@@ -181,6 +188,7 @@ export function markStale(session: PageSession, url?: string): PageSession {
     guide: null,
     chat: [],
     learning: null,
+    quote: null,
     run: null,
     error: null,
     updatedAt: Date.now(),

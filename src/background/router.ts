@@ -8,6 +8,7 @@ import { MODEL_PROVIDERS, findProvider } from '../core/model-providers';
 import { effectiveSettings } from '../core/settings';
 import { validateCustomSkill } from '../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS, searchWithProvider } from '../core/search/registry';
+import { prepareQuote } from '../core/quote';
 import { createSession, emptySession, markStale } from '../core/session';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
 import { listModels, testConnection } from './model';
@@ -109,6 +110,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       guide: null,
       chat: [],
       learning: null,
+      quote: null,
       busy: null,
       error: null,
       budget: { used: 0, total: settings.learningBudget },
@@ -145,6 +147,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     guide: session?.guide ?? null,
     chat: session?.chat ?? [],
     learning: session?.learning ?? null,
+    quote: session?.quote ?? null,
     busy: session?.run
       ? { kind: session.run.kind, chars: 0 }
       : null,
@@ -201,6 +204,37 @@ export async function resetAfterUpdate(): Promise<void> {
 async function pushAllStates(): Promise<void> {
   const tabIds = new Set([...ports].map((port) => port.tabId));
   for (const tabId of tabIds) await pushState(tabId);
+}
+
+async function saveQuote(tabId: number, text: string): Promise<AppError | null> {
+  const session = await getSession(tabId);
+  if (!session || (session.state !== 'READY' && session.state !== 'LEARNING')) {
+    return appError('STALE_PAGE', '先点开始伴读，再划词提问。', false);
+  }
+  const quote = prepareQuote(text, session.blocks);
+  if (!quote) {
+    return appError('INTERNAL', '划的这段太短了，再多选几个字。', false);
+  }
+  await putSession({ ...session, quote, updatedAt: Date.now() });
+  await pushState(tabId);
+  return null;
+}
+
+/** 内容脚本在用户点「问这句」时上报。先开侧栏（赶在手势消失前），再写入划词。 */
+export async function onQuoteSelected(tabId: number, text: string): Promise<void> {
+  try {
+    await browser.sidePanel.open({ tabId });
+  } catch {
+    // 侧栏已经开着，或这一次没赶上用户手势：划词仍会写进状态，打开侧栏就能接着问。
+  }
+  const error = await saveQuote(tabId, text);
+  if (error) {
+    const session = await getSession(tabId);
+    if (session) {
+      await putSession({ ...session, error, updatedAt: Date.now() });
+      await pushState(tabId);
+    }
+  }
 }
 
 const hooks: RunnerHooks = {
@@ -287,6 +321,18 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
             hooks,
           ),
         );
+
+      case 'setQuote':
+        return finish(await saveQuote(command.tabId, command.text));
+
+      case 'clearQuote': {
+        const session = await getSession(command.tabId);
+        if (session) {
+          await putSession({ ...session, quote: null, updatedAt: Date.now() });
+          await pushState(command.tabId);
+        }
+        return { ok: true };
+      }
 
       case 'explore': {
         const session = await getSession(command.tabId);

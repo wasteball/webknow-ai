@@ -4,6 +4,7 @@ import type { SummaryLength } from './limits';
 import type { ProviderId } from './model-providers';
 import type { FontSize, PromptOverrides } from './settings';
 import type { Skill, SkillChoice } from './skills';
+import type { Quote } from './quote';
 import type { Bubble, ChatTurn, LearningState, RequestKind, SessionState } from './session';
 
 /** 侧栏可见的页面状态（PRD 4.2）。由配置、权限与会话状态共同推导。 */
@@ -56,6 +57,8 @@ export type PanelState = {
   guide: { summary: string; bubbles: Bubble[] } | null;
   chat: ChatTurn[];
   learning: LearningState | null;
+  /** 划在网页上、正准备提问的原文。 */
+  quote: Quote | null;
   busy: { kind: RequestKind; chars: number } | null;
   error: AppError | null;
   budget: { used: number; total: number };
@@ -68,6 +71,8 @@ export type Command =
   | { type: 'start'; tabId: number }
   | { type: 'stop'; tabId: number }
   | { type: 'ask'; tabId: number; question: string; search?: boolean }
+  | { type: 'setQuote'; tabId: number; text: string }
+  | { type: 'clearQuote'; tabId: number }
   | { type: 'explore'; tabId: number; bubbleId: string }
   | { type: 'learnStart'; tabId: number; goal: string }
   | { type: 'learnAnswer'; tabId: number; text: string; choices?: { questionId: string; choiceIds: string[] }[] }

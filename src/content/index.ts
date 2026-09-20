@@ -1,6 +1,7 @@
 import { appError, fromThrown } from '../core/errors';
 import type { ContentReply, ContentRequest } from '../core/protocol';
 import { currentIdentity, extractDocument, jumpToAnchor } from './extract';
+import { startQuoteAsk } from './select';
 
 /**
  * 内容脚本：只在被显式调用时读取当前页，自身不扫描、不上报、不预生成（FR-005）。
@@ -45,6 +46,7 @@ function startWatching(): void {
 export function handleContentRequest(request: ContentRequest): ContentReply {
   switch (request.type) {
     case 'extract':
+      startQuoteAsk();
       return safe(extractDocument);
     case 'fingerprint':
       return safe(currentIdentity);
@@ -52,6 +54,7 @@ export function handleContentRequest(request: ContentRequest): ContentReply {
       return safe(() => jumpToAnchor(request.anchor));
     case 'watch':
       startWatching();
+      startQuoteAsk();
       return { ok: true, data: null };
     default:
       return { ok: false, error: appError('INTERNAL', '内容脚本收到未知请求。') };

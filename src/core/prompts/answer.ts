@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { Quote } from '../quote';
 import type { SearchResult } from '../search/types';
 import { HARNESS_RULES, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
 
@@ -47,14 +48,21 @@ const WEB_RESULTS_DISCIPLINE = [
   '- 网络资料之间或与正文冲突时，如实指出冲突，不要擅自裁决。',
 ].join('\n');
 
+const QUOTE_DISCIPLINE = [
+  '读者在网页上划出了一段原文（payload 的 quote 字段）。请针对这段来回答问题，不要装作没看见。',
+  '回答时先点明这段在说什么，再答问题。citations 必须包含 quote.blockId（如果有）。',
+  '不得把划词以外的正文假装成这段原话。',
+].join('\n');
+
 /** 覆盖只作用于策略段；传空或不传则使用内置默认值。 */
-export function answerSystem(override?: string, withWebResults = false): string {
+export function answerSystem(override?: string, withWebResults = false, withQuote = false): string {
   const policy = override?.trim() ? override.trim() : ANSWER_DEFAULT_POLICY;
   return [
     HARNESS_RULES,
     SOURCE_DISCIPLINE,
     policy,
     ...(withWebResults ? [WEB_RESULTS_DISCIPLINE] : []),
+    ...(withQuote ? [QUOTE_DISCIPLINE] : []),
     ANSWER_CONTRACT,
   ].join('\n\n');
 }
@@ -69,6 +77,8 @@ export function answerMessages(input: {
   override?: string;
   /** 联网搜索结果（F3）；传入时叠加固定的网络资料纪律。 */
   webResults?: SearchResult[];
+  /** 读者划出的原文。 */
+  quote?: Quote | null;
 }) {
   const marker = randomBoundary();
   const payload = JSON.stringify({
@@ -78,11 +88,12 @@ export function answerMessages(input: {
     history: input.history,
     question: input.question,
     ...(input.webResults ? { webResults: input.webResults } : {}),
+    ...(input.quote ? { quote: input.quote } : {}),
   });
   return [
     {
       role: 'system' as const,
-      content: answerSystem(input.override, Boolean(input.webResults?.length)),
+      content: answerSystem(input.override, Boolean(input.webResults?.length), Boolean(input.quote)),
     },
     { role: 'user' as const, content: wrapUntrusted(marker, 'SOURCE', payload) },
   ];

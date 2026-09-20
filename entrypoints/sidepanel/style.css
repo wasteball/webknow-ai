@@ -910,6 +910,59 @@ details.section summary {
 
 /* ── 输入区：吸在底部，滚到哪都能接着问 ────────────────────── */
 
+.quote-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--seal);
+  border-radius: var(--radius-sm);
+}
+
+.quote-chip-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--seal);
+}
+
+.quote-chip blockquote {
+  margin: 0;
+}
+
+.quote-text {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.55;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.quote-text:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.quote-in-bubble {
+  margin: 0 0 8px;
+  padding: 0 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  opacity: 0.82;
+  border-bottom: 1px solid rgba(247, 244, 239, 0.25);
+}
+
 .dock {
   position: sticky;
   bottom: 0;

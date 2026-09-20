@@ -236,6 +236,28 @@ async function pushState(panel: Page, tabId: number | null): Promise<void> {
   }, tabId);
 }
 
+test('划词会出现在提问框上面，针对这段再问', async () => {
+  test.setTimeout(120_000);
+  const { panel, tabId } = await openPanel(560);
+  await context.serviceWorkers()[0]!.evaluate(
+    async ([id]) => {
+      const stored = await chrome.storage.session.get(`sess:${id}`);
+      const session = stored[`sess:${id}`] as Record<string, unknown>;
+      session.quote = {
+        text: '新方案把平均处理时间从一百分钟降到八十分钟。',
+        blockId: 'blk_2',
+      };
+      await chrome.storage.session.set({ [`sess:${id}`]: session });
+    },
+    [tabId] as const,
+  );
+  await pushState(panel, tabId);
+  await expect(panel.getByText('针对这段原文')).toBeVisible();
+  await expect(panel.getByRole('button', { name: /新方案把平均处理时间/ })).toBeVisible();
+  await expect(panel.getByPlaceholder(/针对这段/)).toBeVisible();
+  await panel.close();
+});
+
 test('READY 视图在三种宽度下排版正确', async () => {
   test.setTimeout(120_000);
   for (const width of WIDTHS) {

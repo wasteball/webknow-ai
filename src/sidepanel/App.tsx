@@ -81,6 +81,13 @@ export function App() {
     booted.current = true;
   }, [learningActive]);
 
+  const quoteText = state?.quote?.text;
+  useEffect(() => {
+    if (!quoteText) return;
+    setView('qa');
+    window.setTimeout(() => document.getElementById('question')?.focus(), 0);
+  }, [quoteText]);
+
   const send = useCallback(async (command: Command): Promise<Reply | undefined> => {
     const reply = await clientRef.current?.send(command);
     if (reply && !reply.ok) setNotice(reply.error.message);

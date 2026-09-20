@@ -13,6 +13,7 @@ import {
 import { learnMessages, type LearnMode } from '../core/prompts/learn';
 import { searchWithProvider } from '../core/search/registry';
 import type { SearchResult } from '../core/search/types';
+import type { Quote } from '../core/quote';
 import { effectiveSettings } from '../core/settings';
 import { resolvePolicy } from '../core/skills';
 import {
@@ -227,6 +228,7 @@ async function runAsk(
         else searchFailed = true;
       }
 
+      const quote = session.quote ?? null;
       const parsed = await callModel(
         answerMessages({
           title: session.title,
@@ -239,6 +241,7 @@ async function runAsk(
           question,
           override: resolvePolicy('answer', config),
           webResults: webResults.length ? webResults : undefined,
+          quote,
         }),
         signal,
         progress(hooks, tabId),
@@ -249,6 +252,7 @@ async function runAsk(
       if (searchFailed || (webResults.length === 0 && searchRequested)) {
         unanswered.push('联网搜索没有可用的结果，这次只依据文章本身回答。');
       }
+      const citations = withQuoteCitation(clean.value.citations, session.blocks, quote);
       return writeBack(tabId, session, runId, (fresh) => ({
         ...fresh,
         chat: [
@@ -258,12 +262,14 @@ async function runAsk(
             question,
             answer: clean.value.answer,
             source: clean.value.source,
-            citations: clean.value.citations,
+            citations,
             unanswered,
             references: clean.value.references,
+            quote: quote ?? undefined,
             at: Date.now(),
           },
         ].slice(-LIMITS.maxChatTurns),
+        quote: null,
         state: 'READY',
         error: null,
         updatedAt: Date.now(),
@@ -271,6 +277,17 @@ async function runAsk(
     },
     hooks,
   );
+}
+
+function withQuoteCitation(
+  citations: { blockId: string }[],
+  blocks: { id: string }[],
+  quote: Quote | null,
+): { blockId: string }[] {
+  if (!quote?.blockId) return citations;
+  if (!blocks.some((block) => block.id === quote.blockId)) return citations;
+  if (citations.some((item) => item.blockId === quote.blockId)) return citations;
+  return [{ blockId: quote.blockId }, ...citations];
 }
 
 /** 执行一次联网搜索；只外发搜索词，不发送正文（F3）。 */

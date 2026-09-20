@@ -3,6 +3,7 @@ import { browser } from 'wxt/browser';
 import {
   onActionClicked,
   onPageChanged,
+  onQuoteSelected,
   onTabNavigating,
   onTabRemoved,
   registerPanelPort,
@@ -17,10 +18,13 @@ export default defineBackground(() => {
   });
 
   browser.runtime.onMessage.addListener((message, sender) => {
-    const data = message as { type?: string; url?: string } | undefined;
+    const data = message as { type?: string; url?: string; text?: string } | undefined;
     const tabId = sender.tab?.id;
     if (data?.type === 'pageChanged' && tabId !== undefined) {
       void onPageChanged(tabId, data.url ?? '');
+    }
+    if (data?.type === 'quoteSelected' && tabId !== undefined && typeof data.text === 'string') {
+      void onQuoteSelected(tabId, data.text);
     }
     return false;
   });

@@ -33,6 +33,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
     seen.current = { turns: state.chat.length, busy };
   }, [state.chat.length, busy]);
 
+  const quote = state.quote;
   const ask = async (question: string) => {
     if (!tabId || !question.trim()) return;
     const reply = await send({ type: 'ask', tabId, question, search: searchEnabled && searchOn });
@@ -112,6 +113,28 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
       </div>
 
       <div className="dock">
+        {quote && (
+          <div className="quote-chip">
+            <p className="quote-chip-label">针对这段原文</p>
+            <blockquote>
+              <button
+                type="button"
+                className="quote-text"
+                disabled={!quote.blockId || !tabId}
+                onClick={() => quote.blockId && tabId && void send({ type: 'jump', tabId, blockId: quote.blockId })}
+              >
+                {quote.text}
+              </button>
+            </blockquote>
+            <button
+              type="button"
+              className="quiet"
+              onClick={() => tabId && void send({ type: 'clearQuote', tabId })}
+            >
+              不用这段
+            </button>
+          </div>
+        )}
         <form
           className="composer"
           onSubmit={(event) => {
@@ -127,7 +150,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
             value={draft}
             rows={2}
             maxLength={500}
-            placeholder="把问题写在这里。Enter 发送"
+            placeholder={quote ? '针对这段，你想问什么？Enter 发送' : '把问题写在这里。Enter 发送'}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onComposerKeyDown}
           />
@@ -159,7 +182,10 @@ function Turn({ turn, tabId, send }: { turn: ChatTurn; tabId: number | null; sen
   return (
     <>
       <article className="msg user">
-        <div className="bubble user">{turn.question}</div>
+        <div className="bubble user">
+          {turn.quote && <p className="quote-in-bubble">{turn.quote.text}</p>}
+          {turn.question}
+        </div>
       </article>
       <article className="msg ai">
         <div className="bubble ai">
