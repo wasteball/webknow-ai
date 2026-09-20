@@ -384,11 +384,10 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
   // 这台浏览器里已经有钥匙（beforeAll 放的），所以模型这一步直接可选。
   await nav.getByRole('button', { name: '模型' }).click();
   await expect(nav.getByRole('button', { name: '模型' })).toHaveAttribute('aria-current', 'true');
-  await expect(settings.getByRole('heading', { name: '模型供应商' })).toBeVisible();
-  // 两家各一张卡片，同时摆出来、各自独立配置。
-  await expect(settings.locator('.provider-card')).toHaveCount(2);
-  await expect(settings.locator('.provider-card').first()).toContainText('DeepSeek');
-  await expect(settings.locator('.provider-card').nth(1)).toContainText('智谱');
+  await expect(settings.getByRole('heading', { name: '模型' })).toBeVisible();
+  await expect(settings.getByRole('radiogroup', { name: '用哪家' }).getByRole('radio', { name: 'DeepSeek' })).toBeVisible();
+  await expect(settings.getByRole('radiogroup', { name: '用哪家' }).getByRole('radio', { name: '智谱' })).toBeVisible();
+  await expect(settings.getByLabel('DeepSeek 的钥匙已保存')).toBeVisible();
   await expect(settings.getByLabel('用哪个模型')).toBeVisible();
   // 提示词：选“自己写”必须立刻出现输入框——没保存过自写内容时也不能点了没反应。
   await nav.getByRole('button', { name: '提示词' }).click();
@@ -567,7 +566,7 @@ test('设置：窄窗口下分类导航变成横向可滚动条，正文不横�
   await settings.close();
 });
 
-test('模型：每张卡片独立，接上之前不给模型选择器', async () => {
+test('模型：钥匙保存后掩码显示；没钥匙不给模型选择器', async () => {
   test.setTimeout(120_000);
   const settings = await context.newPage();
   await settings.setViewportSize({ width: 1100, height: 900 });
@@ -577,25 +576,23 @@ test('模型：每张卡片独立，接上之前不给模型选择器', async ()
   await settings.goto(`chrome-extension://${extensionId}/options.html`);
   await openModelCategory();
 
-  const deepseek = settings.locator('.provider-card').filter({ hasText: 'DeepSeek' });
-  const zhipu = settings.locator('.provider-card').filter({ hasText: '智谱' });
+  // beforeAll 已经放了 DeepSeek 钥匙：只显示掩码，可以选模型，不再露出原文。
+  await expect(settings.getByLabel('DeepSeek 的钥匙已保存')).toBeVisible();
+  await expect(settings.getByRole('textbox', { name: 'DeepSeek 的钥匙' })).toHaveCount(0);
+  await expect(settings.getByLabel('用哪个模型')).toBeVisible();
 
-  // beforeAll 已经放了钥匙：DeepSeek 这张是“使用中”，可以直接选模型。
-  await expect(deepseek.locator('.status-pill')).toHaveText('使用中');
-  await expect(deepseek.getByLabel('用哪个模型')).toBeVisible();
-  // 智谱还没配：同一屏里它给的是填钥匙这一步，而不是一个拉不到列表的选择器。
-  await expect(zhipu.locator('.status-pill')).toHaveText('未配置');
-  await expect(zhipu.getByLabel(/智谱 的钥匙/)).toBeVisible();
-  await expect(zhipu.getByRole('button', { name: '保存并启用' })).toBeVisible();
-  await expect(zhipu.getByLabel('用哪个模型')).toBeHidden();
+  // 切到还没配的智谱：出现填钥匙，模型选择器消失。
+  await settings.getByRole('radiogroup', { name: '用哪家' }).getByRole('radio', { name: '智谱' }).click();
+  await expect(settings.getByRole('textbox', { name: '智谱 的钥匙' })).toBeVisible();
+  await expect(settings.getByRole('button', { name: '保存' })).toBeVisible();
+  await expect(settings.getByLabel('用哪个模型')).toHaveCount(0);
 
-  // 清掉钥匙：DeepSeek 这张退回填钥匙这一步，模型选择器随之消失。
+  // 清掉钥匙：回到 DeepSeek 也是填钥匙这一步。
   await context.serviceWorkers()[0]!.evaluate(() => chrome.storage.local.clear());
   await settings.reload();
   await openModelCategory();
-  await expect(deepseek.locator('.status-pill')).toHaveText('使用中·未连接');
-  await expect(deepseek.getByLabel(/DeepSeek 的钥匙/)).toBeVisible();
-  await expect(deepseek.getByLabel('用哪个模型')).toBeHidden();
+  await expect(settings.getByRole('textbox', { name: 'DeepSeek 的钥匙' })).toBeVisible();
+  await expect(settings.getByLabel('用哪个模型')).toHaveCount(0);
   await settings.screenshot({ path: join(OUTPUT_DIR, 'settings-page-connect.png'), fullPage: true });
 
   await settings.close();

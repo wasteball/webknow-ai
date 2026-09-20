@@ -5,7 +5,7 @@ import { ANSWER_DEFAULT_POLICY } from '../../core/prompts/answer';
 import { GUIDE_DEFAULT_POLICY, summaryCharsFor } from '../../core/prompts/guide';
 import { LEARN_DEFAULT_POLICY } from '../../core/prompts/learn';
 import type { Command, PanelState, Reply } from '../../core/protocol';
-import { MODEL_PROVIDERS, type ModelProvider } from '../../core/model-providers';
+import { MODEL_PROVIDERS } from '../../core/model-providers';
 import type { PromptTarget } from '../../core/settings';
 import { BUILTIN_SKILLS } from '../../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS } from '../../core/search/registry';
@@ -49,14 +49,16 @@ function SetList({ children }: { children: ReactNode }) {
 function SetRow({
   title,
   hint,
+  stack,
   children,
 }: {
   title: string;
   hint?: string;
+  stack?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="set-row">
+    <div className={stack ? 'set-row set-row-stack' : 'set-row'}>
       <div className="set-row-copy">
         <p className="set-row-title">{title}</p>
         {hint ? <p className="set-row-hint">{hint}</p> : null}
@@ -185,15 +187,22 @@ export function Settings({
 }
 
 /**
- * 模型供应商（2026-09-19 加入第二家；布局照原型 companion-ai-prototype.html）。
- *
- * 两张卡片同时摆出来，各自独立配置——不是"先选一家再配它"。
- * 每张卡自己带状态、当前模型和配置区，谁在用一眼看得出。
- * 每家的钥匙与模型分开存：来回换不会互相覆盖，也不会把 A 家的钥匙发给 B 家。
+ * 模型：先填钥匙（保存后只显示掩码），再选用哪家。
+ * 两家的钥匙分开存，换一家不会把 A 的钥匙发给 B；文字发给当前选中的那家。
  */
 function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
   const { settings } = state;
+  const provider = MODEL_PROVIDERS.find((item) => item.id === settings.provider) ?? MODEL_PROVIDERS[0]!;
+  const connected = settings.providerKeys[provider.id] === true;
   const [busy, setBusy] = useState<string | null>(null);
+  const [key, setKey] = useState('');
+  const [replacing, setReplacing] = useState(false);
+  const [models, setModels] = useState<string[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [customMode, setCustomMode] = useState(false);
+  const [customModel, setCustomModel] = useState('');
+  const anyBusy = busy !== null;
+  const showKeyField = !connected || replacing;
 
   const run = async (command: Command) => {
     setBusy(command.type);
@@ -202,50 +211,13 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
     return reply;
   };
 
-  return (
-    <Section title="模型供应商">
-      <p className="hint">点一张卡接上，文字就发给那一家。两家的钥匙分开存，换一家下次会再问你确认。</p>
-      <div className="provider-grid">
-        {MODEL_PROVIDERS.map((provider) => (
-          <ProviderCard
-            key={provider.id}
-            provider={provider}
-            state={state}
-            busy={busy}
-            run={run}
-          />
-        ))}
-      </div>
-    </Section>
-  );
-}
-
-function ProviderCard({
-  provider,
-  state,
-  busy,
-  run,
-}: {
-  provider: ModelProvider;
-  state: PanelState;
-  busy: string | null;
-  run: (command: Command) => Promise<Reply | undefined>;
-}) {
-  const { settings } = state;
-  const connected = settings.providerKeys[provider.id] === true;
-  const active = settings.provider === provider.id;
-  const [models, setModels] = useState<string[] | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [customMode, setCustomMode] = useState(false);
-  const [customModel, setCustomModel] = useState('');
-  const [key, setKey] = useState('');
-  const anyBusy = busy !== null;
-
-  // 接上之后才拉模型列表；断开就把列表清掉，免得留下过期的选项。
   useEffect(() => {
+    setKey('');
+    setReplacing(false);
+    setCustomMode(false);
+    setCustomModel('');
     setModels(null);
     setLoadFailed(false);
-    setKey('');
     if (!connected) return;
     let alive = true;
     void (async () => {
@@ -257,84 +229,123 @@ function ProviderCard({
     return () => {
       alive = false;
     };
-    // run 是稳定引用；只在"接上了没有"变化时重新拉。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, provider.id]);
 
   const known = models ?? provider.knownModels;
   const model = settings.models[provider.id] ?? provider.defaultModel;
   const modelInList = known.includes(model);
-  const status = active ? (connected ? '使用中' : '使用中·未连接') : connected ? '已连接' : '未配置';
 
-  /** 保存钥匙并切到这家：一次点击完成"能用"与"在用"。 */
-  const connectAndUse = async () => {
+  const saveKey = async () => {
     const saved = await run({ type: 'saveKey', provider: provider.id, key });
     if (!saved?.ok) return;
     setKey('');
-    await run({ type: 'saveSettings', patch: { provider: provider.id } });
+    setReplacing(false);
+    if (settings.provider !== provider.id) {
+      await run({ type: 'saveSettings', patch: { provider: provider.id } });
+    }
   };
 
   return (
-    <article className={`provider-card${active ? ' active' : ''}`}>
-      <div className="provider-head">
-        <span className="provider-logo" style={{ background: provider.logoColor }} aria-hidden="true">
-          {provider.logoChar}
-        </span>
-        <div className="provider-copy">
-          <h3>{provider.name}</h3>
-          <p>{provider.tagline}</p>
-        </div>
-        <span className={`status-pill${active && connected ? ' ready' : ''}`}>{status}</span>
-      </div>
-
-      <div className="provider-meta">
-        <div>
-          <span>模型</span>
-          <strong>{connected ? model : provider.defaultModel}</strong>
-        </div>
-        <div>
-          <span>钥匙</span>
-          <strong>{connected ? '已保存' : '未填写'}</strong>
-        </div>
-      </div>
-
-      {!connected ? (
-        <div className="provider-config">
-          <div className="field">
-            <label htmlFor={`key-${provider.id}`}>
-              {provider.name} 的钥匙（{provider.keyHint}）
-            </label>
-            <input
-              id={`key-${provider.id}`}
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              value={key}
-              onChange={(event) => setKey(event.target.value)}
-            />
-          </div>
-          <div className="composer-actions">
-            <button type="button" disabled={anyBusy || !key.trim()} onClick={() => void connectAndUse()}>
-              {busy === 'saveKey' ? '正在确认这把钥匙…' : '保存并启用'}
-            </button>
-          </div>
-          <p className="hint">
-            保存时会先试连一次，确认钥匙能用——试连不发送你正在看的网页，但会有极少量费用。
-            还没有钥匙？到{' '}
-            <a href={provider.keyPage} target="_blank" rel="noreferrer">
-              {provider.name} 的钥匙页面
-            </a>{' '}
-            创建一个。
-          </p>
-        </div>
-      ) : (
-        <div className="provider-config">
-          <div className="field">
-            <label htmlFor={`model-${provider.id}`}>用哪个模型</label>
-            {customMode ? (
+    <>
+      <PageLead
+        title="模型"
+        lead="先填钥匙。保存之后只显示掩码，不会再给你看原文。再用下面的选择器决定文字发给哪一家。"
+      />
+      <SetList>
+        <SetRow title="用哪家" hint="换一家，下一轮请求就发给它；已经读出来的内容不动。换完会再问你确认外发。">
+          <Seg
+            name="用哪家"
+            value={provider.id}
+            options={MODEL_PROVIDERS.map((item) => ({ value: item.id, label: item.name }))}
+            disabled={anyBusy}
+            onChange={(id) => void run({ type: 'saveSettings', patch: { provider: id } })}
+          />
+        </SetRow>
+        <SetRow
+          title="钥匙"
+          stack
+          hint={
+            connected && !replacing
+              ? '已保存，界面里只显示掩码。要换一把再点更换。'
+              : `${provider.keyHint}。保存时会试连一次，不发送网页，但会有极少量费用。`
+          }
+        >
+          <div className="key-field">
+            {connected && !replacing && (
+              <p className="key-mask" aria-label={`${provider.name} 的钥匙已保存`}>
+                ••••••••••••••••
+              </p>
+            )}
+            {showKeyField && (
               <>
+                <label htmlFor={`key-${provider.id}`} className="sr-only">
+                  {provider.name} 的钥匙
+                </label>
                 <input
-                  id={`model-${provider.id}`}
+                  id={`key-${provider.id}`}
+                  type="password"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={provider.keyHint}
+                  value={key}
+                  onChange={(event) => setKey(event.target.value)}
+                />
+              </>
+            )}
+            <div className="composer-actions">
+              {showKeyField ? (
+                <>
+                  <button type="button" disabled={anyBusy || !key.trim()} onClick={() => void saveKey()}>
+                    {busy === 'saveKey' ? '正在确认这把钥匙…' : '保存'}
+                  </button>
+                  {replacing && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => {
+                        setReplacing(false);
+                        setKey('');
+                      }}
+                    >
+                      取消
+                    </button>
+                  )}
+                </>
+              ) : (
+                <button type="button" className="secondary" disabled={anyBusy} onClick={() => setReplacing(true)}>
+                  更换
+                </button>
+              )}
+              {connected && (
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={anyBusy}
+                  onClick={() => void run({ type: 'deleteKey', provider: provider.id })}
+                >
+                  删除
+                </button>
+              )}
+            </div>
+            <p className="hint">
+              还没有钥匙？到{' '}
+              <a href={provider.keyPage} target="_blank" rel="noreferrer">
+                {provider.name} 的钥匙页面
+              </a>{' '}
+              创建一个。
+            </p>
+          </div>
+        </SetRow>
+        {connected && (
+          <SetRow title="用哪个模型" hint="换模型只影响之后的请求。">
+            {customMode ? (
+              <div className="key-field">
+                <label htmlFor="model-custom" className="sr-only">
+                  用哪个模型
+                </label>
+                <input
+                  id="model-custom"
                   type="text"
                   spellCheck={false}
                   placeholder={model}
@@ -358,10 +369,11 @@ function ProviderCard({
                     取消
                   </button>
                 </div>
-              </>
+              </div>
             ) : (
               <select
-                id={`model-${provider.id}`}
+                id="model-select"
+                aria-label="用哪个模型"
                 value={modelInList ? model : '__custom__'}
                 disabled={anyBusy}
                 onChange={(event) => {
@@ -378,55 +390,11 @@ function ProviderCard({
                 <option value="__custom__">手动填写…</option>
               </select>
             )}
-            <p className="hint">
-              换模型只影响之后的请求，已经读出来的内容不动。
-              {loadFailed && ' 没能取得完整模型列表，可以手动填写模型 ID。'}
-            </p>
-          </div>
-
-          <div className="field">
-            <label htmlFor={`replace-${provider.id}`}>换一把新钥匙</label>
-            <input
-              id={`replace-${provider.id}`}
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              value={key}
-              onChange={(event) => setKey(event.target.value)}
-            />
-            <div className="composer-actions">
-              <button
-                type="button"
-                disabled={anyBusy || !key.trim()}
-                onClick={() =>
-                  void run({ type: 'saveKey', provider: provider.id, key }).then(() => setKey(''))
-                }
-              >
-                保存并确认能用
-              </button>
-              {!active && (
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={anyBusy}
-                  onClick={() => void run({ type: 'saveSettings', patch: { provider: provider.id } })}
-                >
-                  改用这家
-                </button>
-              )}
-              <button
-                type="button"
-                className="danger"
-                disabled={anyBusy}
-                onClick={() => void run({ type: 'deleteKey', provider: provider.id })}
-              >
-                断开并删掉钥匙
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </article>
+            {loadFailed && <p className="hint">没能取得完整模型列表，可以手动填写。</p>}
+          </SetRow>
+        )}
+      </SetList>
+    </>
   );
 }
 

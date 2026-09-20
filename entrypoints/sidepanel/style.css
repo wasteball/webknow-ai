@@ -1331,6 +1331,36 @@ button.link:hover:not(:disabled) {
   flex: none;
 }
 
+.set-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.set-row-stack .set-row-control {
+  width: 100%;
+}
+
+.key-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.key-field input {
+  width: 100%;
+}
+
+.key-mask {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-3);
+  color: var(--ink-3);
+  letter-spacing: 0.18em;
+  font-size: 15px;
+}
+
 .set-code {
   font-size: 11px;
   font-weight: 500;
@@ -1522,120 +1552,7 @@ button.link:hover:not(:disabled) {
   }
 }
 
-/* ── 模型供应商卡片（照原型的 provider-grid） ───────────────
-   两张卡同时摆出来、各自独立配置，不是"先选一家再配它"：
-   谁在用、谁连上了、各自用什么模型，一眼看得完。 */
 
-.provider-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
-
-.provider-card {
-  min-width: 0;
-  padding: 18px;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-}
-
-/* 正在用的那张描个边，配合状态签一起说清"就是这家"。 */
-.provider-card.active {
-  border-color: var(--accent);
-  box-shadow: var(--sh-1);
-}
-
-.provider-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.provider-logo {
-  width: 44px;
-  height: 44px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border-radius: 13px;
-  color: #fff;
-  font-size: 16px;
-  font-weight: 900;
-}
-
-.provider-copy {
-  min-width: 0;
-  flex: 1;
-}
-
-.provider-copy h3 {
-  margin: 0 0 3px;
-  font-size: 15px;
-  font-weight: 750;
-  color: var(--ink);
-}
-
-.provider-copy p {
-  margin: 0;
-  font-size: 12px;
-  color: var(--ink-3);
-}
-
-.status-pill {
-  flex: none;
-  padding: 5px 8px;
-  border-radius: 7px;
-  color: var(--ink-2);
-  background: var(--paper-3);
-  font-size: 11px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.status-pill.ready {
-  color: var(--jade-strong);
-  background: var(--jade-soft);
-}
-
-.provider-meta {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  margin: 16px 0 0;
-  padding: 11px 0;
-  border-block: 1px solid var(--line-soft);
-}
-
-.provider-meta div + div {
-  padding-left: 14px;
-  border-left: 1px solid var(--line-soft);
-}
-
-.provider-meta span {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--ink-3);
-  font-size: 11px;
-}
-
-.provider-meta strong {
-  font-size: 13px;
-  font-weight: 650;
-}
-
-.provider-config {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin-top: 14px;
-}
-
-/* 窄屏两张卡并排会挤成一团，改成上下排。 */
-@media (max-width: 820px) {
-  .provider-grid {
-    grid-template-columns: 1fr;
-  }
-}
 
 /* ── 状态与提示 ─────────────────────────────────────────── */
 
