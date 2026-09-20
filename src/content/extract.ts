@@ -107,6 +107,30 @@ function annotateSource(runId: string): SourceCandidate[] {
   });
 }
 
+function blockFromCandidate(match: SourceCandidate, index: number): EvidenceBlock {
+  return {
+    id: `b_${index.toString(36)}`,
+    role: roleOf(match.element),
+    content: match.text,
+    headingPath: match.headingPath,
+    table: tableContext(match.element),
+    anchor: {
+      sessionAnchorId: match.id,
+      selector: match.selector,
+      exact: match.text,
+      prefix: match.prefix,
+      suffix: match.suffix,
+      headingPath: match.headingPath,
+      fingerprint: fingerprint(`${match.text}\n${match.headingPath.join(' > ')}`),
+    },
+  };
+}
+
+function enoughContent(blocks: EvidenceBlock[]): boolean {
+  const chars = blocks.reduce((total, block) => total + block.content.length, 0);
+  return chars >= LIMITS.minArticleChars && blocks.length >= LIMITS.minBlocks;
+}
+
 function roleOf(element: Element): BlockRole {
   if (/^H[1-6]$/.test(element.tagName)) return 'heading';
   if (element.matches('li')) return 'list-item';
@@ -133,10 +157,14 @@ function tableContext(element: Element): EvidenceBlock['table'] {
 }
 
 /** 内容版本：同一 URL 下正文发生实质变化时，旧结果必须失效（FR-005）。 */
+function parseArticle(doc: Document) {
+  return new Readability(doc).parse();
+}
+
 export function documentFingerprint(): string {
   // 展开克隆顺带把图片的真实地址写进副本，因此不再需要按索引对齐。
   const clone = cloneExpanded(document) as Document;
-  const article = new Readability(clone).parse();
+  const article = parseArticle(clone);
   if (!article?.content) return fingerprint(`${location.href}\n${document.title}\nunreadable`);
   const root = new DOMParser().parseFromString(`<main>${article.content}</main>`, 'text/html').body;
   const content = [...root.querySelectorAll(CANDIDATES)]
@@ -188,68 +216,60 @@ export function extractDocument(): BlocksPayload {
   const source = annotateSource(runId);
   const byId = new Map(source.map((candidate) => [candidate.id, candidate]));
   const clone = cloneExpanded(document) as Document;
-  const article = new Readability(clone).parse();
-  if (!article?.content) {
-    clearAnchors();
-    throw appError(
-      'EXTRACT_FAILED',
-      '这一页找不到成篇的文字。目前只支持文章类网页；列表页、搜索结果、复杂的网页应用、主要靠图片说话的页面都读不了。',
-    );
-  }
+  const article = parseArticle(clone);
 
-  const root = new DOMParser().parseFromString(`<main>${article.content}</main>`, 'text/html').body;
-  const cleanCandidates = [...root.querySelectorAll<HTMLElement>(CANDIDATES)];
   let excludedBlocks = 0;
-  const blocks: EvidenceBlock[] = [];
+  let blocks: EvidenceBlock[] = [];
+  let usedFallback = false;
+  let root: HTMLElement | null = null;
 
-  for (const element of cleanCandidates) {
-    const content = normalizeText(element.textContent);
-    if (content.length < minCharsFor(element)) continue;
-    const retainedId = element.getAttribute(ANCHOR_ATTRIBUTE);
-    let match = retainedId ? byId.get(retainedId) : undefined;
-    if (!match || match.text !== content) {
-      const path = headingPathAtFrom(root, element);
-      const candidates = source.filter(
-        (candidate) => candidate.text === content && samePath(candidate.headingPath, path),
+  if (article?.content) {
+    root = new DOMParser().parseFromString(`<main>${article.content}</main>`, 'text/html').body;
+    const cleanCandidates = [...root.querySelectorAll<HTMLElement>(CANDIDATES)];
+
+    for (const element of cleanCandidates) {
+      const content = normalizeText(element.textContent);
+      if (content.length < minCharsFor(element)) continue;
+      const retainedId = element.getAttribute(ANCHOR_ATTRIBUTE);
+      let match = retainedId ? byId.get(retainedId) : undefined;
+      if (!match || match.text !== content) {
+        const path = headingPathAtFrom(root, element);
+        const candidates = source.filter(
+          (candidate) => candidate.text === content && samePath(candidate.headingPath, path),
+        );
+        match = candidates.length === 1 ? candidates[0] : undefined;
+      }
+      // 无法唯一的块宁可剔除也不放进证据集：引用必须能回到确定位置（FR-016/FR-017）。
+      if (!match) {
+        excludedBlocks += 1;
+        continue;
+      }
+      blocks.push(blockFromCandidate({ ...match, text: content }, blocks.length));
+    }
+  }
+
+  if (!enoughContent(blocks)) {
+    const fallback = source.map((candidate, index) => blockFromCandidate(candidate, index));
+    if (enoughContent(fallback)) {
+      blocks = fallback;
+      excludedBlocks = 0;
+      usedFallback = true;
+    } else {
+      clearAnchors();
+      throw appError(
+        'EXTRACT_FAILED',
+        article?.content
+          ? '这一页的文字太少，凑不出完整的内容。换一篇正常文章试试。'
+          : '这一页找不到成篇的文字。目前只支持文章类网页；列表页、搜索结果、复杂的网页应用、主要靠图片说话的页面都读不了。',
       );
-      match = candidates.length === 1 ? candidates[0] : undefined;
     }
-    // 无法唯一的块宁可剔除也不放进证据集：引用必须能回到确定位置（FR-016/FR-017）。
-    if (!match) {
-      excludedBlocks += 1;
-      continue;
-    }
-    const anchor: DomAnchor = {
-      sessionAnchorId: match.id,
-      selector: match.selector,
-      exact: content,
-      prefix: match.prefix,
-      suffix: match.suffix,
-      headingPath: match.headingPath,
-      fingerprint: fingerprint(`${content}\n${match.headingPath.join(' > ')}`),
-    };
-    blocks.push({
-      id: `b_${blocks.length.toString(36)}`,
-      role: roleOf(element),
-      content,
-      headingPath: match.headingPath,
-      table: tableContext(element),
-      anchor,
-    });
   }
 
-  const capturedChars = blocks.reduce((total, block) => total + block.content.length, 0);
-  if (capturedChars < LIMITS.minArticleChars || blocks.length < LIMITS.minBlocks) {
-    clearAnchors();
-    throw appError(
-      'EXTRACT_FAILED',
-      `这一页的文字太少，凑不出完整的内容。换一篇正常文章试试。`,
-    );
-  }
-
-  const textFound = cleanCandidates.filter((element) => !element.matches('th,td')).length;
-  const tableFound = root.querySelectorAll('th,td').length;
-  const imageFound = root.querySelectorAll('img').length;
+  const textFound = root
+    ? [...root.querySelectorAll<HTMLElement>(CANDIDATES)].filter((element) => !element.matches('th,td')).length
+    : source.filter((candidate) => candidate.element.tagName !== 'TH' && candidate.element.tagName !== 'TD').length;
+  const tableFound = root ? root.querySelectorAll('th,td').length : source.filter((candidate) => candidate.element.matches('th,td')).length;
+  const imageFound = (root ?? document).querySelectorAll('img').length;
   const textCaptured = blocks.filter((block) => block.role !== 'table-cell').length;
   const tableCaptured = blocks.filter((block) => block.role === 'table-cell').length;
 
@@ -258,6 +278,7 @@ export function extractDocument(): BlocksPayload {
   if (hints.length) {
     warnings.push(`页面上有「${hints.join('、')}」，可能还有没展开的内容没有读到。`);
   }
+  if (usedFallback) warnings.push('这一页不太像完整文章，按页面上的文字块读取。');
   if (excludedBlocks) warnings.push(`${excludedBlocks} 个正文块无法唯一定位，未纳入证据。`);
   if (imageFound) warnings.push(`发现 ${imageFound} 张图片；首版不解析图片内容。`);
 
@@ -290,7 +311,7 @@ export function extractDocument(): BlocksPayload {
 
   clearAnchors(new Set(blocks.map((block) => block.anchor.sessionAnchorId)));
   return {
-    title: article.title || document.title,
+    title: article?.title || document.title,
     url: location.href,
     fingerprint: documentFingerprint(),
     blocks,

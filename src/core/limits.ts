@@ -8,9 +8,9 @@ export const LIMITS = {
   /** 正文处理上限：超出即阻断并说明范围，绝不静默截断后声称覆盖全文（FR-018）。 */
   maxContextChars: 45_000,
   maxBlocks: 400,
-  /** 低于此值判为“没有可用的连续正文”（FR-002/FR-006）。 */
-  minArticleChars: 80,
-  minBlocks: 3,
+  /** 低于此值判为“没有可用的连续正文”（FR-002/FR-006）。短讯、短评也要能读。 */
+  minArticleChars: 40,
+  minBlocks: 1,
 
   /** 首屏短摘要与探索气泡（PRD 第 9 节：约 3 个，内容不足可少给，不凑数）。 */
   maxBubbles: 3,

@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 
 import type { BlocksPayload, DomAnchor, JumpOutcome } from '../core/blocks';
 import { appError, fromThrown, isAppError, type AppError } from '../core/errors';
+import { PAGE_READ_ORIGINS } from '../core/hosts';
 import type { ContentReply, ContentRequest } from '../core/protocol';
 import type { PageSession } from '../core/session';
 
@@ -57,13 +58,23 @@ function unwrap<T>(reply: ContentReply): T {
  * 分别给不同的下一步，而不是统一报“读不到”。（真实故障：漏了 activeTab，
  * 扩展拿不到网址，于是既没申请权限也没告诉用户该点哪里。）
  */
+export async function canReadPage(origin: string | null): Promise<boolean> {
+  if (!origin) return false;
+  try {
+    if (await browser.permissions.contains({ origins: PAGE_READ_ORIGINS })) return true;
+    return await browser.permissions.contains({ origins: [`${origin}/*`] });
+  } catch {
+    return false;
+  }
+}
+
 export async function extractPage(tabId: number, expectedOrigin: string | null): Promise<BlocksPayload> {
   if (expectedOrigin) {
-    const granted = await browser.permissions.contains({ origins: [`${expectedOrigin}/*`] });
+    const granted = await canReadPage(expectedOrigin);
     if (!granted) {
       throw appError(
         'PERMISSION_MISSING',
-        `还没有允许我们读这个网站（${expectedOrigin}）。请点一下浏览器右上角的 webknow-ai 图标，再点一次按钮。`,
+        `还没有允许我们读网页。请点一下开始伴读，浏览器会问一次授权。`,
         false,
       );
     }

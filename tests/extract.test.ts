@@ -46,7 +46,19 @@ describe('extractDocument', () => {
 
   it('正文不可提取时明确失败，不返回空结果', () => {
     install('<div><span>短</span></div>', 'https://example.com/empty');
-    expect(() => extractDocument()).toThrowError(/文字太少|找不到成篇/);
+    expect(() => extractDocument()).toThrowError(/文字太少|找不到成篇|读不了/);
+  });
+
+  it('一两段的短文也能读，不因为块数不够直接判失败', () => {
+    install(`
+      <article>
+        <h1>公交线路调整</h1>
+        <p>市政府今天公布了新的公交线路调整方案，从下周一开始在三个试点区域试行。相关部门表示，将根据客流情况再决定是否扩大到其他城区。</p>
+      </article>
+    `);
+    const payload = extractDocument();
+    expect(payload.blocks.length).toBeGreaterThanOrEqual(1);
+    expect(payload.blocks.some((block) => block.content.includes('公交线路'))).toBe(true);
   });
 });
 
@@ -109,7 +121,7 @@ describe('影子 DOM 与内嵌框架', () => {
   });
 
   it('框架数量如实计入读取范围', () => {
-    // 夹具必须明显越过 minArticleChars(80)，否则提取会因“文字太少”直接失败。
+    // 夹具必须明显越过 minArticleChars，否则提取会因“文字太少”直接失败。
     install(`
       <article><h1>外层标题</h1>
       <p>外层的第一段正文内容，长度要足够让提取器识别出文章主体，并且留出充分余量。</p>

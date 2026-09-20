@@ -12,7 +12,7 @@ import { prepareQuote } from '../core/quote';
 import { createSession, emptySession, markStale } from '../core/session';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
 import { listModels, testConnection } from './model';
-import { extractPage, jumpToOriginal, watchPage } from './page';
+import { canReadPage, extractPage, jumpToOriginal, watchPage } from './page';
 import { abortRun, handleIntent, type RunnerHooks } from './runner';
 import {
   OUTBOUND_NOTICE_VERSION,
@@ -65,8 +65,7 @@ async function permissionFor(url: string | null): Promise<'granted' | 'missing' 
   const origin = url ? originOf(url) : null;
   if (!origin) return 'unknown';
   try {
-    const granted = await browser.permissions.contains({ origins: [`${origin}/*`] });
-    return granted ? 'granted' : 'missing';
+    return (await canReadPage(origin)) ? 'granted' : 'missing';
   } catch {
     return 'unknown';
   }

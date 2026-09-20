@@ -2,7 +2,7 @@ import { defineConfig } from 'wxt';
 
 // 权限边界（PRD FR-003/FR-019/FR-032）：
 // - 不申请 tabs：页面身份来自内容脚本与写回前校验，避免“读取浏览历史”警告
-// - 站点读取权限按需申请（optional_host_permissions + 用户手势中 request）
+// - 网页读取问一次 http/https（optional_host_permissions + 用户手势中 request），之后换站不再弹
 // - 唯一固定外发目标是 DeepSeek
 //
 // `--mode e2e` 只为端到端测试静态授予本地回环地址：授权弹窗是浏览器 UI，
