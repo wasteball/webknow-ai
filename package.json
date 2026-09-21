@@ -3,7 +3,7 @@
   "version": "0.7.6",
   "private": true,
   "type": "module",
-  "description": "面向普通读者的网页伴随式 AI：侧栏短摘要、探索气泡、我问与问我",
+  "description": "面向普通读者的网页伴随式 AI：侧栏短摘要、探索气泡、问 AI 与 AI 问",
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",

@@ -17,15 +17,15 @@ const START_LABEL: Record<string, string> = {
 };
 
 /**
- * 已就绪后的两个能力用分段切换：「我问」是摘要 + 话题 + 自己提问，
- * 「问我」是它反过来考你。进行中也能随时切回（会话留在后台，不因切换而中断）；
+ * 已就绪后的两个能力用分段切换：「问 AI」是摘要 + 话题 + 自己提问，
+ * 「AI 问」是它反过来考你。进行中也能随时切回（会话留在后台，不因切换而中断）；
  * 两个面板都保持挂载，所以切回来时草稿还在。
  */
 type View = 'qa' | 'learn';
 
 const MODES: { id: View; label: string; hint: string; icon: IconName; busyKind: 'answer' | 'learn' }[] = [
-  { id: 'qa', label: '我问', hint: '你来提问', icon: 'book', busyKind: 'answer' },
-  { id: 'learn', label: '问我', hint: '它来提问', icon: 'chat', busyKind: 'learn' },
+  { id: 'qa', label: '问 AI', hint: '你来提问', icon: 'book', busyKind: 'answer' },
+  { id: 'learn', label: 'AI 问', hint: '它来提问', icon: 'chat', busyKind: 'learn' },
 ];
 
 const tabDomId = (view: View) => `mode-tab-${view}`;
@@ -70,7 +70,7 @@ export function App() {
     void clientRef.current?.send({ type: 'attach', tabId });
   }, [tabId]);
 
-  // 学习会话从无到有时自动切到「问我」；其余时候尊重用户所在的位置。
+  // 学习会话从无到有时自动切到「AI 问」；其余时候尊重用户所在的位置。
   const learningActive = state?.learning?.status === 'active';
   useEffect(() => {
     if (learningActive && !learningWasActive.current) {

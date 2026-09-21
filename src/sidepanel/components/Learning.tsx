@@ -10,7 +10,7 @@ import { Icon } from './Icon';
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
- * 「问我」面板。四种形态：
+ * 「AI 问」面板。四种形态：
  * - 空闲（没有学习会话）：学习目标表单；
  * - 开放问题进行中：时间线 + 回答输入 + 辅助操作；
  * - 选择题轮进行中：直接在题目上勾选并提交；

@@ -10,7 +10,7 @@ import { Icon } from './Icon';
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
- * 「我问」：摘要与话题在最上面，点一张卡片就是发出去一句；
+ * 「问 AI」：摘要与话题在最上面，点一张卡片就是发出去一句；
  * 下面自己接着问。输入区吸在底部。
  */
 export function Reading({ state, send }: { state: PanelState; send: Send }) {

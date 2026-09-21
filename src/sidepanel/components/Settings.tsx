@@ -107,20 +107,20 @@ const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string }[] = [
   },
   {
     key: 'answer',
-    title: '我问',
+    title: '问 AI',
     hint: '决定回答的口径与风格。',
   },
   {
     key: 'learn',
-    title: '问我',
+    title: 'AI 问',
     hint: '决定它出什么题、怎么回应你的回答。',
   },
 ];
 
 const TARGET_LABEL: Record<PromptTarget, string> = {
   guide: '导读摘要',
-  answer: '我问',
-  learn: '问我',
+  answer: '问 AI',
+  learn: 'AI 问',
 };
 
 export function Settings({
@@ -592,8 +592,8 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
             onChange={(event) => setTarget(event.target.value as PromptTarget)}
           >
             <option value="guide">导读摘要</option>
-            <option value="answer">我问</option>
-            <option value="learn">问我</option>
+            <option value="answer">问 AI</option>
+            <option value="learn">AI 问</option>
           </select>
           <label htmlFor="skill-description">一句话说明（可选）</label>
           <input
@@ -674,7 +674,7 @@ function SearchSettings({ state, send }: { state: PanelState; send: Send }) {
   return (
     <Section title="联网搜索">
       <p className="hint">
-        打开「我问」里的联网开关，只把搜索词发出去，正文仍只给模型。免费的不用注册。
+        打开「问 AI」里的联网开关，只把搜索词发出去，正文仍只给模型。免费的不用注册。
       </p>
       {current.enabled && (
         <p className="status-banner">现在用 {current.providerName}。换一家先点下面一张卡。</p>
@@ -940,9 +940,9 @@ function ReadingPrefs({ state, send }: { state: PanelState; send: Send }) {
     <>
       <PageLead title="阅读" lead="摘要多长、问你几轮、字大不大。改完立刻生效。" />
       <SetList>
-        <SetRow title="「问我」一轮几题" hint="问完就给小结，不会无限追问。">
+        <SetRow title="「AI 问」一轮几题" hint="问完就给小结，不会无限追问。">
           <Seg
-            name="「问我」一轮最多问几个问题"
+            name="「AI 问」一轮最多问几个问题"
             value={budgetValue}
             options={[
               { value: '3', label: '3' },
@@ -955,7 +955,7 @@ function ReadingPrefs({ state, send }: { state: PanelState; send: Send }) {
         </SetRow>
         <SetRow title="它怎么问你" hint="选择题好勾；开口答能看出你是不是真懂。">
           <Seg
-            name="「问我」怎么出题"
+            name="「AI 问」怎么出题"
             value={settings.learningStyle}
             options={[
               { value: 'mixed', label: '自动' },
@@ -1031,7 +1031,7 @@ function Cleanup({ state, send }: { state: PanelState; send: Send }) {
     <Section title="清除">
       <p className="hint">摘要和对话只在这次打开浏览器时留着。钥匙和设置不受影响。</p>
       <SetList>
-        <SetRow title="这一页" hint={tabId === null ? '从扩展选项进来时不知道你在读哪一页，请到那一页的侧栏里清。' : '清掉当前页的摘要、对话和问我记录。'}>
+        <SetRow title="这一页" hint={tabId === null ? '从扩展选项进来时不知道你在读哪一页，请到那一页的侧栏里清。' : '清掉当前页的摘要、对话和 AI 问记录。'}>
           {tabId !== null ? (
             <button type="button" className="secondary" disabled={busy} onClick={() => void run({ type: 'clearSession', tabId })}>
               清掉这一页
