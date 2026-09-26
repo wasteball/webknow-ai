@@ -4,6 +4,7 @@ import type { ChatTurn } from '../../core/session';
 import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { shouldSubmitComposer } from '../composer';
+import { visibleSuggestions } from '../suggest';
 import { Busy, SourceTag } from './bits';
 import { Icon } from './Icon';
 
@@ -17,30 +18,50 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
   const [searchOn, setSearchOn] = useState(false);
   const [hidingSuggests, setHidingSuggests] = useState(false);
+  const [hiddenAtTurns, setHiddenAtTurns] = useState(0);
   const tabId = state.tabId;
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.busy?.kind === 'answer';
   const searchEnabled = state.settings.search.enabled;
   const guide = state.guide;
+  const lastTurn = state.chat[state.chat.length - 1];
+  const row = visibleSuggestions({
+    chatLength: state.chat.length,
+    busy,
+    hiding: hidingSuggests,
+    hiddenAtTurns,
+    openers: guide?.bubbles ?? [],
+    followUps: lastTurn?.followUps ?? [],
+    askedQuestions: state.chat.map((turn) => turn.question),
+  });
 
   // 只在对话真的往下走时跟到底部。挂载时不滚：这一栏开头是摘要与话题，
   // 一进来就被推到最后一轮问答上，等于把最重要的内容藏起来了。
-  const seen = useRef({ turns: state.chat.length, busy });
+  const seen = useRef<{ turns: number; busy: boolean; next: number } | null>(null);
   useEffect(() => {
-    if (state.chat.length > seen.current.turns || (busy && !seen.current.busy)) {
+    const next = row.next.length;
+    if (!seen.current) {
+      seen.current = { turns: state.chat.length, busy, next };
+      return;
+    }
+    if (state.chat.length > seen.current.turns || (busy && !seen.current.busy) || next > seen.current.next) {
       endRef.current?.scrollIntoView({ block: 'end' });
     }
-    seen.current = { turns: state.chat.length, busy };
-  }, [state.chat.length, busy]);
+    seen.current = { turns: state.chat.length, busy, next };
+  }, [state.chat.length, busy, row.next.length]);
 
   useEffect(() => {
     setHidingSuggests(false);
   }, [state.chat.length]);
 
   const quote = state.quote;
+  const concealSuggests = () => {
+    setHiddenAtTurns(state.chat.length);
+    setHidingSuggests(true);
+  };
   const ask = async (question: string) => {
     if (!tabId || !question.trim()) return;
-    setHidingSuggests(true);
+    concealSuggests();
     const reply = await send({ type: 'ask', tabId, question, search: searchEnabled && searchOn });
     if (reply?.ok) setDraft('');
     else setHidingSuggests(false);
@@ -54,24 +75,16 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
     if (!busy) void ask(draft);
   };
 
-  // 开场卡片只在还没开口时出现。点一张（或自己发出去）就全部收起，
-  // 下一排联想问题跟在最新回答后面，不倒回去点剩下的开场卡。
-  const showOpeners = state.chat.length === 0 && !busy && !hidingSuggests;
-  const openTopics = showOpeners ? (guide?.bubbles ?? []) : [];
-  const lastTurn = state.chat[state.chat.length - 1];
-  const followUps =
-    !busy && !hidingSuggests && lastTurn?.followUps?.length ? lastTurn.followUps : [];
-
   const sendTopic = async (bubbleId: string) => {
     if (!tabId) return;
-    setHidingSuggests(true);
+    concealSuggests();
     const reply = await send({ type: 'explore', tabId, bubbleId });
     if (!reply?.ok) setHidingSuggests(false);
   };
 
   const sendFollowUp = async (question: string) => {
     if (!tabId) return;
-    setHidingSuggests(true);
+    concealSuggests();
     const reply = await send({ type: 'ask', tabId, question, search: searchEnabled && searchOn });
     if (!reply?.ok) setHidingSuggests(false);
   };
@@ -83,10 +96,10 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
           <div className="bubble ai bubble-guide">
             <h2 id="guide-heading">这篇文章讲了什么</h2>
             <p className="summary">{guide.summary}</p>
-            {openTopics.length > 0 && (
+            {row.openers.length > 0 && (
               <SuggestRow
                 lead="想接着弄懂，点一张发出去："
-                items={openTopics}
+                items={row.openers}
                 disabled={busy}
                 onPick={(item) => void sendTopic(item.id)}
               />
@@ -99,12 +112,14 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
         {state.chat.map((turn) => (
           <Turn key={turn.id} turn={turn} tabId={tabId} send={send} />
         ))}
-        {followUps.length > 0 && (
+        {row.next.length > 0 && (
           <SuggestRow
-            lead="可以接着问："
-            items={followUps}
+            lead={row.nextFrom === 'follow' ? '可以接着问：' : '还可以接着问：'}
+            items={row.next}
             disabled={busy}
-            onPick={(item) => void sendFollowUp(item.question)}
+            onPick={(item) =>
+              row.nextFrom === 'opener' ? void sendTopic(item.id) : void sendFollowUp(item.question)
+            }
           />
         )}
         {busy && (
@@ -114,7 +129,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
             onStop={() => tabId && void send({ type: 'stop', tabId })}
           />
         )}
-        <div ref={endRef} />
+        <div className="chat-end" ref={endRef} />
       </div>
 
       <div className="dock">

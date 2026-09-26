@@ -20,6 +20,35 @@ export function isSingleQuestion(text: string): boolean {
   return (text.match(/[？?]/g) ?? []).length <= 1;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * 读者看得见的句子里去掉内部块编号。
+ * 核对入口是「看看原文」，不是 b_5 这种程序标记。
+ */
+export function omitBlockIds(text: string, ids: readonly string[]): string {
+  const unique = [...new Set(ids)].filter(Boolean).sort((left, right) => right.length - left.length);
+  if (!unique.length) return text.trim();
+  const id = unique.map(escapeRegExp).join('|');
+  const mention = new RegExp(
+    `(?:[（(\\[【]\\s*)?(?:(?:根据|见|参见|依据|来自|出自|引用)\\s*)?(?:在\\s*)?(?:正文块|块)?\\s*(?<![A-Za-z0-9_])(?:${id})(?![A-Za-z0-9_])(?:\\s*[里中处])?\\s*(?:[）)\\]】])?`,
+    'g',
+  );
+  return text
+    .replace(mention, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/\s+([，。；、：,])/g, '$1')
+    .replace(/([。！？])[，、,\s]+/g, '$1')
+    .replace(/[（(\\[【]\s*[）)\\]】]/g, '')
+    .replace(/^[，、：,\s]+/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function badOutput(what: string): AppError {
   return appError('BAD_OUTPUT', `这次生成的内容格式不对，没有采用。可以再试一次。`, true);
 }
@@ -27,28 +56,30 @@ function badOutput(what: string): AppError {
 export function cleanGuide(
   parsed: unknown,
   maxBubbles: number = LIMITS.maxBubbles,
+  blockIds: readonly string[] = [],
 ): Clean<{ summary: string; bubbles: Bubble[] }> {
   const result = GuideSchema.safeParse(parsed);
   if (!result.success) return { ok: false, error: badOutput('首屏结果') };
 
-  const summary = result.data.summary.trim();
+  const summary = omitBlockIds(result.data.summary.trim(), blockIds);
   if (!summary || summary.length > BAD_OUTPUT_RUNAWAY) {
     return { ok: false, error: badOutput('摘要') };
   }
 
   const cap = Math.min(Math.max(0, Math.round(maxBubbles)), LIMITS.maxBubbles);
-  return { ok: true, value: { summary, bubbles: takeBubbles(result.data.bubbles, cap, 'bub') } };
+  return { ok: true, value: { summary, bubbles: takeBubbles(result.data.bubbles, cap, 'bub', blockIds) } };
 }
 
 function takeBubbles(
   raw: { question: string; kind?: string }[],
   cap: number,
   prefix: string,
+  blockIds: readonly string[] = [],
 ): Bubble[] {
   const seen = new Set<string>();
   const bubbles: Bubble[] = [];
   for (const [index, item] of raw.entries()) {
-    const question = item.question.trim();
+    const question = omitBlockIds(item.question.trim(), blockIds);
     if (!question || question.length > LIMITS.bubbleQuestionMaxChars * 4) continue;
     if (!isSingleQuestion(question)) continue;
     const key = question.replace(/\s+/g, '').replace(/[？?。.!！]/g, '');
@@ -78,18 +109,21 @@ export function cleanAnswer(
   const result = AnswerSchema.safeParse(parsed);
   if (!result.success) return { ok: false, error: badOutput('回答') };
 
-  const answer = result.data.answer.trim();
+  const knownIds = blocks.map((block) => block.id);
+  const answer = omitBlockIds(result.data.answer.trim(), knownIds);
   if (!answer || answer.length > BAD_OUTPUT_RUNAWAY * 2) {
     return { ok: false, error: badOutput('回答') };
   }
 
-  const known = new Set(blocks.map((block) => block.id));
+  const known = new Set(knownIds);
   const citations: Citation[] = [];
   for (const blockId of new Set(result.data.citations)) {
     if (known.has(blockId)) citations.push({ blockId });
   }
 
-  const unanswered = result.data.unanswered.map((item) => item.trim()).filter(Boolean);
+  const unanswered = result.data.unanswered
+    .map((item) => omitBlockIds(item.trim(), knownIds))
+    .filter(Boolean);
 
   // references 只能是程序注入的网络结果 URL 原样复制；其余一律丢弃（F3）。
   const knownUrls = new Set(webResults.map((item) => item.url));
@@ -109,7 +143,7 @@ export function cleanAnswer(
     }
   }
 
-  const followUps = takeBubbles(result.data.followUps ?? [], LIMITS.maxBubbles, 'next');
+  const followUps = takeBubbles(result.data.followUps ?? [], LIMITS.maxBubbles, 'next', knownIds);
 
   return { ok: true, value: { answer, source, citations, unanswered, references, followUps } };
 }
@@ -151,22 +185,23 @@ const EXPECTED: Record<LearnMode, readonly LearnResult['action'][]> = {
 /** 把模型返回的选择题规格整理成会话数据：题目（无答案）+ 答案钥匙。 */
 function cleanQuizQuestions(
   raw: { id: string; text: string; choices: { id: string; label: string }[]; answer: string[]; why: string }[],
+  blockIds: readonly string[] = [],
 ): { questions: QuizQuestion[]; answerKey: QuizKey[] } | null {
   const questions: QuizQuestion[] = [];
   const answerKey: QuizKey[] = [];
   const seenQuestionIds = new Set<string>();
   for (const item of raw) {
     const id = item.id.trim();
-    const text = item.text.trim();
+    const text = omitBlockIds(item.text.trim(), blockIds);
     if (!id || !text || seenQuestionIds.has(id)) return null;
     const choices = item.choices
-      .map((choice) => ({ id: choice.id.trim(), label: choice.label.trim() }))
+      .map((choice) => ({ id: choice.id.trim(), label: omitBlockIds(choice.label.trim(), blockIds) }))
       .filter((choice) => choice.id && choice.label);
     const choiceIds = new Set(choices.map((choice) => choice.id));
     if (choices.length < 2 || choiceIds.size !== choices.length) return null;
     const answer = [...new Set(item.answer.map((value) => value.trim()))].filter((value) => value);
     if (!answer.length || !answer.every((value) => choiceIds.has(value))) return null;
-    const why = item.why.trim();
+    const why = omitBlockIds(item.why.trim(), blockIds);
     if (!why) return null;
     seenQuestionIds.add(id);
     questions.push({ id, text, choices, multi: answer.length > 1 });
@@ -179,11 +214,13 @@ export function cleanLearn(
   parsed: unknown,
   mode: LearnMode,
   currentKind?: 'open' | 'quiz',
+  blockIds: readonly string[] = [],
 ): Clean<LearnResult> {
   const result = LearnSchema.safeParse(parsed);
   if (!result.success) return { ok: false, error: badOutput('学习反馈') };
   const data = result.data;
   if (!EXPECTED[mode].includes(data.action)) return { ok: false, error: badOutput('学习反馈') };
+  const show = (value: string) => omitBlockIds(value, blockIds);
 
   // 动作必须与当前轮次类型匹配：选择题轮用 graded，开放问题用 feedback。
   if (mode === 'respond') {
@@ -193,12 +230,12 @@ export function cleanLearn(
 
   switch (data.action) {
     case 'question': {
-      const question = data.question.trim();
-      if (!isSingleQuestion(question)) return { ok: false, error: badOutput('学习反馈') };
+      const question = show(data.question.trim());
+      if (!question || !isSingleQuestion(question)) return { ok: false, error: badOutput('学习反馈') };
       return { ok: true, value: { action: 'question', question } };
     }
     case 'quiz': {
-      const cleaned = cleanQuizQuestions(data.questions);
+      const cleaned = cleanQuizQuestions(data.questions, blockIds);
       if (!cleaned) return { ok: false, error: badOutput('学习反馈') };
       if (cleaned.questions.some((question) => !isSingleQuestion(question.text))) {
         return { ok: false, error: badOutput('学习反馈') };
@@ -206,32 +243,36 @@ export function cleanLearn(
       return { ok: true, value: { action: 'quiz', ...cleaned } };
     }
     case 'feedback': {
-      const next = data.nextQuestion?.trim() || null;
+      const feedback = show(data.feedback.trim());
+      if (!feedback) return { ok: false, error: badOutput('学习反馈') };
+      const next = show(data.nextQuestion?.trim() || '') || null;
       return {
         ok: true,
         value: {
           action: 'feedback',
           verdict: data.verdict,
-          feedback: data.feedback.trim(),
+          feedback,
           nextQuestion: next && isSingleQuestion(next) ? next : null,
         },
       };
     }
     case 'graded': {
       // nextQuiz 缺答案钥匙、或下一问一次问了两件事，只降级丢掉下一轮，本轮批改仍可用。
-      const rawNextQuiz = data.nextQuiz ? cleanQuizQuestions(data.nextQuiz.questions) : null;
+      const rawNextQuiz = data.nextQuiz ? cleanQuizQuestions(data.nextQuiz.questions, blockIds) : null;
       const nextQuiz =
         rawNextQuiz && rawNextQuiz.questions.every((question) => isSingleQuestion(question.text))
           ? rawNextQuiz
           : null;
-      const next = data.nextQuestion?.trim() || null;
+      const analysis = show(data.analysis.trim());
+      if (!analysis) return { ok: false, error: badOutput('学习反馈') };
+      const next = show(data.nextQuestion?.trim() || '') || null;
       return {
         ok: true,
         value: {
           action: 'graded',
-          analysis: data.analysis.trim(),
+          analysis,
           notes: data.notes
-            .map((note) => ({ questionId: note.questionId.trim(), note: note.note.trim() }))
+            .map((note) => ({ questionId: note.questionId.trim(), note: show(note.note.trim()) }))
             .filter((note) => note.questionId && note.note),
           nextQuestion: next && isSingleQuestion(next) ? next : null,
           nextQuiz,
@@ -239,33 +280,39 @@ export function cleanLearn(
       };
     }
     case 'hint': {
-      const question = data.question.trim();
-      if (!isSingleQuestion(question)) return { ok: false, error: badOutput('学习反馈') };
+      const question = show(data.question.trim());
+      const hint = show(data.hint.trim());
+      if (!hint || !question || !isSingleQuestion(question)) return { ok: false, error: badOutput('学习反馈') };
       return {
         ok: true,
-        value: { action: 'hint', hint: data.hint.trim(), question },
+        value: { action: 'hint', hint, question },
       };
     }
     case 'explain': {
-      const next = data.nextQuestion?.trim() || null;
+      const explanation = show(data.explanation.trim());
+      if (!explanation) return { ok: false, error: badOutput('学习反馈') };
+      const next = show(data.nextQuestion?.trim() || '') || null;
       return {
         ok: true,
         value: {
           action: 'explain',
-          explanation: data.explanation.trim(),
+          explanation,
           nextQuestion: next && isSingleQuestion(next) ? next : null,
         },
       };
     }
-    case 'summary':
+    case 'summary': {
+      const summary = show(data.summary.trim());
+      if (!summary) return { ok: false, error: badOutput('学习反馈') };
       return {
         ok: true,
         value: {
           action: 'summary',
-          summary: data.summary.trim(),
-          nextDirections: data.nextDirections.map((item) => item.trim()).filter(Boolean).slice(0, 3),
+          summary,
+          nextDirections: data.nextDirections.map((item) => show(item.trim())).filter(Boolean).slice(0, 3),
         },
       };
+    }
   }
 }
 

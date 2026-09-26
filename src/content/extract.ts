@@ -75,8 +75,20 @@ function anchorElements(): { element: HTMLElement; root: ReadableRoot }[] {
   );
 }
 
+/** 公众号页脚、分享条，不是正文。 */
+const PAGE_CHROME = /微信扫一扫|关注(?:该)?公众号|阅读原文|点击上方|长按识别/;
+
 function minCharsFor(element: Element): number {
-  return element.matches('p') ? 20 : 2;
+  // 微信常把小节标题写成很短的 p。「为什么会产生这种文化」只有十个字，20 字门槛会整段丢掉。
+  return element.matches('p') ? 8 : 2;
+}
+
+function candidateText(element: Element): string | null {
+  if (element.closest('[aria-hidden="true"]')) return null;
+  const text = normalizeText(element.textContent);
+  if (text.length < minCharsFor(element)) return null;
+  if (PAGE_CHROME.test(text)) return null;
+  return text;
 }
 
 function annotateSource(runId: string): SourceCandidate[] {
@@ -85,10 +97,7 @@ function annotateSource(runId: string): SourceCandidate[] {
   // 按子树顺序拉平：编号、前后缀、标题路径都基于同一份顺序，提取与回跳必须一致。
   const found = roots.flatMap((root) =>
     [...root.querySelectorAll<HTMLElement>(CANDIDATES)]
-      .filter((element) => {
-        const text = normalizeText(element.textContent);
-        return text.length >= minCharsFor(element) && !element.closest('[aria-hidden="true"]');
-      })
+      .filter((element) => candidateText(element) !== null)
       .map((element) => ({ element, root })),
   );
   return found.map(({ element, root }, index) => {
@@ -228,8 +237,8 @@ export function extractDocument(): BlocksPayload {
     const cleanCandidates = [...root.querySelectorAll<HTMLElement>(CANDIDATES)];
 
     for (const element of cleanCandidates) {
-      const content = normalizeText(element.textContent);
-      if (content.length < minCharsFor(element)) continue;
+      const content = candidateText(element);
+      if (!content) continue;
       const retainedId = element.getAttribute(ANCHOR_ATTRIBUTE);
       let match = retainedId ? byId.get(retainedId) : undefined;
       if (!match || match.text !== content) {

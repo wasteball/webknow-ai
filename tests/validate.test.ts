@@ -94,6 +94,34 @@ describe('cleanAnswer', () => {
     ]);
   });
 
+  it('回答正文里的块编号不给读者看，引用仍留给「看看原文」', () => {
+    const result = cleanAnswer(
+      {
+        answer: '作者认为这是低成本的底线试探（b_5）。根据 b_0，不愿意喝就代表有原则。',
+        source: 'original',
+        citations: ['b_0', 'b_5'],
+        unanswered: ['b_1 没有写具体人数'],
+        followUps: [{ question: '见 b_5，这个测试还能怎么看？', kind: 'reason' }],
+      },
+      [block('b_0'), block('b_1'), block('b_5'), block('b_12')],
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.answer).toBe('作者认为这是低成本的底线试探。不愿意喝就代表有原则。');
+    expect(result.value.answer).not.toMatch(/b_/);
+    expect(result.value.citations.map((item) => item.blockId)).toEqual(['b_0', 'b_5']);
+    expect(result.value.unanswered).toEqual(['没有写具体人数']);
+    expect(result.value.followUps.map((item) => item.question)).toEqual(['这个测试还能怎么看？']);
+  });
+
+  it('回答只剩块编号时不采用', () => {
+    const result = cleanAnswer(
+      { answer: '见 b_0', source: 'original', citations: ['b_0'], unanswered: [] },
+      blocks,
+    );
+    expect(result.ok).toBe(false);
+  });
+
   it('有网络资料时，原文依据仍然必须有本地引用', () => {
     const result = cleanAnswer(
       { answer: '回答', source: 'original', citations: [], unanswered: [], references: [] },

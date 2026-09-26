@@ -49,6 +49,21 @@ describe('extractDocument', () => {
     expect(() => extractDocument()).toThrowError(/文字太少|找不到成篇|读不了/);
   });
 
+  it('保留微信式的短小节标题，丢掉页脚套话', () => {
+    install(`
+      <article>
+        <h1>段永平聊酒桌文化</h1>
+        <p>工作以后，喝酒的情形逐渐多了起来，有时候到一个相对陌生的环境，当地一些同事有些招待。</p>
+        <p>为什么会产生这种文化</p>
+        <p>酒桌文化的核心在于它是一种相对低成本的底线试探，愿意被逼着吃下东西，就意味着后续可以持续让步。</p>
+        <p>微信扫一扫关注该公众号</p>
+      </article>
+    `);
+    const contents = extractDocument().blocks.map((block) => block.content);
+    expect(contents.some((text) => text.includes('为什么会产生这种文化'))).toBe(true);
+    expect(contents.some((text) => text.includes('扫一扫'))).toBe(false);
+  });
+
   it('一两段的短文也能读，不因为块数不够直接判失败', () => {
     install(`
       <article>

@@ -963,6 +963,11 @@ details.section summary {
   border-bottom: 1px solid rgba(247, 244, 239, 0.25);
 }
 
+/* 吸底输入区会盖住滚到最底的那一排。留出它的高度，联想问题才露得出来。 */
+.chat-end {
+  scroll-margin-bottom: 11rem;
+}
+
 .dock {
   position: sticky;
   bottom: 0;

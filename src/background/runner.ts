@@ -188,7 +188,11 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
         signal,
         progress(hooks, tabId),
       );
-      const clean = cleanGuide(parsed, settings.maxBubbles);
+      const clean = cleanGuide(
+        parsed,
+        settings.maxBubbles,
+        session.blocks.map((block) => block.id),
+      );
       if (!clean.ok) throw clean.error;
       // 首屏结果只在页面身份与内容版本仍然一致时写回（FR-024）。
       return writeBack(tabId, session, runId, (fresh) => ({
@@ -520,7 +524,12 @@ async function callLearn(
     signal,
     progress(hooks, tabId),
   );
-  const clean = cleanLearn(parsed, mode, learning.current?.kind);
+  const clean = cleanLearn(
+    parsed,
+    mode,
+    learning.current?.kind,
+    session.blocks.map((block) => block.id),
+  );
   if (!clean.ok) throw clean.error;
   return applyLearn(learning, clean.value, input);
 }
