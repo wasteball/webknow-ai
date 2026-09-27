@@ -61,6 +61,21 @@ describe('parseJsonLoose', () => {
     expect(parseJsonLoose('好的，结果如下：{"a":1}')).toEqual({ a: 1 });
     expect(parseJsonLoose('完全不是 JSON')).toBeUndefined();
   });
+
+  it('正文中的 mermaid 代码块不被误当成包裹整个 JSON 的围栏', () => {
+    const response = JSON.stringify({
+      answer: '先说明。\n\n```mermaid\nflowchart TD\n  A[开始] --> B[结束]\n```',
+      source: 'original',
+      citations: ['b_1'],
+      unanswered: [],
+    });
+    expect(parseJsonLoose(response)).toEqual({
+      answer: '先说明。\n\n```mermaid\nflowchart TD\n  A[开始] --> B[结束]\n```',
+      source: 'original',
+      citations: ['b_1'],
+      unanswered: [],
+    });
+  });
 });
 
 describe('chatJson', () => {

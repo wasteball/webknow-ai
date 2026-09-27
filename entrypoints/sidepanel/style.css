@@ -64,9 +64,8 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  /* 模式条吸在视口顶上，和右上角的设置同一行。保持 0：
-     改成正数会在模式条上面留出一条缝，正文从缝里穿过去。 */
-  --topbar-h: 0px;
+  /* 文章标题与设置占一行；模式条在它下面吸顶。 */
+  --topbar-h: 44px;
 
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
@@ -180,26 +179,24 @@ body {
   height: 16px;
 }
 
-/* ── 顶部：设置浮在右上角，不占一整行 ───────────────────────── */
+/* ── 顶部：文章标题与设置共用一行，错误提示独占下一行 ─────── */
 
 .panel-header {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  /* 高度用来给按钮留点击区，负外边距把它从文档流里抽走，页标题才能顶上来。 */
-  height: 44px;
-  margin-bottom: -44px;
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 0;
-  background: transparent;
-  pointer-events: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 44px;
+}
+
+.panel-header .page-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }
 
 .panel-header .icon-btn {
-  pointer-events: auto;
-  background: var(--paper);
+  flex: none;
 }
 
 .brand-seal {
@@ -260,13 +257,17 @@ body {
 }
 
 .context {
-  /* 右侧让开 44px 的设置按钮，长标题不会钻到图标下面。 */
-  padding: 0 48px var(--space-2) 0;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex: none;
+  background: var(--paper);
+  padding-bottom: var(--space-2);
 }
 
-/* ── 模式切换：文字标签 + 一条 2px 下划线，吸在视口顶上 ───────
+/* ── 模式切换：文字标签 + 一条 2px 下划线，吸在标题下方 ───────
    两张大卡片会和下面的话题卡片、回答卡片叠成三层盒子。这里只留文字：
-   选中态靠字色与下划线表达，不靠色块。滚下去后和右上角的设置同一行。 */
+   选中态靠字色与下划线表达，不靠色块。 */
 
 .modes {
   position: sticky;
@@ -274,7 +275,7 @@ body {
   z-index: 2;
   display: flex;
   gap: var(--space-5);
-  padding: 0 48px 0 0;
+  padding: 0;
   margin: 0 0 var(--space-4);
   background: var(--paper);
   border-bottom: 1px solid var(--line-soft);

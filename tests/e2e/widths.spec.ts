@@ -260,6 +260,27 @@ test('划词会出现在提问框上面，针对这段再问', async () => {
   await panel.close();
 });
 
+test('报错时设置与文章标题同排，错误提示不被齿轮遮挡', async () => {
+  const { panel, tabId } = await openPanel(360);
+  await context.serviceWorkers()[0]!.evaluate(async (id) => {
+    const stored = await chrome.storage.session.get(`sess:${id}`);
+    const session = stored[`sess:${id}`] as Record<string, unknown>;
+    session.error = { code: 'BAD_OUTPUT', message: '这次生成的内容没法用，没有采用。可以再试一次。', retryable: true };
+    await chrome.storage.session.set({ [`sess:${id}`]: session });
+  }, tabId);
+  await pushState(panel, tabId);
+
+  const title = await panel.locator('.page-title').boundingBox();
+  const settings = await panel.getByRole('button', { name: '设置' }).boundingBox();
+  const warning = await panel.getByRole('alert').boundingBox();
+  expect(title).not.toBeNull();
+  expect(settings).not.toBeNull();
+  expect(warning).not.toBeNull();
+  expect(Math.abs(title!.y - settings!.y)).toBeLessThan(44);
+  expect(warning!.y).toBeGreaterThanOrEqual(Math.max(title!.y + title!.height, settings!.y + settings!.height));
+  await panel.close();
+});
+
 test('READY 视图在三种宽度下排版正确', async () => {
   test.setTimeout(120_000);
   for (const width of WIDTHS) {
@@ -464,7 +485,7 @@ function isDark(page: Page, selector: string): Promise<boolean> {
   }, selector);
 }
 
-test('设置贴在右上角，页标题顶上来，滚下去也不挡住模式', async () => {
+test('文章标题与设置始终同排，模式条在下面且不被遮挡', async () => {
   test.setTimeout(120_000);
   const { panel } = await openPanel(560);
   await panel.setViewportSize({ width: 560, height: 360 });
@@ -472,8 +493,8 @@ test('设置贴在右上角，页标题顶上来，滚下去也不挡住模式',
   const gear = await panel.getByRole('button', { name: '设置' }).boundingBox();
   const title = await panel.locator('.page-title').boundingBox();
   expect(gear!.y).toBeLessThanOrEqual(1);
-  // 页标题跟设置同一行起笔，不再被一条空的产品名栏压下去。
-  expect(title!.y).toBeLessThanOrEqual(8);
+  expect(title!.y).toBeGreaterThanOrEqual(gear!.y);
+  expect(title!.y + title!.height).toBeLessThanOrEqual(gear!.y + gear!.height);
   expect(title!.x + title!.width).toBeLessThanOrEqual(gear!.x + 1);
   await panel.screenshot({ path: join(OUTPUT_DIR, 'header-top.png') });
 
@@ -491,8 +512,7 @@ test('设置贴在右上角，页标题顶上来，滚下去也不挡住模式',
   const stuckGear = await panel.getByRole('button', { name: '设置' }).boundingBox();
   const tab = await panel.getByRole('tab', { name: '问 AI' }).boundingBox();
   expect(stuckGear!.y).toBeLessThanOrEqual(1);
-  expect(tab!.x + tab!.width).toBeLessThanOrEqual(stuckGear!.x + 1);
-  // 设置浮在模式条上面，但点模式字仍然能切过去。
+  expect(tab!.y).toBeGreaterThanOrEqual(stuckGear!.y + stuckGear!.height);
   await panel.getByRole('tab', { name: 'AI 问' }).click();
   await expect(panel.getByRole('tab', { name: 'AI 问' })).toHaveAttribute('aria-selected', 'true');
   await panel.screenshot({ path: join(OUTPUT_DIR, 'header-stuck.png') });

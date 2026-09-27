@@ -89,6 +89,7 @@ export function App() {
   }, [quoteText]);
 
   const send = useCallback(async (command: Command): Promise<Reply | undefined> => {
+    setNotice(null);
     const reply = await clientRef.current?.send(command);
     if (reply && !reply.ok) setNotice(reply.error.message);
     else if (reply?.message) setNotice(reply.message);
@@ -170,17 +171,21 @@ export function App() {
       className="panel"
       style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
     >
-      <header className="panel-header">
-        <button
-          type="button"
-          className="icon-btn"
-          onClick={() => openSettings()}
-          aria-label="设置"
-          title="设置"
-        >
-          <Icon name="settings" />
-        </button>
-      </header>
+      <div className="context">
+        <header className="panel-header">
+          {state?.pageTitle && <p className="page-title">{state.pageTitle}</p>}
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => openSettings()}
+            aria-label="设置"
+            title="设置"
+          >
+            <Icon name="settings" />
+          </button>
+        </header>
+        <ScopeLine completeness={state?.completeness ?? null} />
+      </div>
 
       {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
       {state?.error && <ErrorBanner error={state.error} />}
@@ -189,13 +194,6 @@ export function App() {
         <p className="hint">正在连接后台…</p>
       ) : (
         <>
-          {(state.pageTitle || state.completeness) && (
-            <div className="context">
-              {state.pageTitle && <p className="page-title">{state.pageTitle}</p>}
-              <ScopeLine completeness={state.completeness} />
-            </div>
-          )}
-
           {phaseText && (
             <p className="phase" role="status" aria-live="polite">
               {phaseText}

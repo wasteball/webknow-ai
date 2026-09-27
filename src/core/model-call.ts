@@ -125,11 +125,11 @@ async function failureHint(
 /** 模型偶尔会包上代码块或前后缀；这里只做容忍解析，不做猜测性修补。 */
 export function parseJsonLoose(text: string): unknown {
   const trimmed = text.trim();
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(trimmed);
-  const candidate = (fenced?.[1] ?? trimmed).trim();
   try {
-    return JSON.parse(candidate);
+    return JSON.parse(trimmed);
   } catch {
+    const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/.exec(trimmed);
+    const candidate = (fenced?.[1] ?? trimmed).trim();
     const start = candidate.indexOf('{');
     const end = candidate.lastIndexOf('}');
     if (start >= 0 && end > start) {
