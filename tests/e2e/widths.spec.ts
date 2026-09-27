@@ -448,9 +448,10 @@ test('深色模式跟随系统配色', async () => {
   const { panel } = await openPanel(560);
   await panel.emulateMedia({ colorScheme: 'dark' });
   await expect(panel.getByText('样本只有三个经过培训的团队')).toBeVisible();
-  // 深色不是把浅色反相：只断言"确实变暗了"，具体色值交给令牌本身。
-  expect(await isDark(panel, 'body')).toBe(true);
-  expect(await isDark(panel, '#mode-panel-qa .chip')).toBe(true);
+  // 卡片背景有 140ms 过渡。配色一切换，getComputedStyle 会读到过渡中的浅色，
+  // 必须等到落定，不能只采样一次。
+  await expect.poll(() => isDark(panel, 'body')).toBe(true);
+  await expect.poll(() => isDark(panel, '#mode-panel-qa .chip')).toBe(true);
   await panel.screenshot({ path: join(OUTPUT_DIR, 'ready-560-dark.png'), fullPage: true });
   await panel.close();
 });

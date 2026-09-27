@@ -34,10 +34,9 @@ jobs:
 
       # 真实 Chromium 里加载打包扩展。主路径用例需要 DEEPSEEK_KEY，未配置时自动跳过；
       # 这里跑的是“扩展能不能启动、侧栏能不能连上后台、CORS 豁免是否成立”。
+      # 失败时把输出尾部写进检查注释：仓库日志接口要管理员权限，注释接口才读得到原因。
       - name: 端到端冒烟
-        run: |
-          pnpm exec playwright install --with-deps chromium
-          pnpm test:e2e
+        run: bash scripts/run-e2e.sh
 
       - name: 校验版本号与 tag 一致
         run: |
