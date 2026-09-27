@@ -376,7 +376,7 @@ function safeOrigin(url: string): string | null {
 
 const PHASE_TEXT: Record<string, string> = {
   PERMISSION_REQUIRED: '点一个，我才读你正在看的这一页。',
-  READY_TO_START: '点一个，我才读这一页。',
+  // 能读的时候，这句话写在入口段落里。状态行再写一遍，页面上会有两句一样的话。
   ANALYZING: '正在读这一页，马上给你摘要。',
   STALE: '换了一页。上一页的内容已经放下。',
   UNSUPPORTED: '这一页暂时读不了。',
