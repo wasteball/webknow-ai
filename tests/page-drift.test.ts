@@ -59,6 +59,8 @@ describe('同一页改了正文再发出去', () => {
     expect(classifyPageDrift(payload, { url: payload.url, fingerprint: 'fp2' })).toBe('edited');
     expect(classifyPageDrift(payload, { url: payload.url, fingerprint: payload.fingerprint })).toBe('same');
     expect(classifyPageDrift(payload, { url: 'https://example.com/b', fingerprint: 'fp2' })).toBe('replaced');
+    expect(classifyPageDrift(payload, { url: 'https://example.com/a?scene=21#rd', fingerprint: 'fp1' })).toBe('same');
+    expect(classifyPageDrift(payload, { url: 'https://example.com/a?scene=21', fingerprint: 'fp2' })).toBe('edited');
     expect(classifyPageDrift(payload, null)).toBe('unreadable');
   });
 
@@ -100,5 +102,49 @@ describe('同一页改了正文再发出去', () => {
     expect(next.state).toBe(begun.session.state);
 
     expect(sessionWithNewExtract(begun.session, { ...payload, url: 'https://example.com/b' })).toBe('replaced');
+
+    const samePage = sessionWithNewExtract(begun.session, { ...payload, url: 'https://example.com/a?scene=21#rd' });
+    expect(samePage).not.toBe('replaced');
+    if (samePage !== 'replaced') expect(samePage.chat).toEqual([turn]);
+  });
+
+  it('同一批图已经读过，地址参数变了也不再重读', () => {
+    const anchor = payload.blocks[0]!.anchor;
+    const picture = {
+      id: 'img_0',
+      url: 'https://cdn.example/a.jpg?token=1',
+      alt: '',
+      anchor,
+      afterBlockId: 'b_0',
+    };
+    const image = {
+      id: 'img_0',
+      role: 'image' as const,
+      content: '图上读到（可能有误）：一张示意图',
+      headingPath: [],
+      anchor,
+    };
+    const session = {
+      ...createSession(1, {
+        ...payload,
+        pictures: [picture],
+        completeness: { ...payload.completeness, images: { status: 'unavailable' as const, found: 1, captured: 0 } },
+      }),
+      imagesAttached: true,
+      blocks: [...payload.blocks, image],
+      chat: [turn],
+    };
+    const next = sessionWithNewExtract(session, {
+      ...payload,
+      url: 'https://example.com/a?scene=21',
+      fingerprint: 'fp2',
+      pictures: [{ ...picture, url: 'https://cdn.example/a.jpg?token=2' }],
+      completeness: { ...payload.completeness, images: { status: 'unavailable' as const, found: 1, captured: 0 } },
+    });
+    expect(next).not.toBe('replaced');
+    if (next === 'replaced') return;
+    expect(next.imagesAttached).toBe(true);
+    expect(next.chat).toEqual([turn]);
+    expect(next.blocks.some((block) => block.role === 'image' && block.content.includes('示意图'))).toBe(true);
   });
 });

@@ -8,6 +8,7 @@ import { MODEL_PROVIDERS, findProvider } from '../core/model-providers';
 import { effectiveSettings } from '../core/settings';
 import { validateCustomSkill } from '../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS, searchWithProvider } from '../core/search/registry';
+import { sameDocument } from '../core/page-drift';
 import { prepareQuote } from '../core/quote';
 import { createSession, emptySession, markStale } from '../core/session';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
@@ -593,7 +594,15 @@ async function startSession(tabId: number): Promise<Reply> {
 /** 内容脚本上报的可检测页面变化：旧结果立即陈旧，且不再作为当前页上下文（FR-005）。 */
 export async function onPageChanged(tabId: number, url: string): Promise<void> {
   const session = await getSession(tabId);
-  if (!session || session.url === url) return;
+  if (!session) return;
+  // 微信会给同一篇文章补上 scene、锚点。那不是换页，不能把已经说过的话清掉。
+  if (sameDocument(session.url, url)) {
+    if (session.url !== url) {
+      await putSession({ ...session, url, updatedAt: Date.now() });
+      await pushState(tabId);
+    }
+    return;
+  }
   if (session.run) abortRun(tabId);
   await putSession(markStale(session, url));
   await pushState(tabId);

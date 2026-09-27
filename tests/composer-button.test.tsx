@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { PanelState } from '../src/core/protocol';
@@ -58,6 +58,32 @@ function openLearning(): LearningState {
     log: [{ role: 'question', text: '这句话在说什么', at: 1 }],
   };
 }
+
+describe('发出去的话立刻出现', () => {
+  it('问 AI 一点发送，问题就出现在对话里，输入框马上空出来，后面打的字不会被回答清掉', async () => {
+    let finish: (reply: { ok: true }) => void = () => {};
+    const send = vi.fn(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<Reading state={panel()} send={send} />);
+    const box = screen.getByPlaceholderText('有什么不懂的？') as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: '这句话什么意思' } });
+    fireEvent.submit(box.closest('form')!);
+
+    expect(document.querySelector('.bubble.user')?.textContent).toContain('这句话什么意思');
+    expect(box.value).toBe('');
+    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 1, question: '这句话什么意思', search: false });
+
+    fireEvent.change(box, { target: { value: '下一句' } });
+    await act(async () => {
+      finish({ ok: true });
+    });
+    expect(box.value).toBe('下一句');
+  });
+});
 
 describe('对话里的发送和停止', () => {
   it('问 AI 生成时正文只有正在写的字，停止在输入框里，和发送是同一个位置', () => {

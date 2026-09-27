@@ -5,6 +5,8 @@ const sendMessage = vi.fn(() => Promise.resolve());
 
 vi.stubGlobal('browser', { runtime: { sendMessage } });
 
+import { unlockPageSelection } from '../src/content/select-unlock';
+
 const { startQuoteAsk } = await import('../src/content/select');
 
 function selectParagraph(): void {
@@ -55,6 +57,9 @@ describe('划词提问按钮', () => {
     selectParagraph();
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     expect(quoteButton()?.textContent).toBe('问这句');
+    const host = document.getElementById('wka-quote-ask');
+    // 选区底边在 64，按钮贴在下面，不和页面自己的菜单抢同一行。
+    expect(host?.style.top).toBe('72px');
   });
 
   it('点问这句在 mousedown 就发出划词；随后的 mouseup 不能把这次点击吃掉', () => {
@@ -92,6 +97,52 @@ describe('划词提问按钮', () => {
 
   it('给正文加上可选中样式，压过页面的禁止选择', () => {
     expect(document.getElementById('wka-quote-select')?.textContent).toContain('user-select:text');
+  });
+
+  it('页面在松开前清掉选区，仍然用刚才划到的原文给出问这句', () => {
+    window.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    selectParagraph();
+    document.dispatchEvent(new Event('selectionchange'));
+    window.getSelection()?.removeAllRanges();
+    window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    expect(quoteButton()?.textContent).toBe('问这句');
+  });
+
+  it('页面在文档捕获阶段拦住按下，问这句仍然发得出去', () => {
+    selectParagraph();
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    document.addEventListener('mousedown', (event) => event.stopPropagation(), true);
+    document.getElementById('wka-quote-ask')?.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+    );
+    expect(sendMessage).toHaveBeenCalledWith({
+      type: 'quoteSelected',
+      text: expect.stringContaining('公交线路调整方案'),
+    });
+  });
+
+  it('页面用 selectstart 取消选区时，捕获阶段先截断，默认选区还能发生', () => {
+    document.body.innerHTML = '<div id="js_content"><p>市政府今天公布了新的公交线路调整方案。</p></div>';
+    const scope = globalThis as typeof globalThis & { __wkaSelectUnlock?: boolean };
+    delete scope.__wkaSelectUnlock;
+    unlockPageSelection();
+    const block = vi.fn((event: Event) => event.preventDefault());
+    document.getElementById('js_content')?.addEventListener('selectstart', block);
+    const event = new Event('selectstart', { bubbles: true, cancelable: true });
+    document.getElementById('js_content')?.dispatchEvent(event);
+    expect(block).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('微信正文上的禁止选择，划的时候改成可以选', () => {
+    document.body.innerHTML =
+      '<div id="js_content" style="user-select: none"><p>市政府今天公布了新的公交线路调整方案，从下周一开始试行。</p></div>';
+    selectParagraph();
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    const root = document.getElementById('js_content') as HTMLElement;
+    expect(root.style.getPropertyValue('user-select')).toBe('text');
+    expect(root.style.getPropertyPriority('user-select')).toBe('important');
   });
 
   it('页面在冒泡阶段清掉选区之前，捕获阶段已经看见这段话', () => {

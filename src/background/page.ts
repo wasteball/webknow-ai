@@ -4,6 +4,7 @@ import type { BlocksPayload, DomAnchor, JumpOutcome } from '../core/blocks';
 import { appError, fromThrown, isAppError, type AppError } from '../core/errors';
 import { LIMITS } from '../core/limits';
 import type { ContentReply, ContentRequest } from '../core/protocol';
+import { unlockPageSelection } from '../content/select-unlock';
 
 /**
  * 与内容脚本的桥。页面内容只在这里进出扩展，且只在用户明确启动之后（FR-005）。
@@ -54,8 +55,22 @@ function unwrap<T>(reply: ContentReply): T {
  * 提取正文；这一步之后才第一次产生可以外发的正文（FR-006）。
  * 只在用户点了入口，或在同一页发出问题、而正文已经改过时调用。换页本身不读。
  */
+/** 页面主世界放开选区。插不进去时内容脚本仍会显示「问这句」。 */
+async function allowPageSelection(tabId: number): Promise<void> {
+  try {
+    await browser.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: unlockPageSelection,
+    });
+  } catch {
+    // 这一页不允许进主世界。划词仍走内容脚本。
+  }
+}
+
 export async function extractPage(tabId: number): Promise<BlocksPayload> {
   await ensureInjected(tabId);
+  await allowPageSelection(tabId);
   const payload = unwrap<BlocksPayload>(await send(tabId, { type: 'extract' }));
   if (!payload?.blocks?.length) {
     throw appError('EXTRACT_FAILED', '当前页面没有可用的正文块。', false);
@@ -65,6 +80,7 @@ export async function extractPage(tabId: number): Promise<BlocksPayload> {
 
 /** 让内容脚本开始上报 SPA 路由变化（FR-005）。 */
 export async function watchPage(tabId: number): Promise<void> {
+  await allowPageSelection(tabId);
   await send(tabId, { type: 'watch' });
 }
 

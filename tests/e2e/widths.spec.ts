@@ -466,19 +466,38 @@ function isDark(page: Page, selector: string): Promise<boolean> {
   }, selector);
 }
 
-test('吸顶的两条不重叠也不漏缝', async () => {
+test('设置贴在右上角，页标题顶上来，滚下去也不挡住模式', async () => {
   test.setTimeout(120_000);
   const { panel } = await openPanel(560);
-  // 压低视口逼出滚动，再滚下去让两条都进入吸住的状态，然后量接缝。
   await panel.setViewportSize({ width: 560, height: 360 });
-  await panel.evaluate(() => window.scrollTo(0, 600));
-  expect(await panel.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 
-  const header = await panel.locator('.panel-header').boundingBox();
-  const modes = await panel.locator('.modes').boundingBox();
-  expect(header!.y).toBe(0);
-  expect(modes!.y).toBeGreaterThanOrEqual(header!.y + header!.height - 1);
-  expect(modes!.y).toBeLessThanOrEqual(header!.y + header!.height + 1);
+  const gear = await panel.getByRole('button', { name: '设置' }).boundingBox();
+  const title = await panel.locator('.page-title').boundingBox();
+  expect(gear!.y).toBeLessThanOrEqual(1);
+  // 页标题跟设置同一行起笔，不再被一条空的产品名栏压下去。
+  expect(title!.y).toBeLessThanOrEqual(8);
+  expect(title!.x + title!.width).toBeLessThanOrEqual(gear!.x + 1);
+  await panel.screenshot({ path: join(OUTPUT_DIR, 'header-top.png') });
+
+  await panel.locator('.chat').evaluate((node) => {
+    node.scrollTop = node.scrollHeight;
+  });
+  const chip = panel.getByRole('button', { name: '三个团队的试点为什么不能代表其他城市？' });
+  const chipBox = await chip.boundingBox();
+  const dockBox = await panel.locator('#mode-panel-qa .dock').boundingBox();
+  expect(chipBox).toBeTruthy();
+  expect(dockBox).toBeTruthy();
+  expect(chipBox!.y + chipBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
+  expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(360 + 1);
+
+  const stuckGear = await panel.getByRole('button', { name: '设置' }).boundingBox();
+  const tab = await panel.getByRole('tab', { name: '问 AI' }).boundingBox();
+  expect(stuckGear!.y).toBeLessThanOrEqual(1);
+  expect(tab!.x + tab!.width).toBeLessThanOrEqual(stuckGear!.x + 1);
+  // 设置浮在模式条上面，但点模式字仍然能切过去。
+  await panel.getByRole('tab', { name: 'AI 问' }).click();
+  await expect(panel.getByRole('tab', { name: 'AI 问' })).toHaveAttribute('aria-selected', 'true');
+  await panel.screenshot({ path: join(OUTPUT_DIR, 'header-stuck.png') });
   await panel.close();
 });
 

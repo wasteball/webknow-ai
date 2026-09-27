@@ -32,6 +32,20 @@ function install(html: string, url = 'https://example.com/a') {
 describe('extractDocument', () => {
   beforeEach(() => install(article));
 
+  it('查询参数和锚点变了，正文指纹不变', () => {
+    const first = currentIdentity().fingerprint;
+    Object.defineProperty(window, 'location', {
+      value: new URL('https://example.com/a?scene=21#rd'),
+      configurable: true,
+    });
+    expect(currentIdentity().fingerprint).toBe(first);
+    Object.defineProperty(window, 'location', {
+      value: new URL('https://example.com/b'),
+      configurable: true,
+    });
+    expect(currentIdentity().fingerprint).not.toBe(first);
+  });
+
   it('提取正文块并披露未解析内容', () => {
     const payload = extractDocument();
     expect(payload.blocks.some((block) => block.role === 'paragraph')).toBe(true);

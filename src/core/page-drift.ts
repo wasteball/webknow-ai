@@ -1,6 +1,36 @@
-import type { BlocksPayload } from './blocks';
+import type { BlocksPayload, EvidenceBlock, PictureRef } from './blocks';
 import { appError, type AppError } from './errors';
 import type { PageSession } from './session';
+import { applyImageReadings } from './vision';
+
+/** 同一篇文章的地址。查询参数和锚点会变，路径才是另一页。 */
+export function pageKey(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return url;
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url;
+  }
+}
+
+export function sameDocument(left: string, right: string): boolean {
+  return pageKey(left) === pageKey(right);
+}
+
+function assetKey(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url;
+  }
+}
+
+function samePictures(left?: PictureRef[], right?: PictureRef[]): boolean {
+  const key = (pictures?: PictureRef[]) => (pictures ?? []).map((picture) => assetKey(picture.url)).join('\n');
+  return key(left) === key(right);
+}
 
 /**
  * 发出去之后，这一页相对开始读的时候变成了什么样。
@@ -18,7 +48,7 @@ export function classifyPageDrift(
   live: { url: string; fingerprint: string } | null,
 ): PageDrift {
   if (!live?.url || typeof live.fingerprint !== 'string') return 'unreadable';
-  if (live.url !== session.url) return 'replaced';
+  if (!sameDocument(live.url, session.url)) return 'replaced';
   if (live.fingerprint !== session.fingerprint) return 'edited';
   return 'same';
 }
@@ -44,16 +74,41 @@ export function writeBackError(plan: WriteBackPlan): AppError | null {
  * 同一地址上换上刚读到的正文。已经说过的话和正在进行的请求都留着。
  * 地址变了则不是这一页的改稿。
  */
-export function sessionWithNewExtract(session: PageSession, page: BlocksPayload): PageSession | 'replaced' {
-  if (page.url !== session.url) return 'replaced';
-  return {
-    ...session,
-    title: page.title,
-    fingerprint: page.fingerprint,
+/**
+ * 图已经读过、地址只是换了防盗链参数时，把转述留在新正文里。
+ * 否则每次追问都会把同一批图再读一遍，对话像是卡住。
+ */
+function keepReadImages(session: PageSession, page: BlocksPayload): {
+  blocks: EvidenceBlock[];
+  completeness: BlocksPayload['completeness'];
+  imagesAttached: boolean;
+} {
+  const unread = {
     blocks: page.blocks,
     completeness: page.completeness,
-    pictures: page.pictures,
     imagesAttached: !page.pictures?.length,
+  };
+  if (!session.imagesAttached || !samePictures(session.pictures, page.pictures)) return unread;
+  const readings = session.blocks
+    .filter((block) => block.role === 'image')
+    .map((block) => ({ id: block.id, text: block.content }));
+  if (!readings.length) return { ...unread, imagesAttached: true };
+  const applied = applyImageReadings(page.blocks, page.pictures ?? [], readings, page.completeness);
+  return { blocks: applied.blocks, completeness: applied.completeness, imagesAttached: true };
+}
+
+export function sessionWithNewExtract(session: PageSession, page: BlocksPayload): PageSession | 'replaced' {
+  if (!sameDocument(page.url, session.url)) return 'replaced';
+  const kept = keepReadImages(session, page);
+  return {
+    ...session,
+    url: page.url,
+    title: page.title,
+    fingerprint: page.fingerprint,
+    blocks: kept.blocks,
+    completeness: kept.completeness,
+    pictures: page.pictures,
+    imagesAttached: kept.imagesAttached,
     updatedAt: Date.now(),
   };
 }

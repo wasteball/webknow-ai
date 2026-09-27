@@ -8,7 +8,7 @@ import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
 import { Busy, Drafting, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
-import { BrandMark, Icon } from './components/Icon';
+import { Icon } from './components/Icon';
 import { outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
 import { needsPageHost, type PageEntryId } from './page-entry';
 import { PageEntry } from './components/PageEntry';
@@ -171,13 +171,6 @@ export function App() {
       style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
     >
       <header className="panel-header">
-        <div className="brand">
-          <BrandMark />
-          <div className="brand-copy">
-            <h1>知伴</h1>
-            <p className="brand-sub">陪你读这一页</p>
-          </div>
-        </div>
         <button
           type="button"
           className="icon-btn"

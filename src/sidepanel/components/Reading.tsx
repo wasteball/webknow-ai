@@ -22,6 +22,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const [searchOn, setSearchOn] = useState(false);
   const [hidingSuggests, setHidingSuggests] = useState(false);
   const [hiddenAtTurns, setHiddenAtTurns] = useState(0);
+  const [pending, setPending] = useState<{ question: string; quoteText: string | null; at: number } | null>(null);
   const tabId = state.tabId;
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.busy?.kind === 'answer';
@@ -39,26 +40,35 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
     askedQuestions: state.chat.map((turn) => turn.question),
   });
 
+  const quote = state.quote;
+  const outgoing = pending && pending.at === state.chat.length ? pending : null;
+
   // 只在对话真的往下走时跟到底部。挂载时不滚：这一栏开头是摘要与话题，
   // 一进来就被推到最后一轮问答上，等于把最重要的内容藏起来了。
-  const seen = useRef<{ turns: number; busy: boolean; next: number } | null>(null);
+  // 刚发出去、回答还没回来时也要滚到这句，不能等回答写上才看见自己说的话。
+  const seen = useRef<{ turns: number; busy: boolean; next: number; pending: string } | null>(null);
+  const pendingQuestion = outgoing?.question ?? '';
   useEffect(() => {
     const next = row.next.length;
     if (!seen.current) {
-      seen.current = { turns: state.chat.length, busy, next };
+      seen.current = { turns: state.chat.length, busy, next, pending: pendingQuestion };
       return;
     }
-    if (state.chat.length > seen.current.turns || (busy && !seen.current.busy) || next > seen.current.next) {
-      endRef.current?.scrollIntoView({ block: 'end' });
+    if (
+      state.chat.length > seen.current.turns ||
+      (busy && !seen.current.busy) ||
+      next > seen.current.next ||
+      (pendingQuestion !== '' && pendingQuestion !== seen.current.pending)
+    ) {
+      endRef.current?.scrollIntoView?.({ block: 'end' });
     }
-    seen.current = { turns: state.chat.length, busy, next };
-  }, [state.chat.length, busy, row.next.length]);
+    seen.current = { turns: state.chat.length, busy, next, pending: pendingQuestion };
+  }, [state.chat.length, busy, row.next.length, pendingQuestion]);
 
   useEffect(() => {
     setHidingSuggests(false);
   }, [state.chat.length]);
 
-  const quote = state.quote;
   const concealSuggests = () => {
     setHiddenAtTurns(state.chat.length);
     setHidingSuggests(true);
@@ -66,13 +76,19 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const stop = () => {
     if (tabId) void send({ type: 'stop', tabId });
   };
-  const ask = async (question: string) => {
+  const sendQuestion = async (question: string) => {
     if (!tabId || !question.trim()) return;
+    const text = question.trim();
     concealSuggests();
-    const reply = await send({ type: 'ask', tabId, question, search: searchEnabled && searchOn });
-    if (reply?.ok) setDraft('');
-    else setHidingSuggests(false);
+    setPending({ question: text, quoteText: quote?.text ?? null, at: state.chat.length });
+    setDraft((current) => (current.trim() === text ? '' : current));
+    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && searchOn });
+    if (reply?.ok) return;
+    setPending((current) => (current?.question === text ? null : current));
+    setHidingSuggests(false);
+    setDraft((current) => (current.trim() ? current : text));
   };
+  const ask = (question: string) => void sendQuestion(question);
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!shouldSubmitComposer({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode })) {
@@ -82,19 +98,17 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
     if (!busy) void ask(draft);
   };
 
-  const sendTopic = async (bubbleId: string) => {
+  const sendTopic = async (bubbleId: string, question: string) => {
     if (!tabId) return;
     concealSuggests();
+    setPending({ question, quoteText: null, at: state.chat.length });
     const reply = await send({ type: 'explore', tabId, bubbleId });
-    if (!reply?.ok) setHidingSuggests(false);
+    if (reply?.ok) return;
+    setPending((current) => (current?.question === question ? null : current));
+    setHidingSuggests(false);
   };
 
-  const sendFollowUp = async (question: string) => {
-    if (!tabId) return;
-    concealSuggests();
-    const reply = await send({ type: 'ask', tabId, question, search: searchEnabled && searchOn });
-    if (!reply?.ok) setHidingSuggests(false);
-  };
+  const sendFollowUp = (question: string) => void sendQuestion(question);
 
   return (
     <>
@@ -108,7 +122,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
                 lead="想接着弄懂哪一点"
                 items={row.openers}
                 disabled={busy}
-                onPick={(item) => void sendTopic(item.id)}
+                onPick={(item) => void sendTopic(item.id, item.question)}
               />
             </div>
           </article>
@@ -123,9 +137,17 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
             items={row.next}
             disabled={busy}
             onPick={(item) =>
-              row.nextFrom === 'opener' ? void sendTopic(item.id) : void sendFollowUp(item.question)
+              row.nextFrom === 'opener' ? void sendTopic(item.id, item.question) : void sendFollowUp(item.question)
             }
           />
+        )}
+        {outgoing && (
+          <article className="msg user">
+            <div className="bubble user">
+              {outgoing.quoteText && <p className="quote-in-bubble">{outgoing.quoteText}</p>}
+              {outgoing.question}
+            </div>
+          </article>
         )}
         {busy &&
           (state.busy?.draft || state.busy?.reasoning ? (

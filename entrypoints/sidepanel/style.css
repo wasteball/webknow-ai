@@ -6,7 +6,7 @@
  * 2. 只有「你说的话」有气泡；AI 说的话是正文，不装在盒子里——
  *    它是这一栏的主体内容，给它整幅宽度读起来才像读文章。
  * 3. 徽章只在异常时出现：来源是原文、答得不错这类默认情况不标。
- * 4. 结构常驻、内容滚动：品牌头与模式切换吸顶，输入区吸底。
+ * 4. 结构常驻、内容滚动：设置与模式切换吸顶，输入区吸底。
  * 5. 动效只回应动作。无障碍：焦点环、对比度、reduced-motion、深浅色。
  */
 
@@ -64,9 +64,9 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  /* 品牌头高度。下面的模式切换吸在它下沿，两者必须严丝合缝——
-     中间漏一条缝，正文会从缝里穿过去。改动这里只需改这一个数。 */
-  --topbar-h: 56px;
+  /* 模式条吸在视口顶上，和右上角的设置同一行。保持 0：
+     改成正数会在模式条上面留出一条缝，正文从缝里穿过去。 */
+  --topbar-h: 0px;
 
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
@@ -180,27 +180,26 @@ body {
   height: 16px;
 }
 
-/* ── 顶部：常驻，长对话回滚时仍知道在读哪一页 ───────────────── */
+/* ── 顶部：设置浮在右上角，不占一整行 ───────────────────────── */
 
 .panel-header {
   position: sticky;
   top: 0;
   z-index: 3;
-  height: var(--topbar-h);
+  /* 高度用来给按钮留点击区，负外边距把它从文档流里抽走，页标题才能顶上来。 */
+  height: 44px;
+  margin-bottom: -44px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
+  align-items: flex-start;
+  justify-content: flex-end;
   padding: 0;
-  background: var(--paper);
-  border-bottom: 1px solid var(--line);
+  background: transparent;
+  pointer-events: none;
 }
 
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
+.panel-header .icon-btn {
+  pointer-events: auto;
+  background: var(--paper);
 }
 
 .brand-seal {
@@ -210,24 +209,12 @@ body {
   border-radius: 8px;
 }
 
-.brand-copy {
-  min-width: 0;
-}
-
-.panel-header h1,
 .settings-brand {
   margin: 0;
   font-size: 18px;
   font-weight: 750;
   letter-spacing: 0.04em;
   color: var(--ink);
-}
-
-.brand-sub {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ink-3);
 }
 
 /* 纯图标按钮（"设置"）：正方形、给足点击面积，名字靠 aria-label + title。 */
@@ -273,12 +260,13 @@ body {
 }
 
 .context {
-  padding: var(--space-3) 0 var(--space-2);
+  /* 右侧让开 44px 的设置按钮，长标题不会钻到图标下面。 */
+  padding: 0 48px var(--space-2) 0;
 }
 
-/* ── 模式切换：文字标签 + 一条 2px 下划线，吸在品牌头下面 ───────
+/* ── 模式切换：文字标签 + 一条 2px 下划线，吸在视口顶上 ───────
    两张大卡片会和下面的话题卡片、回答卡片叠成三层盒子。这里只留文字：
-   选中态靠字色与下划线表达，不靠色块。 */
+   选中态靠字色与下划线表达，不靠色块。滚下去后和右上角的设置同一行。 */
 
 .modes {
   position: sticky;
@@ -286,7 +274,7 @@ body {
   z-index: 2;
   display: flex;
   gap: var(--space-5);
-  padding: 0;
+  padding: 0 48px 0 0;
   margin: 0 0 var(--space-4);
   background: var(--paper);
   border-bottom: 1px solid var(--line-soft);
@@ -445,6 +433,7 @@ details.section summary {
    和下面的 h2 明显区分开，否则读起来像同一句话说两遍。 */
 .phase {
   align-self: flex-start;
+  max-width: calc(100% - 48px);
   margin-top: var(--space-2);
   padding: 2px var(--space-2);
   background: var(--paper-3);
@@ -460,8 +449,53 @@ details.section summary {
   display: flex;
   flex-direction: column;
   padding-top: var(--space-2);
-  /* 吸底输入区盖住的是这段空白，不是最后一排追问。 */
-  padding-bottom: 10rem;
+  padding-bottom: var(--space-4);
+}
+
+/* 伴读时只有对话区滚动，输入区钉在下面，追问不会被底栏盖住。
+   高度必须从 html 接到 #root，否则 100% 算成 auto，底栏被裁到视口外面。 */
+html:has(body.sidepanel),
+body.sidepanel,
+body.sidepanel #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body.sidepanel #root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+body.sidepanel .panel {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+body.sidepanel .panel:has([role='tabpanel']) {
+  overflow: hidden;
+}
+
+body.sidepanel [role='tabpanel'] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body.sidepanel .chat {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+body.sidepanel .dock {
+  position: static;
+  flex: none;
+  margin-top: 0;
+  max-height: 46%;
+  overflow: auto;
 }
 
 .msg {
@@ -774,6 +808,8 @@ details.section summary {
 
 .quote-chip blockquote {
   margin: 0;
+  max-height: 4.65em;
+  overflow: auto;
 }
 
 .quote-text {
@@ -806,9 +842,8 @@ details.section summary {
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* 吸底输入区会盖住滚到最底的那一排。留出它的高度，联想问题才露得出来。 */
 .chat-end {
-  scroll-margin-bottom: 11rem;
+  scroll-margin-bottom: var(--space-3);
 }
 
 .dock {
@@ -1520,7 +1555,7 @@ button.link:hover:not(:disabled) {
 .banner {
   font-size: 13px;
   line-height: 1.7;
-  padding: var(--space-3);
+  padding: var(--space-3) 48px var(--space-3) var(--space-3);
   border-radius: var(--radius-sm);
   background: var(--paper-2);
   color: var(--ink-2);

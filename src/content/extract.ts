@@ -14,6 +14,7 @@ import type {
 import { appError } from '../core/errors';
 import { LIMITS } from '../core/limits';
 import { contentImageUrl, isContentImage } from './pictures';
+import { pageKey } from '../core/page-drift';
 import { cssPath, escapeCss, fingerprint, normalizeText } from './text';
 import {
   CANDIDATE_SELECTOR,
@@ -242,12 +243,11 @@ function readPieces(): ReadPieces {
 /** 同一地址下正文或图片变了，这个指纹就变。转述文字不进指纹，免得每次读图都像改过稿。 */
 export function documentFingerprint(): string {
   const pieces = readPieces();
+  const key = pageKey(location.href);
   if (!pieces.texts.length && !pieces.imageUrls.length) {
-    return fingerprint(`${location.href}\n${document.title}\nunreadable`);
+    return fingerprint(`${key}\n${document.title}\nunreadable`);
   }
-  return fingerprint(
-    `${location.href}\n${document.title}\n${pieces.texts.join('\n')}\n${pieces.imageUrls.join('\n')}`,
-  );
+  return fingerprint(`${key}\n${document.title}\n${pieces.texts.join('\n')}\n${pieces.imageUrls.join('\n')}`);
 }
 
 function coverage(status: CoverageStatus, found: number, captured: number): Coverage {
