@@ -102,22 +102,21 @@ test('首屏摘要与话题', async () => {
   await panel.reload();
 
   await panel.getByRole('button', { name: /开始伴读/ }).click();
-  await expect(panel.getByText('这篇文章讲了什么')).toBeVisible({ timeout: 60_000 });
-  await expect(panel.locator('.chip').first()).toBeVisible();
+  await expect(panel.locator('.chip').first()).toBeVisible({ timeout: 60_000 });
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-02-guide.png'), fullPage: true });
 
   // 「AI 问」：真答一轮再截图。只截第一题的话，画面大半是空白，
   // 看不出"一次一个问题"是怎么一步步推进的——那正是翠色时间线要表达的东西。
   await panel.getByRole('tab', { name: /^AI 问$/ }).click();
   await panel.getByRole('button', { name: '这篇文章的核心内容' }).click();
-  await expect(panel.locator('.entry-question').first()).toBeVisible({ timeout: 60_000 });
+  await expect(panel.locator('.msg.ai').first()).toBeVisible({ timeout: 60_000 });
 
   await panel.getByLabel('用自己的话回答').fill(
     '新方案在这个试点里平均用了八十分钟，比原方案的一百分钟少；但作者提醒只有三个受过培训的团队，不能推广。',
   );
   await panel.getByRole('button', { name: '回答' }).click();
-  await expect(panel.locator('.entry-feedback').first()).toBeVisible({ timeout: 60_000 });
-  await expect(panel.locator('.entry-question').nth(1)).toBeVisible({ timeout: 60_000 });
+  await expect(panel.locator('.msg.user').first()).toBeVisible({ timeout: 60_000 });
+  await expect(panel.locator('.msg.ai').nth(1)).toBeVisible({ timeout: 60_000 });
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-03-learning.png'), fullPage: true });
   await article.close();
   await panel.close();

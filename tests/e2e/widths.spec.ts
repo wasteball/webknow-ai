@@ -256,8 +256,8 @@ test('划词会出现在提问框上面，针对这段再问', async () => {
     [tabId] as const,
   );
   await pushState(panel, tabId);
-  await expect(panel.getByText('针对这段原文')).toBeVisible();
   await expect(panel.getByRole('button', { name: /新方案把平均处理时间/ })).toBeVisible();
+  await expect(panel.getByRole('button', { name: '不用这段' })).toBeVisible();
   await expect(panel.getByPlaceholder(/针对这段/)).toBeVisible();
   await panel.close();
 });
@@ -266,7 +266,7 @@ test('READY 视图在三种宽度下排版正确', async () => {
   test.setTimeout(120_000);
   for (const width of WIDTHS) {
     const { panel } = await openPanel(width);
-    await expect(panel.getByText('这篇文章讲了什么')).toBeVisible();
+    await expect(panel.getByText('样本只有三个经过培训的团队')).toBeVisible();
     await expect(panel.locator('.chip').first()).toBeVisible();
     // 一进来就停在顶部：摘要与话题是这一栏最重要的一段，不该被推到屏幕外。
     expect(await panel.evaluate(() => window.scrollY)).toBe(0);
@@ -281,7 +281,7 @@ test('点开一张卡片后开场卡全部收起，联想问题只跟在最新�
   // 有对话时，开场那三张不再出现；最新回答后面才是联想。
   await expect(panel.getByRole('button', { name: BUBBLES[0]!.question })).toBeHidden();
   await expect(panel.locator('.chip:visible')).toHaveCount(2);
-  await expect(panel.getByText('可以接着问：')).toBeVisible();
+  await expect(panel.getByText('可以接着问')).toBeVisible();
 
   await context.serviceWorkers()[0]!.evaluate(async (id) => {
     const stored = await chrome.storage.session.get(`sess:${id}`);
@@ -291,7 +291,7 @@ test('点开一张卡片后开场卡全部收起，联想问题只跟在最新�
   }, tabId);
   await pushState(panel, tabId);
   await expect(panel.locator('.chip:visible')).toHaveCount(3);
-  await expect(panel.getByText('想接着弄懂，点一张发出去：')).toBeVisible();
+  await expect(panel.getByText('想接着弄懂哪一点')).toBeVisible();
   await panel.close();
 });
 
@@ -309,14 +309,14 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
     [tabId, LEARNING] as const,
   );
   await pushState(_panel, tabId);
-  await expect(_panel.locator('.entry-question').first()).toBeVisible();
+  await expect(_panel.getByText('这项研究里，新方案比原方案快了多少？')).toBeVisible();
   await expect(_panel.getByRole('button', { name: '我不知道' })).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-720.png'), fullPage: true });
 
   // F4 的核心场景：学习进行中切回伴读，摘要、对话与输入都还在，学习不被打断。
   await _panel.getByRole('tab', { name: /^问 AI$/ }).click();
   await expect(_panel.getByRole('button', { name: '发送' })).toBeVisible();
-  await expect(_panel.getByText('这篇文章讲了什么')).toBeVisible();
+  await expect(_panel.getByText('样本只有三个经过培训的团队')).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-qa-tab-720.png'), fullPage: true });
 
   // 空闲形态：收束后回到 READY，「AI 问」面板显示新一轮的卡片。已经发出去的方向不再出现。
@@ -331,7 +331,8 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
   await pushState(_panel, tabId);
   // 视图尊重用户所在的位置：收束后不会强行切走，需要自己回到「AI 问」。
   await _panel.getByRole('tab', { name: /^AI 问$/ }).click();
-  await expect(_panel.getByRole('button', { name: '再来一轮' })).toBeVisible();
+  await expect(_panel.getByText('换一个点再来一轮')).toBeVisible();
+  await expect(_panel.getByRole('button', { name: '开始' })).toBeVisible();
   await expect(_panel.getByRole('button', { name: '这篇文章的核心内容' })).toBeHidden();
   await expect(_panel.getByRole('button', { name: BUBBLES[0]!.question })).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-closed-720.png'), fullPage: true });
@@ -356,7 +357,7 @@ test('选择题轮在宽面板下可交互', async () => {
   await expect(quizPanel.locator('.quiz-question').first()).toBeVisible();
 
   // 勾选一个选项后提交按钮才可用。
-  const submit = quizPanel.getByRole('button', { name: '提交答案' });
+  const submit = quizPanel.getByRole('button', { name: '提交' });
   await expect(submit).toBeDisabled();
   await quizPanel.getByRole('radio').first().check();
   await expect(submit).toBeEnabled();
@@ -446,10 +447,10 @@ test('深色模式跟随系统配色', async () => {
   test.setTimeout(120_000);
   const { panel } = await openPanel(560);
   await panel.emulateMedia({ colorScheme: 'dark' });
-  await expect(panel.getByText('这篇文章讲了什么')).toBeVisible();
+  await expect(panel.getByText('样本只有三个经过培训的团队')).toBeVisible();
   // 深色不是把浅色反相：只断言"确实变暗了"，具体色值交给令牌本身。
   expect(await isDark(panel, 'body')).toBe(true);
-  expect(await isDark(panel, '.bubble-guide')).toBe(true);
+  expect(await isDark(panel, '#mode-panel-qa .chip')).toBe(true);
   await panel.screenshot({ path: join(OUTPUT_DIR, 'ready-560-dark.png'), fullPage: true });
   await panel.close();
 });
@@ -484,7 +485,7 @@ test('三种宽度、两个模式下都不出现横向溢出', async () => {
   test.setTimeout(180_000);
   for (const width of WIDTHS) {
     const { panel, tabId } = await openPanel(width);
-    await expect(panel.getByText('这篇文章讲了什么')).toBeVisible();
+    await expect(panel.getByText('样本只有三个经过培训的团队')).toBeVisible();
     // 侧栏宽度是用户拖出来的，任何宽度都不能出现横向滚动条。
     expect(await overflowPx(panel)).toBe(0);
 
@@ -500,7 +501,7 @@ test('三种宽度、两个模式下都不出现横向溢出', async () => {
     );
     await pushState(panel, tabId);
     await panel.getByRole('tab', { name: /AI 问/ }).click();
-    await expect(panel.locator('.timeline').first()).toBeVisible();
+    await expect(panel.locator('.learn-head').first()).toBeVisible();
     expect(await overflowPx(panel)).toBe(0);
 
     // 长正文与长问题在窄栏里要换行，不能把输入区顶出屏幕。
