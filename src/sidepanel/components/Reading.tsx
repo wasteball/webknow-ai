@@ -5,7 +5,7 @@ import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { shouldSubmitComposer } from '../composer';
 import { visibleSuggestions } from '../suggest';
-import { Busy, SourceTag, SuggestRow } from './bits';
+import { Busy, Drafting, SourceTag, SuggestRow, Thinking } from './bits';
 import { Icon } from './Icon';
 import { Rich } from './Rich';
 
@@ -98,6 +98,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
       <div className="chat">
         {guide && (
           <article className="msg ai">
+            <Thinking text={guide.reasoning ?? ''} />
             <div className="said said-guide">
               <Rich text={guide.summary} diagrams={false} />
               <SuggestRow
@@ -123,13 +124,20 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
             }
           />
         )}
-        {busy && (
-          <Busy
-            label="正在回答"
-            chars={state.busy?.chars ?? 0}
-            onStop={() => tabId && void send({ type: 'stop', tabId })}
-          />
-        )}
+        {busy &&
+          (state.busy?.draft || state.busy?.reasoning ? (
+            <Drafting
+              text={state.busy?.draft ?? ''}
+              reasoning={state.busy?.reasoning ?? ''}
+              onStop={() => tabId && void send({ type: 'stop', tabId })}
+            />
+          ) : (
+            <Busy
+              label="正在回答"
+              chars={state.busy?.chars ?? 0}
+              onStop={() => tabId && void send({ type: 'stop', tabId })}
+            />
+          ))}
         <div className="chat-end" ref={endRef} />
       </div>
 
@@ -218,6 +226,7 @@ function Turn({
         </div>
       </article>
       <article className="msg ai">
+        <Thinking text={turn.reasoning ?? ''} />
         <div className="said">
           <SourceTag source={turn.source} />
           <Rich text={turn.answer} diagrams={diagrams} />

@@ -71,4 +71,30 @@ describe('设置归一化（产品化改造 F2）', () => {
     expect(effective.learningBudget).toBe(10);
     expect(effective.maxBubbles).toBe(3);
   });
+
+  it('思考按模型记住：DeepSeek 缺省是关，glm-5.2 缺省是默认，glm-4.6 没有这一项', () => {
+    expect(effectiveSettings({}).thinking).toBe('off');
+    expect(effectiveSettings({ provider: 'zhipu', models: { zhipu: 'glm-5.2' } }).thinking).toBe('auto');
+    expect(effectiveSettings({ provider: 'zhipu' }).thinking).toBeNull();
+    expect(
+      effectiveSettings({
+        provider: 'deepseek',
+        models: { deepseek: 'deepseek-v4-pro' },
+        thinking: { deepseek: { 'deepseek-v4-pro': 'max', 'deepseek-flash': 'low' } },
+      }).thinking,
+    ).toBe('max');
+    expect(
+      effectiveSettings({
+        provider: 'deepseek',
+        models: { deepseek: 'deepseek-flash' },
+        thinking: { deepseek: { 'deepseek-v4-pro': 'max' } },
+      }).thinking,
+    ).toBe('off');
+  });
+
+  it('思考档只接受已知值', () => {
+    expect(normalizeSettings({ thinking: 'high' }).thinking).toBe('high');
+    // @ts-expect-error 故意传非法值，运行时必须丢弃
+    expect(normalizeSettings({ thinking: 'xhigh' }).thinking).toBeUndefined();
+  });
 });

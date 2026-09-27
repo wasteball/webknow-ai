@@ -7,7 +7,7 @@ import { activeTabId, createClient, type Client } from './api';
 import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
-import { Busy, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
+import { Busy, Drafting, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
 import { BrandMark, Icon } from './components/Icon';
 import { outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
 
@@ -46,9 +46,9 @@ export function App() {
   useEffect(() => {
     const client = createClient({
       onState: setState,
-      onProgress: (chars) => {
+      onProgress: (chars, draft, reasoning) => {
         setState((current) =>
-          current?.busy ? { ...current, busy: { ...current.busy, chars } } : current,
+          current?.busy ? { ...current, busy: { ...current.busy, chars, draft, reasoning } } : current,
         );
       },
     });
@@ -231,13 +231,20 @@ export function App() {
             </Section>
           )}
 
-          {phase === 'ANALYZING' && (
-            <Busy
-              label="正在提取正文并生成首屏"
-              chars={busy?.chars ?? 0}
-              onStop={() => state.tabId !== null && void send({ type: 'stop', tabId: state.tabId })}
-            />
-          )}
+          {phase === 'ANALYZING' &&
+            (busy?.draft || busy?.reasoning ? (
+              <Drafting
+                text={busy?.draft ?? ''}
+                reasoning={busy?.reasoning ?? ''}
+                onStop={() => state.tabId !== null && void send({ type: 'stop', tabId: state.tabId })}
+              />
+            ) : (
+              <Busy
+                label="正在提取正文并生成首屏"
+                chars={busy?.chars ?? 0}
+                onStop={() => state.tabId !== null && void send({ type: 'stop', tabId: state.tabId })}
+              />
+            ))}
 
           {phase === 'ERROR' && (
             <Section title="重新试一次">

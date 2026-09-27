@@ -59,7 +59,8 @@ const deepseek: ModelProvider = {
    * - deepseek-flash 默认开启思考，思考文本会占用 max_tokens；
    *   显式关闭后同一请求 3.4s → 1.7s，摘要与气泡质量无可见下降。
    * - response_format 的 json_object 与流式同时可用。
-   * 因此这里固定关闭思考：三类请求都是短结构化输出，不需要长链推理。
+   * 未知模型名仍走这里的关闭。已知模型的档位在 model-thinking.ts，由 chatJson 覆盖。
+   * 缺省档是关：三类请求都是短结构化输出。
    */
   bodyDefaults: {
     response_format: { type: 'json_object' },

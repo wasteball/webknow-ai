@@ -34,6 +34,8 @@ export type ChatTurn = {
   quote?: Quote;
   /** 答完后顺着这一轮接着问的方向；点一张就发出去，上一排全部收起。 */
   followUps?: Bubble[];
+  /** 这一轮模型写出的思考过程。空则没有这一项。不发回后续请求。 */
+  reasoning?: string;
   at: number;
 };
 
@@ -74,6 +76,8 @@ export type LearnEntry = {
   /** role=feedback（选择题轮）：逐题判定。 */
   graded?: { questionId: string; chosen: string[]; correct: boolean }[];
   score?: { correct: number; total: number };
+  /** 写出这条记录的那一次模型调用留下的思考过程。用户自己的回答不记。 */
+  reasoning?: string;
   at: number;
 };
 
@@ -110,7 +114,7 @@ export type PageSession = {
   state: SessionState;
   blocks: EvidenceBlock[];
   completeness: Completeness;
-  guide: { summary: string; bubbles: Bubble[] } | null;
+  guide: { summary: string; bubbles: Bubble[]; reasoning?: string } | null;
   chat: ChatTurn[];
   learning: LearningState | null;
   /** 划词后还没发出去的原文，写在提问框上面。 */
@@ -266,4 +270,24 @@ export function nextQuestionAllowed(learning: LearningState): boolean {
 
 export function appendLearn(learning: LearningState, entry: Omit<LearnEntry, 'at'>): LearningState {
   return { ...learning, log: [...learning.log, { ...entry, at: Date.now() }] };
+}
+
+/**
+ * 把这一次模型调用的思考过程记在它新写出的第一条上。
+ * 用户自己的回答（role=answer）不是模型写的，跳过。没有文字就不加字段。
+ */
+export function attachCallReasoning(
+  learning: LearningState,
+  logLengthBefore: number,
+  reasoning: string,
+): LearningState {
+  const text = reasoning.trim();
+  if (!text) return learning;
+  const index = learning.log.findIndex((entry, at) => at >= logLengthBefore && entry.role !== 'answer');
+  if (index < 0) return learning;
+  const log = learning.log.slice();
+  const entry = log[index];
+  if (!entry) return learning;
+  log[index] = { ...entry, reasoning: text };
+  return { ...learning, log };
 }

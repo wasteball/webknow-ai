@@ -4,6 +4,8 @@ import type { BlocksPayload } from '../src/core/blocks';
 import { derivePhase } from '../src/core/phase';
 import {
   acceptsWriteBack,
+  appendLearn,
+  attachCallReasoning,
   beginRun,
   canStartLearning,
   createSession,
@@ -11,6 +13,7 @@ import {
   nextQuestionAllowed,
   stateAfterFailure,
   stateAfterStop,
+  type LearningState,
 } from '../src/core/session';
 
 const payload: BlocksPayload = {
@@ -45,6 +48,39 @@ const payload: BlocksPayload = {
     warnings: [],
   },
 };
+
+function learning(): LearningState {
+  return {
+    goal: '弄懂前提',
+    promptVersion: 'v',
+    used: 1,
+    current: { kind: 'open', question: '旧问题', hintUsed: false },
+    status: 'active',
+    log: [{ role: 'question', text: '旧问题', at: 1 }],
+  };
+}
+
+describe('这一轮的思考过程记在模型新写出的记录上', () => {
+  it('记在反馈上，不记在用户回答和更早的问题上', () => {
+    const before = learning();
+    const after = appendLearn(appendLearn(before, { role: 'answer', text: '我的回答' }), {
+      role: 'feedback',
+      text: '对上了原文',
+    });
+    const stamped = attachCallReasoning(after, before.log.length, '先对一下原文');
+    expect(stamped.log[0]?.reasoning).toBeUndefined();
+    expect(stamped.log[1]?.reasoning).toBeUndefined();
+    expect(stamped.log[2]?.reasoning).toBe('先对一下原文');
+    expect(stamped.log[2]?.text).toBe('对上了原文');
+  });
+
+  it('空白思考过程不给记录加字段', () => {
+    const before = learning();
+    const after = appendLearn({ ...before, log: [] }, { role: 'question', text: '新问题' });
+    const stamped = attachCallReasoning(after, 0, '  ');
+    expect(stamped.log[0]).not.toHaveProperty('reasoning');
+  });
+});
 
 describe('会话与请求身份', () => {
   it('同一标签页同时只允许一个在途请求', () => {

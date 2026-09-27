@@ -582,6 +582,18 @@ test('模型：钥匙保存后掩码显示；没钥匙不给模型选择器', as
   await expect(settings.getByLabel('DeepSeek 的钥匙已保存')).toBeVisible();
   await expect(settings.getByRole('textbox', { name: 'DeepSeek 的钥匙' })).toHaveCount(0);
   await expect(settings.getByLabel('用哪个模型')).toBeVisible();
+  const thinking = settings.getByRole('radiogroup', { name: '思考' });
+  await expect(thinking.getByRole('radio', { name: '关' })).toHaveAttribute('aria-checked', 'true');
+  await thinking.getByRole('radio', { name: '高' }).click();
+  await expect
+    .poll(async () =>
+      context.serviceWorkers()[0]!.evaluate(async () => {
+        const stored = await chrome.storage.local.get('config');
+        const config = stored.config as { thinking?: { deepseek?: Record<string, string> } } | undefined;
+        return config?.thinking?.deepseek?.['deepseek-flash'] ?? null;
+      }),
+    )
+    .toBe('high');
 
   // 切到还没配的智谱：出现填钥匙，模型选择器消失。
   await settings.getByRole('radiogroup', { name: '用哪家' }).getByRole('radio', { name: '智谱' }).click();

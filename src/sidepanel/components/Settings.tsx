@@ -6,6 +6,7 @@ import { GUIDE_DEFAULT_POLICY, summaryCharsFor } from '../../core/prompts/guide'
 import { LEARN_DEFAULT_POLICY } from '../../core/prompts/learn';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import { MODEL_PROVIDERS } from '../../core/model-providers';
+import { thinkingChoices } from '../../core/model-thinking';
 import type { PromptTarget } from '../../core/settings';
 import { BUILTIN_SKILLS } from '../../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS } from '../../core/search/registry';
@@ -235,6 +236,7 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
   const known = models ?? provider.knownModels;
   const model = settings.models[provider.id] ?? provider.defaultModel;
   const modelInList = known.includes(model);
+  const thinkingOptions = thinkingChoices(model);
 
   const saveKey = async () => {
     const saved = await run({ type: 'saveKey', provider: provider.id, key });
@@ -391,6 +393,20 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
               </select>
             )}
             {loadFailed && <p className="hint">没能取得完整模型列表，可以手动填写。</p>}
+          </SetRow>
+        )}
+        {connected && thinkingOptions && settings.thinking && (
+          <SetRow
+            title="思考"
+            hint="不改这一项时，和现在一样。选低、高或极致后会慢一些，费用也会高一些。有思考过程时，会折叠在回答上面。"
+          >
+            <Seg
+              name="思考"
+              value={settings.thinking}
+              options={thinkingOptions}
+              disabled={anyBusy}
+              onChange={(level) => void run({ type: 'saveSettings', patch: { thinking: level } })}
+            />
           </SetRow>
         )}
       </SetList>

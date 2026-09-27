@@ -3,6 +3,7 @@ import { storage } from 'wxt/utils/storage';
 import { appError } from '../core/errors';
 import type { SummaryLength } from '../core/limits';
 import { findProvider, type ProviderId } from '../core/model-providers';
+import { rememberThinking, type ThinkingStore } from '../core/model-thinking';
 import {
   normalizeSettings,
   type DiagramMode,
@@ -40,6 +41,8 @@ export type Config = {
   apiKeys?: Partial<Record<ProviderId, string>>;
   /** 每家的模型选择；缺省用该供应商的内置默认。 */
   models?: Partial<Record<ProviderId, string>>;
+  /** 每家、每个模型各记的思考档。缺省按模型表。 */
+  thinking?: ThinkingStore;
   outbound?: { version: string; acceptedAt: number; receiver: string };
   prompts?: PromptOverrides;
   /** 每个板块选择的技能 ID（技能=提示词预设）。 */
@@ -254,6 +257,13 @@ export async function applySettings(patch: SettingsPatch): Promise<void> {
   if (clean.summaryLength !== undefined) next.summaryLength = clean.summaryLength;
   if (clean.fontSize !== undefined) next.appearance = { ...current.appearance, fontSize: clean.fontSize };
   if (clean.diagrams !== undefined) next.diagrams = clean.diagrams;
+  if (clean.thinking !== undefined) {
+    const thinking = rememberThinking(
+      { provider: next.provider, models: next.models, thinking: next.thinking },
+      { provider: next.provider, model: clean.model, thinking: clean.thinking },
+    );
+    if (thinking) next.thinking = thinking;
+  }
 
   if (patch.prompts !== undefined) {
     const merged: PromptOverrides = { ...current.prompts };

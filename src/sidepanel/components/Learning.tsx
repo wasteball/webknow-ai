@@ -4,7 +4,7 @@ import { DEFAULT_LEARN_GOAL, usedLearnGoals } from '../../core/learn-policy';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { LearnEntry, QuizQuestion } from '../../core/session';
 import { shouldSubmitComposer } from '../composer';
-import { Busy, SuggestRow, VerdictTag } from './bits';
+import { Busy, Drafting, SuggestRow, Thinking, VerdictTag } from './bits';
 import { Icon } from './Icon';
 import { Rich, RichInline } from './Rich';
 
@@ -133,13 +133,20 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
           </p>
         )}
 
-        {busy && (
-          <Busy
-            label={current ? (current.kind === 'quiz' ? '正在批改这一轮' : '正在看你的回答') : '正在想问题'}
-            chars={state.busy?.chars ?? 0}
-            onStop={() => tabId && void send({ type: 'stop', tabId })}
-          />
-        )}
+        {busy &&
+          (state.busy?.draft || state.busy?.reasoning ? (
+            <Drafting
+              text={state.busy?.draft ?? ''}
+              reasoning={state.busy?.reasoning ?? ''}
+              onStop={() => tabId && void send({ type: 'stop', tabId })}
+            />
+          ) : (
+            <Busy
+              label={current ? (current.kind === 'quiz' ? '正在批改这一轮' : '正在看你的回答') : '正在想问题'}
+              chars={state.busy?.chars ?? 0}
+              onStop={() => tabId && void send({ type: 'stop', tabId })}
+            />
+          ))}
         <div className="chat-end" ref={endRef} />
       </div>
 
@@ -315,7 +322,12 @@ function Assists({
  */
 function Entry({ entry, diagrams }: { entry: LearnEntry; diagrams: boolean }) {
   if (entry.role === 'skip' || entry.role === 'note') {
-    return <p className="aside">{entry.text}</p>;
+    return (
+      <>
+        <Thinking text={entry.reasoning ?? ''} />
+        <p className="aside">{entry.text}</p>
+      </>
+    );
   }
 
   if (entry.role === 'answer') {
@@ -330,6 +342,7 @@ function Entry({ entry, diagrams }: { entry: LearnEntry; diagrams: boolean }) {
 
   return (
     <article className="msg ai">
+      <Thinking text={entry.reasoning ?? ''} />
       <div className={`said${entry.role === 'summary' ? ' said-summary' : ''}`}>
         {entry.role === 'question' && <Rich text={entry.text} diagrams={false} />}
         {entry.role === 'quiz' && <QuizEntryView entry={entry} />}

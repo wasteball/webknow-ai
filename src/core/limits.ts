@@ -21,6 +21,11 @@ export const LIMITS = {
   maxQuestionChars: 500,
   maxLearningAnswerChars: 1_000,
   maxOutputTokens: 1_200,
+  /**
+   * 打开思考后的输出上限。思考文本和最终 JSON 共用这一个数，仍远小于文档里的 64K/128K。
+   * 暂定，待真实请求量过再冻；超出后仍按长度截断整段作废。
+   */
+  maxOutputTokensThinking: 8_000,
   /** 教学提示词覆盖的保存上限（FR-028 校验的一部分）。 */
   maxTeachingPromptChars: 8_000,
 

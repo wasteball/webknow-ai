@@ -1,5 +1,6 @@
 import { LIMITS, SUMMARY_LENGTH_CHARS, type SummaryLength } from './limits';
 import { MODEL_PROVIDERS, findProvider, type ProviderId } from './model-providers';
+import { resolveThinking, type ThinkingLevel, type ThinkingStore } from './model-thinking';
 import type { SkillChoice, SkillTarget } from './skills';
 
 /**
@@ -31,6 +32,8 @@ export type SettingsPatch = {
   summaryLength?: SummaryLength;
   fontSize?: FontSize;
   diagrams?: DiagramMode;
+  /** 当前这家、当前这个模型的思考档。只接受该模型列表里有的值。 */
+  thinking?: ThinkingLevel;
 };
 
 export type EffectiveSettings = {
@@ -43,6 +46,8 @@ export type EffectiveSettings = {
   summaryLength: SummaryLength;
   fontSize: FontSize;
   diagrams: DiagramMode;
+  /** 当前模型的思考档。null 表示这个模型没有这一项。 */
+  thinking: ThinkingLevel | null;
 };
 
 export const DEFAULT_SETTINGS: EffectiveSettings = {
@@ -55,6 +60,7 @@ export const DEFAULT_SETTINGS: EffectiveSettings = {
   summaryLength: 'medium',
   fontSize: 'normal',
   diagrams: 'auto',
+  thinking: 'off',
 };
 
 const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -113,6 +119,11 @@ export function normalizeSettings(patch: SettingsPatch): SettingsPatch {
   if (patch.diagrams !== undefined) {
     if (patch.diagrams === 'auto' || patch.diagrams === 'off') clean.diagrams = patch.diagrams;
   }
+  if (patch.thinking !== undefined) {
+    if (patch.thinking === 'off' || patch.thinking === 'low' || patch.thinking === 'high' || patch.thinking === 'max' || patch.thinking === 'auto') {
+      clean.thinking = patch.thinking;
+    }
+  }
   return clean;
 }
 
@@ -135,10 +146,12 @@ export function effectiveSettings(config: {
   summaryLength?: SummaryLength;
   appearance?: { fontSize?: FontSize };
   diagrams?: DiagramMode;
+  thinking?: ThinkingStore;
 }): EffectiveSettings {
   const provider = findProvider(config.provider);
+  const model = config.models?.[provider.id]?.trim() || provider.defaultModel;
   return {
-    model: config.models?.[provider.id]?.trim() || provider.defaultModel,
+    model,
     prompts: config.prompts ?? {},
     skillChoices: config.skillChoices ?? {},
     learningBudget: clamp(
@@ -151,5 +164,6 @@ export function effectiveSettings(config: {
     summaryLength: config.summaryLength ?? DEFAULT_SETTINGS.summaryLength,
     fontSize: config.appearance?.fontSize ?? DEFAULT_SETTINGS.fontSize,
     diagrams: config.diagrams ?? DEFAULT_SETTINGS.diagrams,
+    thinking: resolveThinking(model, config.thinking?.[provider.id]?.[model]),
   };
 }

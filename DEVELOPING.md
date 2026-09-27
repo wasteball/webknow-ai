@@ -95,7 +95,7 @@ DEEPSEEK_KEY=sk-... npx playwright test tests/e2e/screenshots.spec.ts
 - 正文提取、唯一锚点、DOM 回跳沿用 2026-08-22 版本（`735171c`）并已重跑测试。
 - **DeepSeek 接入已实测**（真实 Key）：`deepseek-flash` 可用；流式 + `response_format: json_object`
   可用；延迟 0.6–1.5 秒；网页里的注入句被当作数据处理。实测发现默认思考会占用输出预算并让延迟翻倍，
-  因此请求固定 `thinking: {"type":"disabled"}`。
+  因此缺省仍关闭思考。设置里可以为已知模型改档，见 `src/core/model-thinking.ts`。
 - **已在真实 Chromium 中端到端跑通**：后台启动、面板状态推导、CORS 豁免、主路径首屏。
 - **仍未验证**：站点授权弹窗的人工体验、普通读者能否独立完成配置、真实费用计量、
   错误注入矩阵、可访问性专项。路线图处于 A0，未通过该阶段门。

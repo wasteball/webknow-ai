@@ -46,6 +46,14 @@ type PanelPort = { raw: { postMessage: (message: Event) => void }; tabId: number
 
 const ports = new Set<PanelPort>();
 
+/**
+ * 正在写的读者正文。它不进会话：半截结果不能当完整回答留下。
+ * 完整状态推送会把界面整个换掉，所以草稿要跟着重发，否则字写到一半会消失。
+ */
+const liveDraft = new Map<number, string>();
+/** 同一轮正在写的思考过程。和草稿一样不进会话，完整结果写回后才留下。 */
+const liveReasoning = new Map<number, string>();
+
 /** 当前供应商对应的外发接收方名称；确认记录与界面文案都用它。 */
 export async function currentReceiver(): Promise<string> {
   return findProvider((await readConfig()).provider).receiver;
@@ -121,6 +129,10 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     session?.error && ['PAGE_UNSUPPORTED', 'EXTRACT_FAILED'].includes(session.error.code)
       ? session.error.message
       : null;
+  if (!session?.run) {
+    liveDraft.delete(tabId);
+    liveReasoning.delete(tabId);
+  }
 
   return {
     tabId,
@@ -143,7 +155,12 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     learning: session?.learning ?? null,
     quote: session?.quote ?? null,
     busy: session?.run
-      ? { kind: session.run.kind, chars: 0 }
+      ? {
+          kind: session.run.kind,
+          chars: 0,
+          draft: liveDraft.get(tabId) ?? '',
+          reasoning: liveReasoning.get(tabId) ?? '',
+        }
       : null,
     error: session?.error ?? null,
     budget: {
@@ -235,8 +252,12 @@ const hooks: RunnerHooks = {
   onState: (tabId) => {
     void pushState(tabId);
   },
-  onProgress: (tabId, chars) => {
-    broadcast(tabId, { type: 'progress', chars });
+  onProgress: (tabId, chars, draft, reasoning) => {
+    if (tabId !== null) {
+      liveDraft.set(tabId, draft);
+      liveReasoning.set(tabId, reasoning);
+    }
+    broadcast(tabId, { type: 'progress', chars, draft, reasoning });
   },
 };
 

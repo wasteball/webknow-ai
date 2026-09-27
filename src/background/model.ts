@@ -1,5 +1,4 @@
 import { appError } from '../core/errors';
-import { LIMITS } from '../core/limits';
 import { chatJson, type Message } from '../core/model-call';
 import { findProvider, type ModelProvider } from '../core/model-providers';
 import { readApiKey, readConfig } from './store';
@@ -23,7 +22,7 @@ export async function currentProvider(): Promise<ModelProvider> {
 export async function callModel(
   messages: Message[],
   signal: AbortSignal,
-  onProgress: (chars: number) => void,
+  onProgress: (chars: number, draft: string, reasoning: string) => void,
 ): Promise<unknown> {
   const config = await readConfig();
   const provider = findProvider(config.provider);
@@ -31,14 +30,16 @@ export async function callModel(
   if (!apiKey) {
     throw appError('NO_KEY', `还没有配置 ${provider.name} 的钥匙。请在设置中填写后再开始。`, false);
   }
+  const model = config.models?.[provider.id];
+  const modelId = model?.trim() || provider.defaultModel;
   return chatJson({
     apiKey,
     provider,
-    model: config.models?.[provider.id],
+    model,
+    thinking: config.thinking?.[provider.id]?.[modelId],
     messages,
     signal,
     onProgress,
-    maxTokens: LIMITS.maxOutputTokens,
   });
 }
 

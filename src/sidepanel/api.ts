@@ -15,7 +15,7 @@ export type Client = {
 
 export function createClient(handlers: {
   onState: (state: PanelState) => void;
-  onProgress: (chars: number) => void;
+  onProgress: (chars: number, draft: string, reasoning: string) => void;
 }): Client {
   let port: ReturnType<typeof browser.runtime.connect> | null = null;
   let nextId = 1;
@@ -28,7 +28,7 @@ export function createClient(handlers: {
     port.onMessage.addListener((raw) => {
       const event = raw as Event;
       if (event.type === 'state') handlers.onState(event.state);
-      else if (event.type === 'progress') handlers.onProgress(event.chars);
+      else if (event.type === 'progress') handlers.onProgress(event.chars, event.draft, event.reasoning);
       else if (event.type === 'reply') {
         pending.get(event.id)?.(event.reply);
         pending.delete(event.id);

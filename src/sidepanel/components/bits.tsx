@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 
 import type { Completeness } from '../../core/blocks';
 import type { AppError } from '../../core/errors';
 import type { AnswerSource, Verdict } from '../../core/session';
 import { Icon } from './Icon';
+import { Rich } from './Rich';
 
 /** 来源与判断标签：不只靠颜色表达，颜色只是附加层（NFR-008/FR-036）。 */
 
@@ -142,6 +143,53 @@ export function Busy({ label, chars, onStop }: { label: string; chars: number; o
         停止
       </button>
     </div>
+  );
+}
+
+/** 有思考过程才出现。默认合上，点标题展开，再点合上。正文仍走原来的渲染。 */
+export function Thinking({ text }: { text: string }) {
+  const body = text.trim();
+  if (!body) return null;
+  return (
+    <details className="thinking">
+      <summary>思考过程</summary>
+      <div className="thinking-body">{body}</div>
+    </details>
+  );
+}
+
+/** 正在写的正文。图表等这一段闭合后再画，半截 mermaid 不进渲染。 */
+export function Drafting({
+  text,
+  reasoning = '',
+  onStop,
+}: {
+  text: string;
+  reasoning?: string;
+  onStop: () => void;
+}) {
+  const endRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const node = endRef.current;
+    if (!node?.offsetParent) return;
+    node.scrollIntoView({ block: 'end' });
+  }, [text, reasoning]);
+  return (
+    <article className="msg ai drafting" ref={endRef}>
+      <Thinking text={reasoning} />
+      {text ? (
+        <div className="said">
+          <Rich text={text} diagrams={false} />
+        </div>
+      ) : null}
+      <div className="busy" role="status">
+        <span className="spinner" aria-hidden="true" />
+        <span className="sr-only">正在写下这段</span>
+        <button type="button" onClick={onStop}>
+          停止
+        </button>
+      </div>
+    </article>
   );
 }
 

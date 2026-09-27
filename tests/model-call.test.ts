@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { LIMITS } from '../src/core/limits';
 import { chatJson, createSseReader, parseJsonLoose } from '../src/core/model-call';
 import { findProvider } from '../src/core/model-providers';
 
@@ -41,6 +42,16 @@ describe('createSseReader', () => {
     const reader = createSseReader();
     expect(reader.push(': keep-alive\n\n')).toEqual([]);
     expect(reader.push('data: [DONE]\n\n')).toEqual([]);
+  });
+
+  it('思考过程单独累计，不混进正文分片', () => {
+    const reader = createSseReader();
+    const thought = `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '先看前提' } }] })}\n\n`;
+    const body = `data: ${JSON.stringify({ choices: [{ delta: { content: '{"answer":"结论"}', reasoning_content: '。' } }] })}\n\n`;
+    expect(reader.push(thought)).toEqual([]);
+    expect(reader.reasoning()).toBe('先看前提');
+    expect(reader.push(body)).toEqual(['{"answer":"结论"}']);
+    expect(reader.reasoning()).toBe('先看前提。');
   });
 });
 
@@ -111,6 +122,50 @@ describe('chatJson', () => {
     expect(sent.response_format).toEqual({ type: 'json_object' });
     // 默认思考会占用 max_tokens 预算并让延迟翻倍（2026-09-18 实测）。
     expect(sent.thinking).toEqual({ type: 'disabled' });
+    expect(sent.reasoning_effort).toBeUndefined();
+    expect(sent.max_tokens).toBe(LIMITS.maxOutputTokens);
+  });
+
+  it('选了极致时打开思考、带上 max，并提高输出上限', async () => {
+    let sent: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: '{"ok":1}' } }] })}\n\n`, {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+    await chatJson({ ...base, model: 'deepseek-v4-pro', thinking: 'max', fetchImpl });
+    expect(sent.thinking).toEqual({ type: 'enabled' });
+    expect(sent.reasoning_effort).toBe('max');
+    expect(sent.max_tokens).toBe(LIMITS.maxOutputTokensThinking);
+    expect(sent.response_format).toEqual({ type: 'json_object' });
+  });
+
+  it('glm-5.2 默认不写思考字段', async () => {
+    let sent: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: '{"ok":1}' } }] })}\n\n`, {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+    await chatJson({ ...base, provider: findProvider('zhipu'), model: 'glm-5.2', fetchImpl });
+    expect(sent.thinking).toBeUndefined();
+    expect(sent.reasoning_effort).toBeUndefined();
+    expect(sent.max_tokens).toBe(LIMITS.maxOutputTokens);
+  });
+
+  it('连接测试传入的小上限不会被思考档抬高', async () => {
+    let sent: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string, init: RequestInit) => {
+      sent = JSON.parse(String(init.body)) as Record<string, unknown>;
+      return new Response(`data: ${JSON.stringify({ choices: [{ delta: { content: '{"ok":1}' } }] })}\n\n`, {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+    await chatJson({ ...base, thinking: 'max', maxTokens: 16, fetchImpl });
+    expect(sent.max_tokens).toBe(16);
+    expect(sent.reasoning_effort).toBe('max');
   });
 
   it('输出不是 JSON 时判为无效输出，不猜测修补', async () => {
@@ -118,13 +173,43 @@ describe('chatJson', () => {
     await expect(chatJson({ ...base, fetchImpl })).rejects.toMatchObject({ code: 'BAD_OUTPUT' });
   });
 
-  it('上报生成进度且不包含正文内容', async () => {
+  it('上报生成进度：字符数仍是数字，草稿只含读者可见的正文', async () => {
     const onProgress = vi.fn();
-    const fetchImpl = sseResponse([delta(`{"answer":"${'x'.repeat(500)}"}`)]);
+    const fetchImpl = sseResponse([delta(`{"answer":"${'x'.repeat(500)}","citations":["b_5"]}`)]);
     await chatJson({ ...base, fetchImpl, onProgress });
     expect(onProgress).toHaveBeenCalled();
-    // 进度只回报字符数，不携带正文（FR-037）。
-    expect(onProgress.mock.calls.at(-1)?.[0]).toBeGreaterThanOrEqual(500);
+    const last = onProgress.mock.calls.at(-1) as [number, string] | undefined;
+    // 计量仍是字符数，不把整段 JSON 拿去记日志（FR-037）。
+    expect(last?.[0]).toBeGreaterThanOrEqual(500);
+    expect(last?.[1]).toBe('x'.repeat(500));
+    expect(last?.[1]).not.toContain('b_5');
+  });
+
+  it('回答还在写时，进度草稿跟着已写出的句子变长', async () => {
+    const onProgress = vi.fn();
+    const fetchImpl = sseResponse([
+      delta('{"answer":"原文'),
+      delta('依据","citations":["b_5"],"followUps":[{"question":"再问"}]}'),
+    ]);
+    await chatJson({ ...base, fetchImpl, onProgress });
+    const calls = onProgress.mock.calls as [number, string][];
+    expect(calls[0]?.[1]).toBe('原文');
+    expect(calls.at(-1)?.[1]).toBe('原文依据');
+  });
+
+  it('进度里单独带上思考过程，解析结果仍只有正文 JSON', async () => {
+    const onProgress = vi.fn();
+    const fetchImpl = sseResponse([
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '先想' } }] })}\n\n`,
+      `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '清楚' } }] })}\n\n`,
+      delta('{"answer":"原文依据"}'),
+    ]);
+    await expect(chatJson({ ...base, fetchImpl, onProgress })).resolves.toEqual({ answer: '原文依据' });
+    const calls = onProgress.mock.calls as [number, string, string][];
+    expect(calls.some((call) => call[2] === '先想')).toBe(true);
+    expect(calls.at(-1)?.[1]).toBe('原文依据');
+    expect(calls.at(-1)?.[2]).toBe('先想清楚');
+    expect(calls.every((call) => !String(call[1]).includes('先想'))).toBe(true);
   });
 });
 

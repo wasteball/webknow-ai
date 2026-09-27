@@ -1,6 +1,8 @@
 import { appError, fromHttpStatus, fromNetworkFailure } from './errors';
 import { LIMITS } from './limits';
 import type { ModelProvider } from './model-providers';
+import { thinkingRequest } from './model-thinking';
+import { readerDraft } from './stream-draft';
 
 /**
  * 模型调用的共用传输层（DeepSeek 与智谱都是 OpenAI 兼容的 chat/completions + SSE）。
@@ -19,10 +21,15 @@ export type ChatOptions = {
   provider: ModelProvider;
   /** 模型 ID；缺省用该供应商的默认模型。设置里选择的模型在这里生效。 */
   model?: string;
+  /** 这个模型记下的思考档。缺省按模型表的默认档；没有档位表的名字维持该供应商今天的请求体。 */
+  thinking?: string;
   messages: Message[];
   signal: AbortSignal;
-  /** 已生成字符数，用于让界面与 service worker 保持活跃；不含正文内容。 */
-  onProgress?: (chars: number) => void;
+  /**
+   * 已生成字符数，加上此刻能给读者看的草稿，以及单独累计的思考过程。
+   * 字符数只用于计量；草稿是抽出来的正文，思考过程不混进正文，两者都不进日志（FR-037）。
+   */
+  onProgress?: (chars: number, draft: string, reasoning: string) => void;
   maxTokens?: number;
   fetchImpl?: typeof fetch;
 };
@@ -30,7 +37,7 @@ export type ChatOptions = {
 /** 从 SSE 文本流中取出增量内容；跨 chunk 的半行由内部缓冲处理。 */
 export function createSseReader() {
   let buffer = '';
-  const state = { finishReason: '' };
+  const state = { finishReason: '', reasoning: '' };
   return {
     push(chunk: string): string[] {
       buffer += chunk;
@@ -48,10 +55,14 @@ export function createSseReader() {
     finishReason(): string {
       return state.finishReason;
     },
+    /** 模型写出的思考过程。和正文分片分开，空字符串表示这一轮没有。 */
+    reasoning(): string {
+      return state.reasoning;
+    },
   };
 }
 
-function readDeltas(lines: string[], state: { finishReason: string }): string[] {
+function readDeltas(lines: string[], state: { finishReason: string; reasoning: string }): string[] {
   const deltas: string[] = [];
   for (const line of lines) {
     const trimmed = line.trim();
@@ -60,6 +71,8 @@ function readDeltas(lines: string[], state: { finishReason: string }): string[] 
     if (!data || data === '[DONE]') continue;
     try {
       const parsed: unknown = JSON.parse(data);
+      const thought = pickString(parsed, ['choices', 0, 'delta', 'reasoning_content']);
+      if (thought) state.reasoning += thought;
       const delta = pickString(parsed, ['choices', 0, 'delta', 'content']);
       if (delta) deltas.push(delta);
       const finish = pickString(parsed, ['choices', 0, 'finish_reason']);
@@ -135,6 +148,24 @@ export function parseJsonLoose(text: string): unknown {
  */
 export async function chatJson(options: ChatOptions): Promise<unknown> {
   const { apiKey, provider, messages, signal, onProgress } = options;
+  const model = options.model?.trim() || provider.defaultModel;
+  const request = thinkingRequest({
+    providerId: provider.id,
+    modelId: model,
+    stored: options.thinking,
+    maxTokens: options.maxTokens,
+  });
+  const body: Record<string, unknown> = {
+    model,
+    messages,
+    stream: true,
+    max_tokens: request.maxTokens,
+    ...provider.bodyDefaults,
+  };
+  if (request.thinking) body.thinking = request.thinking;
+  else delete body.thinking;
+  if (request.reasoningEffort) body.reasoning_effort = request.reasoningEffort;
+  else delete body.reasoning_effort;
   const doFetch = options.fetchImpl ?? fetch;
   const timeout = AbortSignal.timeout(LIMITS.requestTimeoutMs);
   const combined = AbortSignal.any([signal, timeout]);
@@ -147,13 +178,7 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        model: options.model?.trim() || provider.defaultModel,
-        messages,
-        stream: true,
-        max_tokens: options.maxTokens ?? LIMITS.maxOutputTokens,
-        ...provider.bodyDefaults,
-      }),
+      body: JSON.stringify(body),
       signal: combined,
     });
   } catch {
@@ -176,19 +201,35 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
   const sse = createSseReader();
   let text = '';
   let lastReported = 0;
+  let lastDraft = '';
+  let lastReasoning = '';
+  const report = (force: boolean) => {
+    if (!onProgress) return;
+    const draft = readerDraft(text);
+    const reasoning = sse.reasoning();
+    if (!force && draft === lastDraft && reasoning === lastReasoning && text.length - lastReported < 200) return;
+    lastReported = text.length;
+    lastDraft = draft;
+    lastReasoning = reasoning;
+    onProgress(text.length, draft, reasoning);
+  };
+  const absorb = (deltas: string[]) => {
+    if (deltas.length === 0) {
+      report(false);
+      return;
+    }
+    for (const delta of deltas) {
+      text += delta;
+      report(false);
+    }
+  };
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      for (const delta of sse.push(decoder.decode(value, { stream: true }))) {
-        text += delta;
-      }
-      if (onProgress && text.length - lastReported >= 200) {
-        lastReported = text.length;
-        onProgress(text.length);
-      }
+      absorb(sse.push(decoder.decode(value, { stream: true })));
     }
-    for (const delta of sse.flush()) text += delta;
+    absorb(sse.flush());
   } catch {
     if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
     if (timeout.aborted) {
@@ -199,7 +240,7 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
     reader.releaseLock();
   }
 
-  onProgress?.(text.length);
+  report(true);
   if (sse.finishReason() === 'length') {
     // 截断必须如实说明，不能把半截 JSON 当成完整结果（FR-018）。
     throw appError(

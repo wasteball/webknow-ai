@@ -462,6 +462,10 @@ details.section summary {
   margin-bottom: var(--space-5);
 }
 
+.msg.ai {
+  flex-direction: column;
+}
+
 .msg.user {
   justify-content: flex-end;
   margin-bottom: var(--space-3);
@@ -1412,6 +1416,53 @@ button.link:hover:not(:disabled) {
   border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--ink-2);
+}
+
+.thinking {
+  margin: 0 0 var(--space-2);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.thinking summary {
+  cursor: pointer;
+}
+
+.thinking-body {
+  margin-top: var(--space-2);
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.msg.drafting {
+  flex-direction: column;
+}
+
+.drafting .busy {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  padding-left: 0;
+  background: transparent;
+}
+
+.drafting .said > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--ink);
+  animation: caret 1s steps(1) infinite;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
 }
 
 .spinner {

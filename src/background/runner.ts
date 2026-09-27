@@ -19,6 +19,7 @@ import { resolvePolicy } from '../core/skills';
 import {
   acceptsWriteBack,
   appendLearn,
+  attachCallReasoning,
   beginRun,
   canStartLearning,
   endRun,
@@ -31,7 +32,8 @@ import {
   type PageSession,
   type RequestKind,
 } from '../core/session';
-import { cleanAnswer, cleanGuide, cleanLearn, type LearnResult } from '../core/validate';
+import { presentReasoning } from '../core/stream-draft';
+import { cleanAnswer, cleanGuide, cleanLearn, omitBlockIds, type LearnResult } from '../core/validate';
 import { callModel } from './model';
 import { pageStillMatches, toAppError } from './page';
 import { getSession, putSession, readConfig, readSearchCredentials, type Config } from './store';
@@ -55,7 +57,7 @@ export type LearnChoiceAnswer = { questionId: string; choiceIds: string[] };
 
 export type RunnerHooks = {
   onState: (tabId: number) => void;
-  onProgress: (tabId: number, chars: number) => void;
+  onProgress: (tabId: number, chars: number, draft: string, reasoning: string) => void;
 };
 
 type Task = (
@@ -157,8 +159,17 @@ async function writeBack(
   return mutate(fresh);
 }
 
-function progress(hooks: RunnerHooks, tabId: number) {
-  return (chars: number) => hooks.onProgress(tabId, chars);
+function watchProgress(hooks: RunnerHooks, tabId: number, blockIds: readonly string[]) {
+  let reasoning = '';
+  return {
+    onProgress(chars: number, draft: string, thought = '') {
+      reasoning = presentReasoning(thought, blockIds);
+      hooks.onProgress(tabId, chars, draft ? omitBlockIds(draft, blockIds) : '', reasoning);
+    },
+    reasoning() {
+      return reasoning;
+    },
+  };
 }
 
 function contextOf(session: PageSession) {
@@ -175,6 +186,11 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
     'guide',
     async (session, runId, signal) => {
       const ctx = contextOf(session);
+      const watch = watchProgress(
+        hooks,
+        tabId,
+        session.blocks.map((block) => block.id),
+      );
       const parsed = await callModel(
         guideMessages({
           title: session.title,
@@ -186,7 +202,7 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
           summaryMaxChars: summaryCharsFor(settings.summaryLength),
         }),
         signal,
-        progress(hooks, tabId),
+        watch.onProgress,
       );
       const clean = cleanGuide(
         parsed,
@@ -194,10 +210,11 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
         session.blocks.map((block) => block.id),
       );
       if (!clean.ok) throw clean.error;
+      const reasoning = watch.reasoning();
       // 首屏结果只在页面身份与内容版本仍然一致时写回（FR-024）。
       return writeBack(tabId, session, runId, (fresh) => ({
         ...fresh,
-        guide: clean.value,
+        guide: reasoning ? { ...clean.value, reasoning } : clean.value,
         state: 'READY',
         error: null,
         updatedAt: Date.now(),
@@ -234,6 +251,11 @@ async function runAsk(
       }
 
       const quote = session.quote ?? null;
+      const watch = watchProgress(
+        hooks,
+        tabId,
+        session.blocks.map((block) => block.id),
+      );
       const parsed = await callModel(
         answerMessages({
           title: session.title,
@@ -250,7 +272,7 @@ async function runAsk(
           diagrams,
         }),
         signal,
-        progress(hooks, tabId),
+        watch.onProgress,
       );
       const clean = cleanAnswer(parsed, session.blocks, webResults);
       if (!clean.ok) throw clean.error;
@@ -275,6 +297,7 @@ async function runAsk(
             references: clean.value.references,
             quote: quote ?? undefined,
             followUps,
+            ...(watch.reasoning() ? { reasoning: watch.reasoning() } : {}),
             at: Date.now(),
           },
         ].slice(-LIMITS.maxChatTurns),
@@ -489,6 +512,11 @@ async function callLearn(
   style: 'mixed' | 'quiz' | 'open',
   diagrams: boolean,
 ): Promise<LearningState> {
+  const watch = watchProgress(
+    hooks,
+    tabId,
+    session.blocks.map((block) => block.id),
+  );
   const parsed = await callModel(
     learnMessages({
       mode,
@@ -529,7 +557,7 @@ async function callLearn(
       diagrams,
     }),
     signal,
-    progress(hooks, tabId),
+    watch.onProgress,
   );
   const clean = cleanLearn(
     parsed,
@@ -538,7 +566,7 @@ async function callLearn(
     session.blocks.map((block) => block.id),
   );
   if (!clean.ok) throw clean.error;
-  return applyLearn(learning, clean.value, input);
+  return attachCallReasoning(applyLearn(learning, clean.value, input), learning.log.length, watch.reasoning());
 }
 
 function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInput): LearningState {

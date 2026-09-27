@@ -2,6 +2,7 @@ import type { Completeness, DomAnchor } from './blocks';
 import type { AppError } from './errors';
 import type { SummaryLength } from './limits';
 import type { ProviderId } from './model-providers';
+import type { ThinkingLevel } from './model-thinking';
 import type { DiagramMode, FontSize, PromptOverrides } from './settings';
 import type { Skill, SkillChoice } from './skills';
 import type { Quote } from './quote';
@@ -42,6 +43,8 @@ export type PanelSettings = {
   fontSize: FontSize;
   /** 回答里的图表：auto / off。 */
   diagrams: DiagramMode;
+  /** 当前模型的思考档。null 表示这个模型没有这一项。 */
+  thinking: ThinkingLevel | null;
 };
 
 export type PanelState = {
@@ -56,12 +59,13 @@ export type PanelState = {
   settings: PanelSettings;
   outboundConfirmed: boolean;
   completeness: Completeness | null;
-  guide: { summary: string; bubbles: Bubble[] } | null;
+  guide: { summary: string; bubbles: Bubble[]; reasoning?: string } | null;
   chat: ChatTurn[];
   learning: LearningState | null;
   /** 划在网页上、正准备提问的原文。 */
   quote: Quote | null;
-  busy: { kind: RequestKind; chars: number } | null;
+  /** draft 是正在写的读者正文；reasoning 是同一轮的思考过程。引用和后续卡片不在这里。 */
+  busy: { kind: RequestKind; chars: number; draft: string; reasoning: string } | null;
   error: AppError | null;
   budget: { used: number; total: number };
   /** 页面不支持时给用户的原因说明。 */
@@ -105,7 +109,7 @@ export type Reply =
 
 export type Event =
   | { type: 'state'; state: PanelState }
-  | { type: 'progress'; chars: number }
+  | { type: 'progress'; chars: number; draft: string; reasoning: string }
   | { type: 'reply'; id: number; reply: Reply };
 
 export type PortRequest = { id: number; command: Command };
