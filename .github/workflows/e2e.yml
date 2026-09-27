@@ -1,0 +1,45 @@
+name: 端到端
+
+# 发布工作流的日志要管理员权限才下载得了。main 上先跑同一套冒烟，
+# 失败时把日志推到 ci-e2e-log，才能看到是哪一条断言挂了。
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 端到端冒烟
+        run: bash scripts/run-e2e.sh
+
+      - name: 留下失败日志
+        if: failure()
+        run: |
+          cp test-results/e2e.log /tmp/e2e.log
+          git config user.email "ci@users.noreply.github.com"
+          git config user.name "ci"
+          git checkout --orphan ci-e2e-log
+          git rm -rf . >/dev/null 2>&1 || true
+          mkdir -p log
+          cp /tmp/e2e.log log/e2e.log
+          git add log/e2e.log
+          git commit -m "e2e log"
+          git push --force origin HEAD:ci-e2e-log
