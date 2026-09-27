@@ -119,7 +119,8 @@ export type ContentRequest =
   | { type: 'extract' }
   | { type: 'fingerprint' }
   | { type: 'watch' }
-  | { type: 'jump'; anchor: DomAnchor };
+  | { type: 'jump'; anchor: DomAnchor }
+  | { type: 'captureImage'; url: string };
 
 export type ContentReply =
   | { ok: true; data: unknown }

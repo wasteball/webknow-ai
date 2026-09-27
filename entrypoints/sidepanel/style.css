@@ -460,6 +460,8 @@ details.section summary {
   display: flex;
   flex-direction: column;
   padding-top: var(--space-2);
+  /* 吸底输入区盖住的是这段空白，不是最后一排追问。 */
+  padding-bottom: 10rem;
 }
 
 .msg {

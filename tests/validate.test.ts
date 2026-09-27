@@ -122,6 +122,19 @@ describe('cleanAnswer', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('只引用图片转述时，不标成作者原文', () => {
+    const image = block('img_0');
+    image.role = 'image';
+    image.content = '图上读到（可能有误）：封面写着看见灵感';
+    const result = cleanAnswer(
+      { answer: '封面上有这几个字。', source: 'original', citations: ['img_0'], unanswered: [] },
+      [image],
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.source).toBe('supplement');
+  });
+
   it('有网络资料时，原文依据仍然必须有本地引用', () => {
     const result = cleanAnswer(
       { answer: '回答', source: 'original', citations: [], unanswered: [], references: [] },

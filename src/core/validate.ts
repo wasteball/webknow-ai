@@ -133,6 +133,10 @@ export function cleanAnswer(
     .slice(0, 5);
 
   let source: AnswerSource = result.data.source;
+  const imageIds = new Set(blocks.filter((block) => block.role === 'image').map((block) => block.id));
+  if (source === 'original' && citations.length > 0 && citations.every((item) => imageIds.has(item.blockId))) {
+    source = 'supplement';
+  }
   if (source === 'original' && citations.length === 0) {
     // 原文依据必须有本地块。有网络结果也不能让这条规则失效——否则会把网上的话标成作者原话。
     if (references.length > 0) {

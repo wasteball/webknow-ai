@@ -1,4 +1,4 @@
-import type { BlocksPayload, Completeness, EvidenceBlock } from './blocks';
+import type { BlocksPayload, Completeness, EvidenceBlock, PictureRef } from './blocks';
 import type { Quote } from './quote';
 import { appError, type AppError } from './errors';
 import { LIMITS } from './limits';
@@ -114,6 +114,9 @@ export type PageSession = {
   state: SessionState;
   blocks: EvidenceBlock[];
   completeness: Completeness;
+  /** 提取时看到的内容图。读过之后置 imagesAttached，避免追问时重复读图。 */
+  pictures?: PictureRef[];
+  imagesAttached?: boolean;
   guide: { summary: string; bubbles: Bubble[]; reasoning?: string } | null;
   chat: ChatTurn[];
   learning: LearningState | null;
@@ -143,6 +146,8 @@ export function createSession(tabId: number, page: BlocksPayload): PageSession {
     state: 'ANALYZING',
     blocks: page.blocks,
     completeness: page.completeness,
+    pictures: page.pictures,
+    imagesAttached: !page.pictures?.length,
     guide: null,
     chat: [],
     learning: null,
@@ -195,6 +200,8 @@ export function markStale(session: PageSession, url?: string): PageSession {
     fingerprint: '',
     state: 'STALE',
     blocks: [],
+    pictures: undefined,
+    imagesAttached: undefined,
     completeness: emptySession(session.tabId, url ?? session.url).completeness,
     guide: null,
     chat: [],

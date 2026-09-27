@@ -1,5 +1,5 @@
 import { appError } from '../core/errors';
-import { chatJson, type Message } from '../core/model-call';
+import { chatJson, chatVision, type Message } from '../core/model-call';
 import { findProvider, type ModelProvider } from '../core/model-providers';
 import { readApiKey, readConfig } from './store';
 
@@ -40,6 +40,22 @@ export async function callModel(
     messages,
     signal,
     onProgress,
+  });
+}
+
+/** 读一张图。只有 DeepSeek 有这个视觉模型；别的供应商返回空字符串。 */
+export async function readImage(imageUrl: string, signal: AbortSignal): Promise<string> {
+  const config = await readConfig();
+  const provider = findProvider(config.provider);
+  if (provider.id !== 'deepseek') return '';
+  const apiKey = await readApiKey(provider.id);
+  if (!apiKey) return '';
+  return chatVision({
+    apiKey,
+    endpoint: provider.endpoint,
+    providerName: provider.name,
+    imageUrl,
+    signal,
   });
 }
 

@@ -1,5 +1,5 @@
 import { buildContext, describeCompleteness } from '../core/blocks';
-import { appError, type AppError } from '../core/errors';
+import { appError, isAppError, type AppError } from '../core/errors';
 import { LIMITS } from '../core/limits';
 import { answerMessages } from '../core/prompts/answer';
 import { guideMessages, summaryCharsFor } from '../core/prompts/guide';
@@ -40,9 +40,10 @@ import {
 } from '../core/page-drift';
 import { presentReasoning } from '../core/stream-draft';
 import { cleanAnswer, cleanGuide, cleanLearn, omitBlockIds, type LearnResult } from '../core/validate';
-import { callModel } from './model';
-import { extractPage, readPageIdentity, toAppError } from './page';
-import { getSession, putSession, readConfig, readSearchCredentials, type Config } from './store';
+import { applyImageReadings } from '../core/vision';
+import { callModel, currentProvider, readImage } from './model';
+import { captureImage, extractPage, readPageIdentity, toAppError } from './page';
+import { getSession, putSession, readApiKey, readConfig, readSearchCredentials, type Config } from './store';
 
 /**
  * 请求流水线（三类请求共用一条）：
@@ -217,6 +218,61 @@ function contextOf(session: PageSession) {
   return ctx;
 }
 
+/** 摘要、追问、学习都先读图。单张失败只记为没读，不让整次伴读失败。 */
+async function attachImages(
+  tabId: number,
+  session: PageSession,
+  signal: AbortSignal,
+  hooks: RunnerHooks,
+): Promise<PageSession> {
+  if (session.imagesAttached || !session.pictures?.length) return session;
+  const provider = await currentProvider();
+  if (provider.id === 'deepseek' && !(await readApiKey(provider.id))) return session;
+
+  hooks.onProgress(tabId, 0, '正在读这一页的图片', '');
+  const readings: { id: string; text: string }[] = [];
+  if (provider.id === 'deepseek') {
+    const pictures = session.pictures;
+    let cursor = 0;
+    const worker = async () => {
+      for (;;) {
+        if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
+        const index = cursor;
+        cursor += 1;
+        if (index >= pictures.length) return;
+        const picture = pictures[index];
+        if (!picture) return;
+        try {
+          const data = await captureImage(tabId, picture.url);
+          const text = await readImage(data || picture.url, signal);
+          readings.push({ id: picture.id, text });
+        } catch (error) {
+          if (isAppError(error) && error.code === 'ABORTED') throw error;
+          if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
+          readings.push({ id: picture.id, text: '' });
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, pictures.length) }, () => worker()));
+  }
+
+  const applied = applyImageReadings(session.blocks, session.pictures, readings, session.completeness);
+  const warnings = [...applied.completeness.warnings];
+  if (provider.id !== 'deepseek') warnings.push('当前这家读不了图。');
+  else if (applied.completeness.images.captured < applied.completeness.images.found) {
+    warnings.push('有的图片没读到。');
+  }
+  const next: PageSession = {
+    ...session,
+    blocks: applied.blocks,
+    completeness: { ...applied.completeness, warnings },
+    imagesAttached: true,
+    updatedAt: Date.now(),
+  };
+  await putSession(next);
+  return next;
+}
+
 async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | null> {
   const config = await readConfig();
   const settings = effectiveSettings(config);
@@ -224,7 +280,7 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
     tabId,
     'guide',
     async (session, runId, signal) => {
-      const current = await adoptCurrentPage(tabId, session);
+      const current = await attachImages(tabId, await adoptCurrentPage(tabId, session), signal, hooks);
       const ctx = contextOf(current);
       const watch = watchProgress(
         hooks,
@@ -277,7 +333,7 @@ async function runAsk(
     tabId,
     'answer',
     async (session, runId, signal) => {
-      const current = await adoptCurrentPage(tabId, session);
+      const current = await attachImages(tabId, await adoptCurrentPage(tabId, session), signal, hooks);
       const ctx = contextOf(current);
       const diagrams = effectiveSettings(config).diagrams === 'auto';
 
@@ -482,7 +538,7 @@ async function runLearnStep(
     tabId,
     'learn',
     async (session, runId, signal) => {
-      const current = await adoptCurrentPage(tabId, session);
+      const current = await attachImages(tabId, await adoptCurrentPage(tabId, session), signal, hooks);
       const learning = current.learning;
       if (!learning || learning.status !== 'active') {
         throw appError('INTERNAL', '当前没有进行中的学习会话。', false);

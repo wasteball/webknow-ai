@@ -1,4 +1,6 @@
+import { fromThrown } from '../src/core/errors';
 import type { ContentRequest } from '../src/core/protocol';
+import { capturePageImage } from '../src/content/pictures';
 import { handleContentRequest } from '../src/content';
 
 /**
@@ -11,6 +13,12 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const request = message as ContentRequest | undefined;
       if (!request || typeof request.type !== 'string') return false;
+      if (request.type === 'captureImage') {
+        void capturePageImage(request.url)
+          .then((dataUrl) => sendResponse({ ok: true, data: dataUrl }))
+          .catch((error: unknown) => sendResponse({ ok: false, error: fromThrown(error) }));
+        return true;
+      }
       sendResponse(handleContentRequest(request));
       // WXT 0.20+ 起 onMessage 不支持返回 Promise，必须用 sendResponse + return。
       return true;

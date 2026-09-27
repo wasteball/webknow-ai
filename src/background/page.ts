@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 
 import type { BlocksPayload, DomAnchor, JumpOutcome } from '../core/blocks';
 import { appError, fromThrown, isAppError, type AppError } from '../core/errors';
+import { LIMITS } from '../core/limits';
 import type { ContentReply, ContentRequest } from '../core/protocol';
 
 /**
@@ -74,6 +75,47 @@ export async function readPageIdentity(tabId: number): Promise<{ url: string; fi
   const identity = reply.data as { url?: string; fingerprint?: string };
   if (!identity?.url || typeof identity.fingerprint !== 'string') return null;
   return { url: identity.url, fingerprint: identity.fingerprint };
+}
+
+/**
+ * 在页面上下文里把图压成 jpeg。内容脚本先试；不行再进页面主世界，
+ * 这样微信图床的防盗链 Referer 还在，又不给扩展加新的站点权限。
+ */
+export async function captureImage(tabId: number, url: string): Promise<string | null> {
+  const reply = await send(tabId, { type: 'captureImage', url });
+  if (reply.ok && typeof reply.data === 'string' && reply.data.startsWith('data:image/')) return reply.data;
+  try {
+    const [injected] = await browser.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      args: [url, LIMITS.maxImageEdge],
+      func: async (imageUrl: string, edge: number) => {
+        try {
+          const response = await fetch(imageUrl);
+          if (!response.ok) return null;
+          const blob = await response.blob();
+          if (blob.size > 8_000_000) return null;
+          const bitmap = await createImageBitmap(blob);
+          const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+          canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+          const context = canvas.getContext('2d');
+          if (!context) return null;
+          context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          bitmap.close();
+          const data = canvas.toDataURL('image/jpeg', 0.82);
+          return data.length > 1_800_000 ? null : data;
+        } catch {
+          return null;
+        }
+      },
+    });
+    const data = injected?.result;
+    return typeof data === 'string' && data.startsWith('data:image/') ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function jumpToOriginal(tabId: number, anchor: DomAnchor): Promise<JumpOutcome> {

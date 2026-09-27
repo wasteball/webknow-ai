@@ -64,6 +64,36 @@ describe('extractDocument', () => {
     expect(contents.some((text) => text.includes('扫一扫'))).toBe(false);
   });
 
+  it('微信隐藏正文按真实段落读全，空段落不算没读完', () => {
+    install(`
+      <h1 id="activity-name">看见灵感，听见回音</h1>
+      <div id="js_content" class="rich_media_content" style="visibility:hidden;opacity:0">
+        <p></p>
+        <p>短</p>
+        <p>看见灵感，听见回音。Dify Marketplace 让创作彼此连接，这一段是正文里的第一段完整说明。</p>
+        <section><span>这一段只写在小节里，没有用段落标签，也必须读进来。</span></section>
+        <p>微信扫一扫关注公众号</p>
+        <img data-src="https://mmecoa.qpic.cn/example/640?wx_fmt=gif&amp;from=appmsg" data-w="1280" alt="封面" />
+        <img data-src="https://mmecoa.qpic.cn/emoji.png" data-w="20" class="emoji" alt="表情" />
+      </div>
+      <nav><p>首页导航不是正文，不该被读进来当作文章。</p></nav>
+    `);
+    const payload = extractDocument();
+    const contents = payload.blocks.map((block) => block.content);
+    expect(contents.some((text) => text.includes('看见灵感'))).toBe(true);
+    expect(contents.some((text) => text.includes('只写在小节里'))).toBe(true);
+    expect(contents.some((text) => text.includes('扫一扫'))).toBe(false);
+    expect(contents.some((text) => text.includes('首页导航'))).toBe(false);
+    expect(payload.completeness.text.status).toBe('parsed');
+    expect(payload.completeness.images.found).toBe(1);
+    expect(payload.pictures).toHaveLength(1);
+    expect(payload.pictures?.[0]?.url).toContain('from=appmsg');
+    expect(payload.pictures?.[0]?.url).not.toContain('amp;');
+    const picture = payload.pictures?.[0];
+    if (!picture) throw new Error('缺少图片');
+    expect(jumpToAnchor(picture.anchor).outcome).toBe('jumped');
+  });
+
   it('一两段的短文也能读，不因为块数不够直接判失败', () => {
     install(`
       <article>

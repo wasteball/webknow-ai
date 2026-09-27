@@ -98,8 +98,13 @@ export function cloneExpanded(node: Node, extraDepth = 0): Node {
   const canExpand = extraDepth < MAX_DEPTH;
 
   if (node instanceof HTMLImageElement) {
-    const source = node.currentSrc || node.src || '';
-    if (source && copy instanceof Element) copy.setAttribute('src', source);
+    const source =
+      node.currentSrc ||
+      node.getAttribute('src') ||
+      node.getAttribute('data-src') ||
+      node.getAttribute('data-original') ||
+      '';
+    if (source && copy instanceof Element) copy.setAttribute('src', source.replace(/&amp;/g, '&'));
   }
 
   if (canExpand && node instanceof HTMLIFrameElement) {

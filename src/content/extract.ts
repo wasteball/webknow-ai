@@ -9,9 +9,11 @@ import type {
   DomAnchor,
   EvidenceBlock,
   JumpOutcome,
+  PictureRef,
 } from '../core/blocks';
 import { appError } from '../core/errors';
 import { LIMITS } from '../core/limits';
+import { contentImageUrl, isContentImage } from './pictures';
 import { cssPath, escapeCss, fingerprint, normalizeText } from './text';
 import {
   CANDIDATE_SELECTOR,
@@ -91,15 +93,51 @@ function candidateText(element: Element): string | null {
   return text;
 }
 
+const LEAF_SELECTOR = 'section,blockquote,figcaption';
+
+/** 真正有字的节点。空段落、短到入选门槛以下的节点不算“发现了但没读”。 */
+function orderedTextNodes(scope: ParentNode): HTMLElement[] {
+  const primary = [...scope.querySelectorAll<HTMLElement>(CANDIDATES)].filter((element) => candidateText(element));
+  const leaves = [...scope.querySelectorAll<HTMLElement>(LEAF_SELECTOR)].filter((element) => {
+    if (element.querySelector(CANDIDATES) || element.querySelector(LEAF_SELECTOR)) return false;
+    return candidateText(element) !== null;
+  });
+  const all = [...primary, ...leaves];
+  all.sort((left, right) => {
+    if (left === right) return 0;
+    const position = left.compareDocumentPosition(right);
+    if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+    if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+    return 0;
+  });
+  return all;
+}
+
+/**
+ * 微信正文在揭开之前是 visibility:hidden。Readability 会把整段丢掉。
+ * 这种页直接走 #js_content，不看那层隐藏样式。
+ */
+function directArticleRoot(): HTMLElement | null {
+  const node = document.querySelector('#js_content') ?? document.querySelector('.rich_media_content');
+  if (!(node instanceof HTMLElement)) return null;
+  const enoughText = normalizeText(node.textContent).length >= LIMITS.minArticleChars;
+  const enoughImages = [...node.querySelectorAll('img')].some((image) => isContentImage(image));
+  if (!enoughText && !enoughImages) return null;
+  return node;
+}
+
+function contentImages(scope: ParentNode): HTMLImageElement[] {
+  return [...scope.querySelectorAll('img')].filter((image) => isContentImage(image));
+}
+
 function annotateSource(runId: string): SourceCandidate[] {
   clearAnchors();
   const { roots } = readableRoots();
   // 按子树顺序拉平：编号、前后缀、标题路径都基于同一份顺序，提取与回跳必须一致。
-  const found = roots.flatMap((root) =>
-    [...root.querySelectorAll<HTMLElement>(CANDIDATES)]
-      .filter((element) => candidateText(element) !== null)
-      .map((element) => ({ element, root })),
-  );
+  const found = roots.flatMap((root) => {
+    const scope: ParentNode = root instanceof Document ? (root.body ?? root) : root;
+    return orderedTextNodes(scope).map((element) => ({ element, root }));
+  });
   return found.map(({ element, root }, index) => {
     const text = normalizeText(element.textContent);
     const id = `wka-${runId}-${index.toString(36)}`;
@@ -169,21 +207,47 @@ function parseArticle(doc: Document) {
   return new Readability(doc).parse();
 }
 
-/** 同一地址下正文或图片变了，这个指纹就变。 */
-export function documentFingerprint(): string {
-  // 展开克隆顺带把图片的真实地址写进副本，因此不再需要按索引对齐。
+type ReadPieces = {
+  title: string;
+  texts: string[];
+  imageUrls: string[];
+  direct: HTMLElement | null;
+};
+
+/** 提取和指纹共用这一份正文与图片地址，避免“读到的”和“用来判断改没改过”不是同一篇。 */
+function readPieces(): ReadPieces {
+  const direct = directArticleRoot();
+  if (direct) {
+    return {
+      title: normalizeText(document.querySelector('#activity-name')?.textContent) || document.title,
+      texts: orderedTextNodes(direct).map((element) => candidateText(element) ?? ''),
+      imageUrls: contentImages(direct).map((image) => contentImageUrl(image)),
+      direct,
+    };
+  }
   const clone = cloneExpanded(document) as Document;
   const article = parseArticle(clone);
-  if (!article?.content) return fingerprint(`${location.href}\n${document.title}\nunreadable`);
+  if (!article?.content) {
+    return { title: document.title, texts: [], imageUrls: [], direct: null };
+  }
   const root = new DOMParser().parseFromString(`<main>${article.content}</main>`, 'text/html').body;
-  const content = [...root.querySelectorAll(CANDIDATES)]
-    .map((element) => normalizeText(element.textContent))
-    .filter(Boolean)
-    .join('\n');
-  const images = [...root.querySelectorAll<HTMLImageElement>('img')]
-    .map((image) => `${image.getAttribute('src') ?? ''}\t${normalizeText(image.alt)}`)
-    .join('\n');
-  return fingerprint(`${location.href}\n${document.title}\n${content}\n${images}`);
+  return {
+    title: article.title || document.title,
+    texts: orderedTextNodes(root).map((element) => candidateText(element) ?? ''),
+    imageUrls: contentImages(root).map((image) => contentImageUrl(image)),
+    direct: null,
+  };
+}
+
+/** 同一地址下正文或图片变了，这个指纹就变。转述文字不进指纹，免得每次读图都像改过稿。 */
+export function documentFingerprint(): string {
+  const pieces = readPieces();
+  if (!pieces.texts.length && !pieces.imageUrls.length) {
+    return fingerprint(`${location.href}\n${document.title}\nunreadable`);
+  }
+  return fingerprint(
+    `${location.href}\n${document.title}\n${pieces.texts.join('\n')}\n${pieces.imageUrls.join('\n')}`,
+  );
 }
 
 function coverage(status: CoverageStatus, found: number, captured: number): Coverage {
@@ -213,6 +277,119 @@ function detectUnloadedHints(): string[] {
   return [...hints];
 }
 
+function liveBlock(element: HTMLElement, root: Element, index: number, runId: string, nodes: HTMLElement[]): EvidenceBlock {
+  const text = candidateText(element) ?? '';
+  const anchorId = `wka-${runId}-${index.toString(36)}`;
+  element.setAttribute(ANCHOR_ATTRIBUTE, anchorId);
+  const headingPath = headingPathAtFrom(root, element);
+  return {
+    id: `b_${index.toString(36)}`,
+    role: roleOf(element),
+    content: text,
+    headingPath,
+    table: tableContext(element),
+    anchor: {
+      sessionAnchorId: anchorId,
+      selector: cssPath(element),
+      exact: text,
+      prefix: normalizeText(nodes[index - 1]?.textContent).slice(-100),
+      suffix: normalizeText(nodes[index + 1]?.textContent).slice(0, 100),
+      headingPath,
+      fingerprint: fingerprint(`${text}\n${headingPath.join(' > ')}`),
+    },
+  };
+}
+
+/** 对不上唯一位置时仍保留文字。跳转可能失败，这比把段落丢掉要好。 */
+function looseBlock(content: string, element: Element, headingPath: string[], index: number): EvidenceBlock {
+  return {
+    id: `b_${index.toString(36)}`,
+    role: roleOf(element),
+    content,
+    headingPath,
+    table: tableContext(element),
+    anchor: {
+      sessionAnchorId: '',
+      selector: '',
+      exact: content,
+      prefix: '',
+      suffix: '',
+      headingPath,
+      fingerprint: fingerprint(`${content}\n${headingPath.join(' > ')}`),
+    },
+  };
+}
+
+function titleBlock(title: string): EvidenceBlock {
+  const text = normalizeText(title) || '这一页主要是图片';
+  return {
+    id: 'b_title',
+    role: 'heading',
+    content: text,
+    headingPath: [],
+    anchor: {
+      sessionAnchorId: '',
+      selector: '',
+      exact: text,
+      prefix: '',
+      suffix: '',
+      headingPath: [],
+      fingerprint: fingerprint(text),
+    },
+  };
+}
+
+function assignPictures(
+  images: HTMLImageElement[],
+  blockElements: (HTMLElement | null)[],
+  blocks: EvidenceBlock[],
+  runId: string,
+): PictureRef[] {
+  return images.slice(0, LIMITS.maxImages).map((image, index) => {
+    const url = contentImageUrl(image);
+    const anchorId = `wka-${runId}-i${index.toString(36)}`;
+    if (image.isConnected) image.setAttribute(ANCHOR_ATTRIBUTE, anchorId);
+    let afterBlockId: string | undefined;
+    for (let cursor = 0; cursor < blockElements.length; cursor += 1) {
+      const element = blockElements[cursor];
+      if (!element?.isConnected) continue;
+      if (element.compareDocumentPosition(image) & Node.DOCUMENT_POSITION_FOLLOWING) {
+        afterBlockId = blocks[cursor]?.id;
+      }
+    }
+    const alt = normalizeText(image.getAttribute('alt')).slice(0, 120);
+    const exact = `image:${(alt || url).slice(0, 80)}`;
+    return {
+      id: `img_${index}`,
+      url,
+      alt,
+      afterBlockId,
+      anchor: {
+        sessionAnchorId: image.isConnected ? anchorId : '',
+        selector: image.isConnected ? cssPath(image) : '',
+        exact,
+        prefix: '',
+        suffix: '',
+        headingPath: [],
+        fingerprint: fingerprint(`image:${url}`),
+      },
+    };
+  });
+}
+
+function liveImagesFor(urls: string[]): HTMLImageElement[] {
+  const wanted = new Set(urls);
+  const byUrl = new Map<string, HTMLImageElement>();
+  for (const image of queryAllAcrossTrees<HTMLImageElement>('img')) {
+    const url = contentImageUrl(image);
+    if (wanted.has(url) && !byUrl.has(url)) byUrl.set(url, image);
+  }
+  return urls.flatMap((url) => {
+    const image = byUrl.get(url);
+    return image ? [image] : [];
+  });
+}
+
 export function extractDocument(): BlocksPayload {
   const contentType = document.contentType ?? 'text/html';
   if (!contentType.includes('html')) {
@@ -221,65 +398,97 @@ export function extractDocument(): BlocksPayload {
 
   const runId = Math.random().toString(36).slice(2, 8);
   const { stats } = readableRoots();
-  const source = annotateSource(runId);
-  const byId = new Map(source.map((candidate) => [candidate.id, candidate]));
-  const clone = cloneExpanded(document) as Document;
-  const article = parseArticle(clone);
+  const direct = directArticleRoot();
 
   let excludedBlocks = 0;
   let blocks: EvidenceBlock[] = [];
+  let blockElements: (HTMLElement | null)[] = [];
+  let textNodes: HTMLElement[] = [];
   let usedFallback = false;
-  let root: HTMLElement | null = null;
+  let imageUrls: string[] = [];
+  let liveImages: HTMLImageElement[] = [];
+  let title = document.title;
+  let sawArticle = false;
 
-  if (article?.content) {
-    root = new DOMParser().parseFromString(`<main>${article.content}</main>`, 'text/html').body;
-    const cleanCandidates = [...root.querySelectorAll<HTMLElement>(CANDIDATES)];
+  if (direct) {
+    clearAnchors();
+    title = normalizeText(document.querySelector('#activity-name')?.textContent) || document.title;
+    textNodes = orderedTextNodes(direct);
+    blocks = textNodes.map((element, index) => liveBlock(element, direct, index, runId, textNodes));
+    blockElements = textNodes;
+    liveImages = contentImages(direct);
+    imageUrls = liveImages.map((image) => contentImageUrl(image));
+    sawArticle = true;
+  } else {
+    const source = annotateSource(runId);
+    const byId = new Map(source.map((candidate) => [candidate.id, candidate]));
+    const clone = cloneExpanded(document) as Document;
+    const article = parseArticle(clone);
+    sawArticle = Boolean(article?.content);
+    title = article?.title || document.title;
 
-    for (const element of cleanCandidates) {
-      const content = candidateText(element);
-      if (!content) continue;
-      const retainedId = element.getAttribute(ANCHOR_ATTRIBUTE);
-      let match = retainedId ? byId.get(retainedId) : undefined;
-      if (!match || match.text !== content) {
-        const path = headingPathAtFrom(root, element);
-        const candidates = source.filter(
-          (candidate) => candidate.text === content && samePath(candidate.headingPath, path),
-        );
-        match = candidates.length === 1 ? candidates[0] : undefined;
+    if (article?.content) {
+      const root = new DOMParser().parseFromString(`<main>${article.content}</main>`, 'text/html').body;
+      textNodes = orderedTextNodes(root);
+      imageUrls = contentImages(root).map((image) => contentImageUrl(image));
+      for (const element of textNodes) {
+        const content = candidateText(element);
+        if (!content) continue;
+        const retainedId = element.getAttribute(ANCHOR_ATTRIBUTE);
+        let match = retainedId ? byId.get(retainedId) : undefined;
+        if (!match || match.text !== content) {
+          const path = headingPathAtFrom(root, element);
+          const candidates = source.filter(
+            (candidate) => candidate.text === content && samePath(candidate.headingPath, path),
+          );
+          match = candidates.length === 1 ? candidates[0] : undefined;
+        }
+        if (!match) {
+          excludedBlocks += 1;
+          blocks.push(looseBlock(content, element, headingPathAtFrom(root, element), blocks.length));
+          blockElements.push(null);
+          continue;
+        }
+        blocks.push(blockFromCandidate({ ...match, text: content }, blocks.length));
+        blockElements.push(match.element);
       }
-      // 无法唯一的块宁可剔除也不放进证据集：引用必须能回到确定位置（FR-016/FR-017）。
-      if (!match) {
-        excludedBlocks += 1;
-        continue;
-      }
-      blocks.push(blockFromCandidate({ ...match, text: content }, blocks.length));
     }
+
+    if (!enoughContent(blocks)) {
+      const fallback = source.map((candidate, index) => blockFromCandidate(candidate, index));
+      if (enoughContent(fallback)) {
+        blocks = fallback;
+        blockElements = source.map((candidate) => candidate.element);
+        textNodes = source.map((candidate) => candidate.element);
+        excludedBlocks = 0;
+        usedFallback = true;
+        if (!imageUrls.length) {
+          imageUrls = contentImages(document.body ?? document).map((image) => contentImageUrl(image));
+        }
+      } else if (!imageUrls.length) {
+        imageUrls = contentImages(document.body ?? document).map((image) => contentImageUrl(image));
+      }
+    }
+    liveImages = liveImagesFor(imageUrls);
   }
 
-  if (!enoughContent(blocks)) {
-    const fallback = source.map((candidate, index) => blockFromCandidate(candidate, index));
-    if (enoughContent(fallback)) {
-      blocks = fallback;
-      excludedBlocks = 0;
-      usedFallback = true;
-    } else {
-      clearAnchors();
-      throw appError(
-        'EXTRACT_FAILED',
-        article?.content
-          ? '这一页的文字太少，凑不出完整的内容。换一篇正常文章试试。'
-          : '这一页找不到成篇的文字。目前只支持文章类网页；列表页、搜索结果、复杂的网页应用、主要靠图片说话的页面都读不了。',
-      );
-    }
+  if (!enoughContent(blocks) && liveImages.length === 0 && imageUrls.length === 0) {
+    clearAnchors();
+    throw appError(
+      'EXTRACT_FAILED',
+      sawArticle
+        ? '这一页的文字太少，凑不出完整的内容。换一篇正常文章试试。'
+        : '这一页找不到成篇的文字。目前只支持文章类网页；列表页、搜索结果和复杂的网页应用读不了。',
+    );
   }
+  if (!blocks.length) blocks = [titleBlock(title)];
 
-  const textFound = root
-    ? [...root.querySelectorAll<HTMLElement>(CANDIDATES)].filter((element) => !element.matches('th,td')).length
-    : source.filter((candidate) => candidate.element.tagName !== 'TH' && candidate.element.tagName !== 'TD').length;
-  const tableFound = root ? root.querySelectorAll('th,td').length : source.filter((candidate) => candidate.element.matches('th,td')).length;
-  const imageFound = (root ?? document).querySelectorAll('img').length;
-  const textCaptured = blocks.filter((block) => block.role !== 'table-cell').length;
+  const pictures = assignPictures(liveImages, blockElements, blocks, runId);
+  const textFound = textNodes.filter((element) => !element.matches('th,td')).length;
+  const tableFound = textNodes.filter((element) => element.matches('th,td')).length;
+  const textCaptured = blocks.filter((block) => block.role !== 'table-cell' && block.role !== 'image').length;
   const tableCaptured = blocks.filter((block) => block.role === 'table-cell').length;
+  const imageFound = imageUrls.length;
 
   const warnings: string[] = [];
   const hints = detectUnloadedHints();
@@ -287,13 +496,11 @@ export function extractDocument(): BlocksPayload {
     warnings.push(`页面上有「${hints.join('、')}」，可能还有没展开的内容没有读到。`);
   }
   if (usedFallback) warnings.push('这一页不太像完整文章，按页面上的文字块读取。');
-  if (excludedBlocks) warnings.push(`${excludedBlocks} 个正文块无法唯一定位，未纳入证据。`);
-  if (imageFound) warnings.push(`发现 ${imageFound} 张图片；首版不解析图片内容。`);
 
   const completeness: Completeness = {
     scope: 'readability-article',
     text: coverage(
-      textCaptured === textFound ? 'parsed' : 'partial',
+      textCaptured < textFound ? 'partial' : textFound === 0 && textCaptured === 0 ? 'not-present' : 'parsed',
       textFound,
       textCaptured,
     ),
@@ -317,13 +524,20 @@ export function extractDocument(): BlocksPayload {
     warnings,
   };
 
-  clearAnchors(new Set(blocks.map((block) => block.anchor.sessionAnchorId)));
+  clearAnchors(
+    new Set(
+      [...blocks.map((block) => block.anchor.sessionAnchorId), ...pictures.map((picture) => picture.anchor.sessionAnchorId)].filter(
+        (id) => id.length > 0,
+      ),
+    ),
+  );
   return {
-    title: article?.title || document.title,
+    title,
     url: location.href,
     fingerprint: documentFingerprint(),
     blocks,
     completeness,
+    pictures,
   };
 }
 
@@ -383,6 +597,10 @@ export function jumpToAnchor(anchor: DomAnchor): JumpOutcome {
     ),
   );
   const direct = directMatches.length === 1 ? directMatches[0] : undefined;
+  if (direct && anchor.exact.startsWith('image:') && direct.element instanceof HTMLImageElement) {
+    highlight(direct.element);
+    return { outcome: 'jumped' };
+  }
   if (
     direct &&
     normalizeText(direct.element.textContent) === anchor.exact &&

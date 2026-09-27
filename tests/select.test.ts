@@ -41,8 +41,9 @@ describe('划词提问按钮', () => {
           return this;
         },
       }) as DOMRect;
-    const scope = globalThis as typeof globalThis & { __wkaQuoteAsk?: boolean };
+    const scope = globalThis as typeof globalThis & { __wkaQuoteAsk?: boolean; __wkaSkipQuoteUp?: number };
     delete scope.__wkaQuoteAsk;
+    scope.__wkaSkipQuoteUp = 0;
     startQuoteAsk();
   });
 
@@ -68,5 +69,37 @@ describe('划词提问按钮', () => {
       type: 'quoteSelected',
       text: expect.stringContaining('公交线路调整方案'),
     });
+  });
+
+  it('超过八百字仍然给出问这句，发出去的是裁过的原文', () => {
+    document.body.innerHTML = `<p>${'甲'.repeat(900)}</p>`;
+    selectParagraph();
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    expect(quoteButton()?.textContent).toBe('问这句');
+    quoteButton()?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(sendMessage).toHaveBeenCalledWith({
+      type: 'quoteSelected',
+      text: `${'甲'.repeat(500)}…`,
+    });
+  });
+
+  it('刚出现时页面滚动不会把按钮立刻收掉', () => {
+    selectParagraph();
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    window.dispatchEvent(new Event('scroll'));
+    expect(quoteButton()?.textContent).toBe('问这句');
+  });
+
+  it('给正文加上可选中样式，压过页面的禁止选择', () => {
+    expect(document.getElementById('wka-quote-select')?.textContent).toContain('user-select:text');
+  });
+
+  it('页面在冒泡阶段清掉选区之前，捕获阶段已经看见这段话', () => {
+    const paragraph = document.querySelector('p');
+    if (!paragraph) throw new Error('缺少段落');
+    paragraph.addEventListener('mouseup', () => window.getSelection()?.removeAllRanges());
+    selectParagraph();
+    paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    expect(quoteButton()?.textContent).toBe('问这句');
   });
 });

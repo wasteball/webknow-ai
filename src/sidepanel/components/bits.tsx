@@ -84,10 +84,20 @@ export function ScopeLine({ completeness }: { completeness: Completeness | null 
         : `表格只读到 ${completeness.tables.captured}/${completeness.tables.found} 格`,
     );
   }
-  if (completeness.images.found > 0) parts.push(`${completeness.images.found} 张图片没读`);
+  if (completeness.images.found > 0) {
+    const { found, captured } = completeness.images;
+    if (captured > 0) {
+      parts.push(`读了 ${captured} 张图（模型转述，可能有误）`);
+      if (found > captured) parts.push(`还有 ${found - captured} 张没读`);
+    } else if (completeness.warnings.some((warning) => warning.includes('读不了图') || warning.includes('没读到'))) {
+      parts.push(`${found} 张图片没读`);
+    } else {
+      parts.push(`${found} 张图片还没读`);
+    }
+  }
   const framesUnread = completeness.frames.found - completeness.frames.captured;
   if (framesUnread > 0) parts.push(`${framesUnread} 个内嵌页面没读`);
-  if (completeness.excludedBlocks > 0) parts.push(`${completeness.excludedBlocks} 段没法定位，没算进去`);
+  if (completeness.excludedBlocks > 0) parts.push(`${completeness.excludedBlocks} 处读到了，但没法点回原文`);
   if (completeness.truncated) parts.push('没有读完整篇');
   // 未展开的内容、无法定位的块等，都在这里如实告诉用户。
   parts.push(...completeness.warnings);

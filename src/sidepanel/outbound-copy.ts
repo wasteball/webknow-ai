@@ -9,5 +9,5 @@ export function outboundRetentionLine(providerName: string): string {
 }
 
 export function outboundConfirmedHint(receiver: string): string {
-  return `你已经确认过：正文和你的问题会发给 ${receiver}，费用从你的账号扣。`;
+  return `你已经确认过：正文、图片和你的问题会发给 ${receiver}，费用从你的账号扣。`;
 }

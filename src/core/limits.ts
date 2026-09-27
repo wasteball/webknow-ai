@@ -49,6 +49,13 @@ export const LIMITS = {
   /** 联网搜索（F3）：单次注入提示词的结果数上限。 */
   searchResultsCount: 5,
   searchTimeoutMs: 15_000,
+
+  /** 一页里拿去读的内容图上限。多出来的只披露，不静默当成读过。 */
+  maxImages: 6,
+  /** 送去读图前，长边压到这个像素。 */
+  maxImageEdge: 1024,
+  /** 单张图的读图超时。到点就跳过这张，不拖垮整篇。 */
+  visionTimeoutMs: 25_000,
 } as const;
 
 export type Limits = typeof LIMITS;

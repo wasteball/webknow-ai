@@ -3,6 +3,7 @@ import { LIMITS } from './limits';
 import type { ModelProvider } from './model-providers';
 import { thinkingRequest } from './model-thinking';
 import { readerDraft } from './stream-draft';
+import { visionBody, visionTextFrom } from './vision';
 
 /**
  * 模型调用的共用传输层（DeepSeek 与智谱都是 OpenAI 兼容的 chat/completions + SSE）。
@@ -254,4 +255,43 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
     throw appError('BAD_OUTPUT', '这次生成的内容没法用，没有采用。可以再试一次。', true);
   }
   return parsed;
+}
+
+/**
+ * 读一张图。不走 JSON 模式，并强制关掉思考，否则输出额度会被思考过程耗光。
+ * 图片地址只进请求体，不进日志。
+ */
+export async function chatVision(options: {
+  apiKey: string;
+  endpoint: string;
+  providerName: string;
+  imageUrl: string;
+  signal: AbortSignal;
+  fetchImpl?: typeof fetch;
+}): Promise<string> {
+  const timeout = AbortSignal.timeout(LIMITS.visionTimeoutMs);
+  const combined = AbortSignal.any([options.signal, timeout]);
+  const doFetch = options.fetchImpl ?? fetch;
+  let response: Response;
+  try {
+    response = await doFetch(options.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${options.apiKey}`,
+      },
+      body: JSON.stringify(visionBody(options.imageUrl)),
+      signal: combined,
+    });
+  } catch {
+    if (options.signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
+    if (timeout.aborted) {
+      throw appError('TIMEOUT', `这张图等太久了，${options.providerName} 没有读出来。`, true);
+    }
+    throw fromNetworkFailure(globalThis.navigator?.onLine === false ? 'offline' : 'unknown', options.providerName);
+  }
+  if (!response.ok) {
+    throw fromHttpStatus(response.status, await failureHint(response, options.providerName));
+  }
+  return visionTextFrom(await response.json());
 }

@@ -52,6 +52,8 @@ export function sessionWithNewExtract(session: PageSession, page: BlocksPayload)
     fingerprint: page.fingerprint,
     blocks: page.blocks,
     completeness: page.completeness,
+    pictures: page.pictures,
+    imagesAttached: !page.pictures?.length,
     updatedAt: Date.now(),
   };
 }
