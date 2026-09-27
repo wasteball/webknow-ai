@@ -479,7 +479,7 @@ test('设置贴在右上角，页标题顶上来，滚下去也不挡住模式',
   expect(title!.x + title!.width).toBeLessThanOrEqual(gear!.x + 1);
   await panel.screenshot({ path: join(OUTPUT_DIR, 'header-top.png') });
 
-  await panel.locator('.chat').evaluate((node) => {
+  await panel.locator('#mode-panel-qa .chat').evaluate((node) => {
     node.scrollTop = node.scrollHeight;
   });
   const chip = panel.getByRole('button', { name: '三个团队的试点为什么不能代表其他城市？' });
