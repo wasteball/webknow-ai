@@ -185,10 +185,13 @@ export function emptySession(tabId: number, url: string): PageSession {
 
 /** 页面身份或内容版本变化：旧结果立即陈旧，正文不再作为当前页上下文（FR-005/FR-024）。 */
 export function markStale(session: PageSession, url?: string): PageSession {
+  const nextUrl = url ?? session.url;
+  // 导航刚开始时往往还不知道新地址。这时不能继续把上一页的标题当成这一页。
+  const samePage = url !== undefined && url === session.url;
   return {
     ...session,
-    url: url ?? session.url,
-    title: url && url !== session.url ? '' : session.title,
+    url: nextUrl,
+    title: samePage ? session.title : '',
     fingerprint: '',
     state: 'STALE',
     blocks: [],

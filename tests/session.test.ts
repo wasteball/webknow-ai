@@ -110,6 +110,16 @@ describe('会话与请求身份', () => {
     expect(stale.blocks).toEqual([]);
     expect(stale.guide).toBeNull();
     expect(stale.url).toBe('https://example.com/b');
+    expect(stale.title).toBe('');
+  });
+
+  it('还不知道新地址时不把上一页的标题留在这一页上', () => {
+    const session = createSession(1, payload);
+    const stale = markStale(session);
+    expect(stale.state).toBe('STALE');
+    expect(stale.title).toBe('');
+    expect(stale.blocks).toEqual([]);
+    expect(stale.chat).toEqual([]);
   });
 
   it('停止后按请求类型分别恢复到确定状态', () => {

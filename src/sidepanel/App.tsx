@@ -10,11 +10,8 @@ import { Setup } from './components/Setup';
 import { Busy, Drafting, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
 import { BrandMark, Icon } from './components/Icon';
 import { outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
-
-const START_LABEL: Record<string, string> = {
-  READY_TO_START: '开始伴读',
-  STALE: '重新开始',
-};
+import { needsPageHost, type PageEntryId } from './page-entry';
+import { PageEntry } from './components/PageEntry';
 
 /**
  * 已就绪后的两个能力用文字标签切换：「问 AI」是摘要 + 话题 + 自己提问，
@@ -99,16 +96,35 @@ export function App() {
   }, []);
 
   /**
-   * 不向 Chrome 申请站点权限。读网页靠用户点工具栏图标时的 activeTab。
-   * 外发确认与开始伴读仍合成一个按钮：分成两个时，“开始伴读”曾经禁用且不说明原因。
+   * 点入口才读这一页。页面已经换过、或还没有地址时，这一下先向浏览器要读取网页的许可
+   * （必须是这次点击里的第一个等待，否则授权窗不会出现）。已经允许过就不会再问。
+   * 外发确认仍合在同一次点击里：拆成两个按钮时，后面那个曾经是禁用的，点了没反应。
    */
-  const startReading = async (options?: { confirm?: boolean }) => {
+  const readPage = (entry: PageEntryId | 'retry') => {
     if (!state || state.tabId === null) return;
-    if (options?.confirm) {
-      const reply = await send({ type: 'confirmOutbound' });
-      if (!reply?.ok) return;
-    }
-    await send({ type: 'start', tabId: state.tabId });
+    const tabId = state.tabId;
+    const confirm = !state.outboundConfirmed;
+    const askHost = needsPageHost(state.phase, state.permission, state.error?.code ?? null);
+    void (async () => {
+      if (askHost) {
+        let granted = false;
+        try {
+          granted = await browser.permissions.request({ origins: ['https://*/*', 'http://*/*'] });
+        } catch {
+          granted = false;
+        }
+        if (!granted) {
+          setNotice('要读换过的网页，需要允许读取你打开的网页。也可以点一下工具栏上的知伴图标，只读这一页。');
+          return;
+        }
+      }
+      if (confirm) {
+        const reply = await send({ type: 'confirmOutbound' });
+        if (!reply?.ok) return;
+      }
+      setView(entry === 'learn' ? 'learn' : 'qa');
+      await send({ type: 'start', tabId });
+    })();
   };
 
   /**
@@ -196,18 +212,7 @@ export function App() {
           {phase === 'UNCONFIGURED' && <Setup onOpenSettings={() => openSettings('model')} />}
 
           {(phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE') && (
-            <Section title={phase === 'STALE' ? '页面换了' : '开始读这一页'}>
-              {phase === 'PERMISSION_REQUIRED' && (
-                <p>
-                  请点一下浏览器右上角的 <strong>知伴图标</strong>
-                  。我们不是常驻的：只有你打开产品时才读当前这一页。
-                </p>
-              )}
-              {phase === 'STALE' && (
-                <p>
-                  你已经换了页面（或者这一页的内容变了）。上一页的结果作废了。再点一下工具栏上的知伴图标，就会读现在这一页。
-                </p>
-              )}
+            <>
               {!state.outboundConfirmed ? (
                 <OutboundNotice
                   state={state}
@@ -218,17 +223,15 @@ export function App() {
                   {outboundConfirmedHint(findProvider(state.settings.provider).receiver)}
                 </p>
               )}
-              <div className="composer-actions">
-                {/* 未确认时不做成禁用按钮：禁用而不说原因，用户会以为点了没反应。 */}
-                <button
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => void startReading({ confirm: !state.outboundConfirmed })}
-                >
-                  {state.outboundConfirmed ? (START_LABEL[phase] ?? '开始伴读') : '我确认，开始伴读'}
-                </button>
-              </div>
-            </Section>
+              <PageEntry
+                pageTitle={state.pageTitle}
+                phase={phase}
+                outboundConfirmed={state.outboundConfirmed}
+                busy={busy !== null}
+                askHost={needsPageHost(phase, state.permission, state.error?.code ?? null)}
+                onPick={readPage}
+              />
+            </>
           )}
 
           {phase === 'ANALYZING' &&
@@ -255,7 +258,7 @@ export function App() {
                 <button
                   type="button"
                   disabled={busy !== null}
-                  onClick={() => void startReading({ confirm: !state.outboundConfirmed })}
+                  onClick={() => readPage('retry')}
                 >
                   重新开始
                 </button>
@@ -372,10 +375,10 @@ function safeOrigin(url: string): string | null {
 }
 
 const PHASE_TEXT: Record<string, string> = {
-  PERMISSION_REQUIRED: '点一下工具栏上的知伴图标，就会读你正在看的这一页。',
-  READY_TO_START: '准备好了。你点开始，我才读这一页。',
+  PERMISSION_REQUIRED: '点一个，我才读你正在看的这一页。',
+  READY_TO_START: '点一个，我才读这一页。',
   ANALYZING: '正在读这一页，马上给你摘要。',
-  STALE: '页面换了，之前的内容已经作废。',
+  STALE: '换了一页。上一页的内容已经放下。',
   UNSUPPORTED: '这一页暂时读不了。',
   ERROR: '上一步没成功。',
 };

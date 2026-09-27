@@ -4,7 +4,7 @@ import { DEFAULT_LEARN_GOAL, usedLearnGoals } from '../../core/learn-policy';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { LearnEntry, QuizQuestion } from '../../core/session';
 import { shouldSubmitComposer } from '../composer';
-import { Busy, Drafting, SuggestRow, Thinking, VerdictTag } from './bits';
+import { Busy, ComposerField, Drafting, SuggestRow, Thinking, VerdictTag } from './bits';
 import { Icon } from './Icon';
 import { Rich, RichInline } from './Rich';
 
@@ -51,9 +51,10 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
   const current = learning?.current ?? null;
   const quiz = current?.kind === 'quiz' ? current.questions : null;
   const allAnswered = quiz !== null && quiz.every((question) => (picks[question.id] ?? []).length > 0);
-  // 有学习请求在飞时不摆动作区：这期间所有操作都会被后台挡回来，摆出来只会让人白点。
-  const showDock = !busy;
 
+  const stop = () => {
+    if (tabId) void send({ type: 'stop', tabId });
+  };
   const answer = async () => {
     if (!tabId || !draft.trim()) return;
     const reply = await send({ type: 'learnAnswer', tabId, text: draft });
@@ -135,30 +136,24 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
 
         {busy &&
           (state.busy?.draft || state.busy?.reasoning ? (
-            <Drafting
-              text={state.busy?.draft ?? ''}
-              reasoning={state.busy?.reasoning ?? ''}
-              onStop={() => tabId && void send({ type: 'stop', tabId })}
-            />
+            <Drafting text={state.busy?.draft ?? ''} reasoning={state.busy?.reasoning ?? ''} />
           ) : (
             <Busy
               label={current ? (current.kind === 'quiz' ? '正在批改这一轮' : '正在看你的回答') : '正在想问题'}
               chars={state.busy?.chars ?? 0}
-              onStop={() => tabId && void send({ type: 'stop', tabId })}
             />
           ))}
         <div className="chat-end" ref={endRef} />
       </div>
 
-      {/* 底部固定区：只放"现在能做的动作"，滚到对话哪一段都能作答。 */}
-      {showDock && (
-        <div className="dock">
+      {/* 底部固定区：生成时也留着。停止和提交是同一个位置，正文只显示正在写的内容。 */}
+      <div className="dock">
           {quiz && learning?.status === 'active' && (
             <form
               className="composer"
               onSubmit={(event) => {
                 event.preventDefault();
-                void submitQuiz();
+                if (!busy) void submitQuiz();
               }}
             >
               {quiz.map((question, questionIndex) => (
@@ -173,6 +168,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
                         type={question.multi ? 'checkbox' : 'radio'}
                         name={`quiz-${question.id}`}
                         checked={(picks[question.id] ?? []).includes(choice.id)}
+                        disabled={busy}
                         onChange={() => togglePick(question, choice.id)}
                       />
                       <span>
@@ -183,11 +179,17 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
                 </fieldset>
               ))}
               <div className="composer-actions">
-                <Assists tabId={tabId} send={send} only={['explain', 'skip', 'end']} />
-                <button type="submit" disabled={!allAnswered}>
-                  <Icon name="check" small />
-                  提交
-                </button>
+                <Assists tabId={tabId} send={send} only={['explain', 'skip', 'end']} disabled={busy} />
+                {busy ? (
+                  <button type="button" className="send-btn" aria-label="停止" onClick={stop}>
+                    <Icon name="stop" small />
+                  </button>
+                ) : (
+                  <button type="submit" disabled={!allAnswered}>
+                    <Icon name="check" small />
+                    提交
+                  </button>
+                )}
               </div>
             </form>
           )}
@@ -197,80 +199,90 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               className="composer"
               onSubmit={(event) => {
                 event.preventDefault();
-                void answer();
+                if (!busy) void answer();
               }}
             >
               <label className="sr-only" htmlFor="learning-answer">
                 用自己的话回答
               </label>
-              <textarea
-                id="learning-answer"
-                rows={2}
-                maxLength={1000}
-                value={draft}
-                placeholder="用自己的话说说看…"
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
-                  if (
-                    !shouldSubmitComposer({
-                      key: event.key,
-                      shiftKey: event.shiftKey,
-                      isComposing: event.nativeEvent.isComposing,
-                      keyCode: event.keyCode,
-                    })
-                  ) {
-                    return;
-                  }
-                  event.preventDefault();
-                  void answer();
-                }}
-              />
+              <ComposerField busy={busy} idleLabel="回答" onStop={stop}>
+                <textarea
+                  id="learning-answer"
+                  rows={2}
+                  maxLength={1000}
+                  value={draft}
+                  placeholder="用自己的话说说看…"
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+                    if (
+                      !shouldSubmitComposer({
+                        key: event.key,
+                        shiftKey: event.shiftKey,
+                        isComposing: event.nativeEvent.isComposing,
+                        keyCode: event.keyCode,
+                      })
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    if (!busy) void answer();
+                  }}
+                />
+              </ComposerField>
               <div className="composer-actions">
-                <Assists tabId={tabId} send={send} only={['unknown', 'hint', 'explain', 'skip', 'end']} />
-                <button type="submit" className="send-btn" disabled={false} aria-label="回答">
-                  <Icon name="send" small />
-                </button>
+                <Assists tabId={tabId} send={send} only={['unknown', 'hint', 'explain', 'skip', 'end']} disabled={busy} />
               </div>
             </form>
           )}
 
-          {learning?.status === 'active' && !current && <p className="hint">等一下，马上出下一轮…</p>}
+          {learning?.status === 'active' && !current &&
+            (busy ? (
+              <form className="composer" onSubmit={(event) => event.preventDefault()}>
+                <ComposerField busy idleLabel="回答" onStop={stop}>
+                  <textarea rows={2} readOnly placeholder="正在想下一问" aria-label="正在想下一问" />
+                </ComposerField>
+              </form>
+            ) : (
+              <p className="hint">等一下，马上出下一轮…</p>
+            ))}
 
           {(!learning || learning.status === 'closed') && (
             <>
               <SuggestRow
                 lead={learning?.status === 'closed' ? '换一个点再来一轮' : '先选要弄懂的那一点'}
                 items={nextDirections}
+                disabled={busy}
                 onPick={(item) => void startWith(item.id === 'core' ? DEFAULT_LEARN_GOAL : item.question)}
               />
               <form
                 className="composer"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  void startWith(goal);
+                  if (!busy) void startWith(goal);
                 }}
               >
                 <label className="sr-only" htmlFor="learning-goal">
                   自己写一个方向
                 </label>
-                <input
-                  id="learning-goal"
-                  type="text"
-                  maxLength={200}
-                  value={goal}
-                  placeholder="或者自己写一个方向"
-                  onChange={(event) => setGoal(event.target.value)}
-                />
-                <div className="composer-actions">
-                  <button type="submit" className="send-btn" aria-label="开始">
-                    <Icon name={learning?.status === 'closed' ? 'rotate' : 'send'} small />
-                  </button>
-                </div>
+                <ComposerField
+                  busy={busy}
+                  idleLabel="开始"
+                  idleIcon={learning?.status === 'closed' ? 'rotate' : 'send'}
+                  onStop={stop}
+                >
+                  <input
+                    id="learning-goal"
+                    type="text"
+                    maxLength={200}
+                    value={goal}
+                    placeholder="或者自己写一个方向"
+                    onChange={(event) => setGoal(event.target.value)}
+                  />
+                </ComposerField>
               </form>
             </>
           )}
-        </div>
-      )}
+      </div>
     </>
   );
 }
@@ -288,10 +300,12 @@ function Assists({
   tabId,
   send,
   only,
+  disabled = false,
 }: {
   tabId: number | null;
   send: Send;
   only: (keyof typeof ASSIST_LABEL)[];
+  disabled?: boolean;
 }) {
   return (
     <>
@@ -300,6 +314,7 @@ function Assists({
           key={action}
           type="button"
           className="quiet"
+          disabled={disabled}
           onClick={() =>
             tabId &&
             void send(

@@ -83,9 +83,9 @@ DEEPSEEK_KEY=sk-... npx playwright test tests/e2e/screenshots.spec.ts
 
 发布构建的 manifest 只声明：
 
-- `permissions`: `storage`、`sidePanel`、`scripting`
+- `permissions`: `storage`、`sidePanel`、`scripting`、`activeTab`
 - `host_permissions`: `https://api.deepseek.com/*`
-- `optional_host_permissions`: `https://*/*`、`http://*/*`（用户在点击"开始伴读"时按站点授权）
+- `optional_host_permissions`: `https://*/*`、`http://*/*`（换页后点「总结摘要」等按钮、且工具栏那一次的读取权已失效时才问一次。允许之后仍然只在点这些按钮时读）
 
 没有 `tabs`，没有 `<all_urls>`。页面地址来自内容脚本上报与一次性工具栏点击，不靠 `tabs` 权限。
 

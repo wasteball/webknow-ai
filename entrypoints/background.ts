@@ -6,6 +6,7 @@ import {
   onQuoteSelected,
   onTabNavigating,
   onTabRemoved,
+  onTabSettled,
   registerPanelPort,
   resetAfterUpdate,
 } from '../src/background/router';
@@ -39,6 +40,7 @@ export default defineBackground(() => {
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.status === 'loading') void onTabNavigating(tabId);
+    if (changeInfo.status === 'complete') void onTabSettled(tabId);
   });
 
   // 安装或更新后清掉旧的会话数据。

@@ -2,7 +2,8 @@ import { defineConfig } from 'wxt';
 
 // 权限边界（PRD FR-003/FR-019/FR-032）：
 // - 不申请 tabs：页面身份来自内容脚本与写回前校验，避免“读取浏览历史”警告
-// - 网页读取靠 activeTab：用户点工具栏打开产品时读当前页，不常驻、不申请全站
+// - 打开侧栏靠工具栏点击（activeTab）。换页后点「总结摘要」等按钮时，
+//   若这次点击的读取权已经失效，才申请 optional host，且只在点击时读
 // - optional_host_permissions 留给搜索 / IMA / 智谱，由对应设置里按需申请
 // - 唯一固定外发目标是 DeepSeek
 //

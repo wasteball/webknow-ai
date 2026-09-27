@@ -37,6 +37,7 @@ export type IconName =
   | 'image'
   | 'external'
   | 'send'
+  | 'stop'
   | 'check'
   | 'info'
   | 'globe'
@@ -97,6 +98,7 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M22 2 11 13" />
     </>
   ),
+  stop: <rect x="7" y="7" width="10" height="10" rx="1.5" />,
   check: <path d="m5 12 4 4L19 6" />,
   info: (
     <>
@@ -158,7 +160,7 @@ const PATHS: Record<IconName, ReactNode> = {
 export function Icon({ name, small = false }: { name: IconName; small?: boolean }) {
   return (
     <svg
-      className={small ? 'icon icon-sm' : 'icon'}
+      className={name === 'stop' ? (small ? 'icon icon-sm icon-fill' : 'icon icon-fill') : small ? 'icon icon-sm' : 'icon'}
       viewBox="0 0 24 24"
       aria-hidden="true"
       focusable="false"

@@ -131,7 +131,7 @@ export function Notice({ text, onDismiss }: { text: string; onDismiss?: () => vo
   );
 }
 
-export function Busy({ label, chars, onStop }: { label: string; chars: number; onStop: () => void }) {
+export function Busy({ label, chars, onStop }: { label: string; chars: number; onStop?: () => void }) {
   return (
     <div className="busy" role="status" aria-live="polite">
       <span className="spinner" aria-hidden="true" />
@@ -139,9 +139,11 @@ export function Busy({ label, chars, onStop }: { label: string; chars: number; o
         {label}
         {chars > 0 ? `（已生成约 ${chars} 字）` : '…'}
       </span>
-      <button type="button" onClick={onStop}>
-        停止
-      </button>
+      {onStop && (
+        <button type="button" onClick={onStop}>
+          停止
+        </button>
+      )}
     </div>
   );
 }
@@ -166,7 +168,8 @@ export function Drafting({
 }: {
   text: string;
   reasoning?: string;
-  onStop: () => void;
+  /** 还没有输入框的阶段（首屏）才把停止放在正文下。对话里停止在输入框内。 */
+  onStop?: () => void;
 }) {
   const endRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -185,11 +188,46 @@ export function Drafting({
       <div className="busy" role="status">
         <span className="spinner" aria-hidden="true" />
         <span className="sr-only">正在写下这段</span>
-        <button type="button" onClick={onStop}>
-          停止
-        </button>
+        {onStop && (
+          <button type="button" onClick={onStop}>
+            停止
+          </button>
+        )}
       </div>
     </article>
+  );
+}
+
+/**
+ * 输入框和右下角的主按钮包在同一条边框里。
+ * 空闲时这个按钮提交；这一轮还在写时，它变成停止。
+ */
+export function ComposerField({
+  children,
+  busy,
+  idleLabel,
+  idleIcon = 'send',
+  onStop,
+}: {
+  children: ReactNode;
+  busy: boolean;
+  idleLabel: string;
+  idleIcon?: 'send' | 'rotate';
+  onStop: () => void;
+}) {
+  return (
+    <div className="composer-field">
+      {children}
+      {busy ? (
+        <button type="button" className="send-btn" aria-label="停止" onClick={onStop}>
+          <Icon name="stop" small />
+        </button>
+      ) : (
+        <button type="submit" className="send-btn" aria-label={idleLabel}>
+          <Icon name={idleIcon} small />
+        </button>
+      )}
+    </div>
   );
 }
 

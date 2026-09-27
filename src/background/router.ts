@@ -600,8 +600,8 @@ export async function onPageChanged(tabId: number, url: string): Promise<void> {
 }
 
 /**
- * 导航或刷新开始：无法在不申请 tabs 权限的前提下读取新地址，因此保守地把旧结果标为陈旧。
- * 宁可多要一次点击“开始伴读”，也不让上一页的结果留在新页面上（FR-005/FR-024）。
+ * 导航或刷新开始：旧结果立刻作废。新地址要等用户允许读取网页之后才能看见。
+ * 不在这里提取正文（FR-005/FR-024）。
  */
 export async function onTabNavigating(tabId: number): Promise<void> {
   // 导航后上一次工具栏点击留下的地址已经作废：留着会导致向错误的网站申请权限。
@@ -611,6 +611,26 @@ export async function onTabNavigating(tabId: number): Promise<void> {
   if (session.run) abortRun(tabId);
   await putSession(markStale(session));
   await pushState(tabId);
+}
+
+/**
+ * 页面加载完后，如果用户已经允许读取打开的网页，只补上新页面的标题。
+ * 不提取正文，也不向模型发任何东西。
+ */
+export async function onTabSettled(tabId: number): Promise<void> {
+  const session = await getSession(tabId);
+  if (!session || session.state !== 'STALE') return;
+  const allowed = await browser.permissions.contains({ origins: ['https://*/*', 'http://*/*'] });
+  if (!allowed) return;
+  try {
+    const tab = await browser.tabs.get(tabId);
+    const url = tab.url && originOf(tab.url) ? tab.url : null;
+    if (!url) return;
+    await putSession({ ...markStale(session, url), title: tab.title?.trim() ?? '' });
+    await pushState(tabId);
+  } catch {
+    // 地址仍不可用，入口继续不写标题。
+  }
 }
 
 /** 标签页关闭：清除该标签页的会话数据（FR-030）。 */

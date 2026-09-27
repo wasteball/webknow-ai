@@ -5,7 +5,7 @@ import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { shouldSubmitComposer } from '../composer';
 import { visibleSuggestions } from '../suggest';
-import { Busy, Drafting, SourceTag, SuggestRow, Thinking } from './bits';
+import { Busy, ComposerField, Drafting, SourceTag, SuggestRow, Thinking } from './bits';
 import { Icon } from './Icon';
 import { Rich } from './Rich';
 
@@ -62,6 +62,9 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const concealSuggests = () => {
     setHiddenAtTurns(state.chat.length);
     setHidingSuggests(true);
+  };
+  const stop = () => {
+    if (tabId) void send({ type: 'stop', tabId });
   };
   const ask = async (question: string) => {
     if (!tabId || !question.trim()) return;
@@ -126,17 +129,9 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
         )}
         {busy &&
           (state.busy?.draft || state.busy?.reasoning ? (
-            <Drafting
-              text={state.busy?.draft ?? ''}
-              reasoning={state.busy?.reasoning ?? ''}
-              onStop={() => tabId && void send({ type: 'stop', tabId })}
-            />
+            <Drafting text={state.busy?.draft ?? ''} reasoning={state.busy?.reasoning ?? ''} />
           ) : (
-            <Busy
-              label="正在回答"
-              chars={state.busy?.chars ?? 0}
-              onStop={() => tabId && void send({ type: 'stop', tabId })}
-            />
+            <Busy label="正在回答" chars={state.busy?.chars ?? 0} />
           ))}
         <div className="chat-end" ref={endRef} />
       </div>
@@ -167,23 +162,25 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
           className="composer"
           onSubmit={(event) => {
             event.preventDefault();
-            void ask(draft);
+            if (!busy) void ask(draft);
           }}
         >
           <label className="sr-only" htmlFor="question">
             向这篇文章提问
           </label>
-          <textarea
-            id="question"
-            value={draft}
-            rows={2}
-            maxLength={500}
-            placeholder={quote ? '针对这段，你想问什么？' : '有什么不懂的？'}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={onComposerKeyDown}
-          />
-          <div className="composer-actions">
-            {searchEnabled && (
+          <ComposerField busy={busy} idleLabel="发送" onStop={stop}>
+            <textarea
+              id="question"
+              value={draft}
+              rows={2}
+              maxLength={500}
+              placeholder={quote ? '针对这段，你想问什么？' : '有什么不懂的？'}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={onComposerKeyDown}
+            />
+          </ComposerField>
+          {searchEnabled && (
+            <div className="composer-actions">
               <button
                 type="button"
                 className="search-chip"
@@ -193,12 +190,8 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
               >
                 联网搜索
               </button>
-            )}
-            {/* 草稿为空时不禁用：禁用而不说原因，看起来像坏了。空着按就什么也不做。 */}
-            <button type="submit" className="send-btn" disabled={busy} aria-label="发送">
-              <Icon name="send" small />
-            </button>
-          </div>
+            </div>
+          )}
         </form>
       </div>
     </>

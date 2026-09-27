@@ -101,7 +101,7 @@ test('首屏摘要与话题', async () => {
   );
   await panel.reload();
 
-  await panel.getByRole('button', { name: /开始伴读/ }).click();
+  await panel.getByRole('button', { name: '总结摘要' }).click();
   await expect(panel.locator('.chip').first()).toBeVisible({ timeout: 60_000 });
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-02-guide.png'), fullPage: true });
 
