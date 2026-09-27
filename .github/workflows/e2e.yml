@@ -32,14 +32,18 @@ jobs:
 
       - name: 留下失败日志
         if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cp test-results/e2e.log /tmp/e2e.log
+          test -f e2e-failure.txt || cp test-results/e2e.log e2e-failure.txt
+          rm -rf /tmp/e2e-push
+          mkdir /tmp/e2e-push
+          cp e2e-failure.txt /tmp/e2e-push/e2e-failure.txt
+          cd /tmp/e2e-push
+          git init -b ci-e2e-log
           git config user.email "ci@users.noreply.github.com"
           git config user.name "ci"
-          git checkout --orphan ci-e2e-log
-          git rm -rf . >/dev/null 2>&1 || true
-          mkdir -p log
-          cp /tmp/e2e.log log/e2e.log
-          git add log/e2e.log
+          git add e2e-failure.txt
           git commit -m "e2e log"
-          git push --force origin HEAD:ci-e2e-log
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/wasteball/webknow-ai.git"
+          git push --force origin ci-e2e-log

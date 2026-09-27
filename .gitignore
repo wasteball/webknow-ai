@@ -3,6 +3,7 @@ node_modules/
 .wxt/
 stats.html
 *.log
+e2e-failure.txt
 test-results/
 playwright-report/
 __pycache__/
