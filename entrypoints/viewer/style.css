@@ -1,0 +1,96 @@
+/* 「在新标签页里看」的全窗口图表页。与侧栏同一套中性无彩基底。 */
+
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #171717;
+  --muted: #8a8a8a;
+  --line: #e8e8e8;
+  --surface: #fafafa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131313;
+    --fg: #ededed;
+    --muted: #8a8a8a;
+    --line: #2a2a2a;
+    --surface: #1a1a1a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  background: var(--bg);
+  color: var(--fg);
+  font: 400 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+#root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.bar button {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  border-radius: 8px;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.bar button:hover {
+  background: var(--surface);
+}
+
+.bar button:focus-visible {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+
+.stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.stage:active {
+  cursor: grabbing;
+}
+
+.canvas {
+  transform-origin: center;
+  will-change: transform;
+}
+
+.canvas svg {
+  max-width: none;
+  height: auto;
+}

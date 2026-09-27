@@ -1,6 +1,6 @@
 # 架构
 
-> 面向 webknow-ai 首版（HTML 网页伴随式 AI）。产品合同见 `../docs/PRD.md`。
+> 面向 webknow-ai 首版（HTML 网页伴随式 AI）。产品合同见 `../docs/PRD.md`；各模块的建设路径、原型边界与证据要求见 `../docs/模块构建思路与原型边界.md`。
 
 ## 一条流水线，三种策略
 
@@ -11,7 +11,7 @@
      → 引用校验(块必须存在) → 写回守卫(页面身份/内容版本/请求身份) → 持久化 → 推送界面
 ```
 
-流水线在 `src/background/runner.ts`。**新增能力 = 新增策略文件 + 校验器，不改流水线。**
+流水线在 `src/background/runner.ts`。新增一种**模型输出模式**时，优先复用流水线，只增加策略、schema 与校验器；搜索、知识库等外部能力仍需显式设计协议、权限、网络与数据边界。
 
 ## 分层
 
@@ -31,12 +31,13 @@ src/core/               纯逻辑：无 chrome.*、无 DOM，可单测
   validate.ts           输出校验与引用清洗
   errors.ts limits.ts phase.ts
 
-src/background/         唯一持有 Key 与唯一网络出口
+src/background/         已保存凭证的读取边界与业务网络出口
   router.ts             消息路由、PanelState 组装、页面生命周期
   runner.ts             请求流水线
-  model.ts              Key 读取 + 调用（key 不离开这里）
+  model.ts              DeepSeek Key 读取 + 调用（已保存 key 不从这里回传界面）
   page.ts               与内容脚本的桥（注入、提取、指纹、回跳）
-  store.ts              storage.session（会话）/ storage.local（配置）
+  store.ts              storage.session（会话）/ storage.local（配置与凭证）
+  ima.ts                IMA 凭证读取、列库与保存编排
 
 src/content/            只在被调用时读当前页
   extract.ts            正文提取 + 唯一锚点 + DOM 回跳（来自 735171c，已验证）
@@ -52,16 +53,18 @@ src/sidepanel/          界面 + 端口客户端（侧栏与设置页共用；�
 
 ## 三条不可越过的边界
 
-1. **Key 边界**：`apiKey` 只在 `src/background/model.ts` 读取，直接进请求头。不进界面、提示词、会话数据、日志。
-2. **外发边界**：只有 `https://api.deepseek.com/*` 是固定的 `host_permissions`；站点读取权限按需申请（`optional_host_permissions` + 用户手势中的 `permissions.request`）。扩展页有 host 权限，因此不受 CORS 限制；内容脚本没有该豁免，所以网络调用只发生在后台。
-3. **提示词边界**：`harness.ts` 的规则与输出契约由代码拼接，用户覆盖只能替换 `learn.ts` 的策略段。教学覆盖无法解除预算、读取 Key、改变接收方或输出格式。
+1. **凭证边界**：初次输入的凭证会短暂存在设置页表单状态，并通过内部命令交给后台；保存后不回传 `PanelState`。持久化读取和对外使用只发生在 background，不进入提示词、会话数据、日志或错误正文。DeepSeek Key 由 `model.ts` 读取，搜索与 IMA 凭证由各自后台路径读取。
+2. **外发边界**：只有 `https://api.deepseek.com/*` 是固定的 `host_permissions`；当前网页、搜索供应商和 IMA 按用户手势申请所需的精确 origin（manifest 通过 `optional_host_permissions` 声明可申请范围）。业务网络调用按代码约束只发生在 background；扩展页技术上也能使用已授予的 host 权限，因此该边界不能只靠 manifest 保证。
+3. **提示词边界**：`harness.ts` 的规则与输出契约由代码拼接；用户可为 `guide`、`answer`、`learn` 选择本地 Skill 或覆盖策略段，但不能替换 harness、schema、预算、权限、接收方或凭证边界。
 
 ## 数据生命周期
 
 | 数据 | 位置 | 清除时机 |
 |---|---|---|
-| 正文块、摘要、气泡、对话、学习状态 | `storage.session`（内存） | 关闭标签页 / 关闭浏览器 / 用户主动清除 |
-| DeepSeek Key、教学覆盖、外发确认 | `storage.local`（不同步） | 仅由对应独立操作删除 |
+| 正文块、摘要、气泡、对话、学习状态 | `storage.session`（浏览会话） | 关闭标签页 / 关闭浏览器 / 用户主动清除 |
+| DeepSeek Key、模型与三模式提示词设置、Skills、行为与外观设置、外发确认 | `storage.local`（不同步） | 由对应设置或独立清除操作修改 |
+| 搜索供应商配置与凭证 | `storage.local`（不同步） | 停用不会自动删除既有凭证；由对应配置操作修改 |
+| IMA 凭证与默认知识库 | `storage.local`（不同步） | “删除 IMA 配置”独立清除；IMA 侧内容不随之删除 |
 
 后台被回收重启后，侧栏从存储重新读取状态，不需要知道后台曾经死过。
 

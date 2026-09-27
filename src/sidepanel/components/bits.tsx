@@ -23,8 +23,48 @@ const VERDICT_LABEL: Record<Verdict, string> = {
   objection: '你的质疑有道理',
 };
 
+/**
+ * 来源标签只在「不是默认情况」时出现。
+ * 绝大多数回答都来自原文，每一条都挂一枚「原文里说的」等于没有信息，
+ * 只是噪音；真正需要提醒的是「这句不是文章里的」。异常才标记。
+ */
 export function SourceTag({ source }: { source: AnswerSource }) {
+  if (source === 'original') return null;
   return <span className={`tag tag-${source}`}>{SOURCE_LABEL[source]}</span>;
+}
+
+/**
+ * 快捷选项：两个模式共用同一排卡片（开场话题、追问方向、下一轮方向）。
+ * 中性淡灰卡片，不写「发出去」——卡片本身就是按钮，多一枚徽章只是重复。
+ */
+export function SuggestRow({
+  lead,
+  items,
+  disabled,
+  onPick,
+}: {
+  lead: string;
+  items: { id: string; question: string }[];
+  disabled?: boolean;
+  onPick: (item: { id: string; question: string }) => void;
+}) {
+  if (!items.length) return null;
+  return (
+    <div className="chiprow">
+      <p className="chip-lead">{lead}</p>
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          className="chip"
+          disabled={disabled}
+          onClick={() => onPick(item)}
+        >
+          {item.question}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function VerdictTag({ verdict }: { verdict: Verdict }) {

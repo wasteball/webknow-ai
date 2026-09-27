@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { SUMMARY_LENGTH_CHARS, type SummaryLength } from '../limits';
-import { HARNESS_RULES, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
+import { HARNESS_RULES, MARKDOWN_DISCIPLINE, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
 
 /**
  * 策略一：阅读导览（首屏短摘要 + 探索气泡）。
@@ -55,7 +55,8 @@ export function guideSystem(
   params: { maxBubbles: number; summaryMaxChars: number },
 ): string {
   const policy = override?.trim() ? override.trim() : GUIDE_DEFAULT_POLICY(params);
-  return [HARNESS_RULES, SOURCE_DISCIPLINE, policy, GUIDE_CONTRACT].join('\n\n');
+  // 首屏不加画图引导：一张图会拖慢首次价值的到达。摘要只允许列表与粗体这类轻格式。
+  return [HARNESS_RULES, SOURCE_DISCIPLINE, policy, MARKDOWN_DISCIPLINE, GUIDE_CONTRACT].join('\n\n');
 }
 
 export function summaryCharsFor(length: SummaryLength): number {

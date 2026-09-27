@@ -94,6 +94,8 @@ export type LearningState = {
   /** 当前待回答的轮次。 */
   current: CurrentRound | null;
   status: 'active' | 'closed';
+  /** 收束时模型给的继续方向；界面渲染成可点的卡片。旧会话可能没有。 */
+  nextDirections?: string[];
   log: LearnEntry[];
 };
 

@@ -1000,6 +1000,20 @@ function ReadingPrefs({ state, send }: { state: PanelState; send: Send }) {
             onChange={(value) => change({ type: 'saveSettings', patch: { maxBubbles: Number(value) } })}
           />
         </SetRow>
+        <SetRow title="回答里的图表" hint="流程、层级、因果这类结构，画成图比写成句子好懂。">
+          <Seg
+            name="回答里是否配图表"
+            value={settings.diagrams}
+            options={[
+              { value: 'auto', label: '自动' },
+              { value: 'off', label: '不要图' },
+            ]}
+            disabled={busy}
+            onChange={(value) =>
+              change({ type: 'saveSettings', patch: { diagrams: value as 'auto' | 'off' } })
+            }
+          />
+        </SetRow>
         <SetRow title="文字大小">
           <Seg
             name="文字大小"

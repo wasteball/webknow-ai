@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { HARNESS_RULES, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
+import { DIAGRAM_GUIDANCE, HARNESS_RULES, MARKDOWN_DISCIPLINE, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
 import type { CurrentRound, QuizChoice } from '../session';
 
 /**
@@ -118,9 +118,18 @@ const LEARN_CONTRACT = [
 export function learnSystem(
   override: string | undefined,
   style: 'mixed' | 'quiz' | 'open' = 'mixed',
+  diagrams = true,
 ): string {
-  const policy = override?.trim() ? override.trim() : LEARN_DEFAULT_POLICY;
-  return [HARNESS_RULES, SOURCE_DISCIPLINE, policy, styleDirective(style), LEARN_CONTRACT].join('\n\n');
+  return [
+    HARNESS_RULES,
+    SOURCE_DISCIPLINE,
+    override?.trim() ? override.trim() : LEARN_DEFAULT_POLICY,
+    styleDirective(style),
+    MARKDOWN_DISCIPLINE,
+    // 题干与选项保持纯文本：它们在界面上是 <legend> 与选项行，放不了块级内容。
+    ...(diagrams ? [`${DIAGRAM_GUIDANCE}\n图只能出现在讲解、评析与小结里，不要画在题干或选项里。`] : []),
+    LEARN_CONTRACT,
+  ].join('\n\n');
 }
 
 export type LearnMode = 'ask' | 'respond' | 'hint' | 'explain' | 'close';
@@ -144,6 +153,8 @@ export function learnMessages(input: {
   hintUsed?: boolean;
   override?: string;
   style?: 'mixed' | 'quiz' | 'open';
+  /** 用户设置「不要图」时为 false：不注入画图引导。 */
+  diagrams?: boolean;
 }) {
   const marker = randomBoundary();
   const payload = JSON.stringify({
@@ -166,7 +177,7 @@ export function learnMessages(input: {
     hintUsed: input.hintUsed ?? false,
   });
   return [
-    { role: 'system' as const, content: learnSystem(input.override, input.style) },
+    { role: 'system' as const, content: learnSystem(input.override, input.style, input.diagrams !== false) },
     { role: 'user' as const, content: wrapUntrusted(marker, 'SOURCE', payload) },
   ];
 }

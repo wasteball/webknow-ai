@@ -14,6 +14,9 @@ export type PromptOverrides = Partial<Record<PromptTarget, string>>;
 
 export type FontSize = 'normal' | 'large';
 
+/** 回答里的图表：auto=模型按内容判断该不该画；off=不要图（程序侧也不注入引导）。 */
+export type DiagramMode = 'auto' | 'off';
+
 export type SettingsPatch = {
   /** 切换模型供应商；切换只影响之后的请求。 */
   provider?: ProviderId;
@@ -27,6 +30,7 @@ export type SettingsPatch = {
   maxBubbles?: number;
   summaryLength?: SummaryLength;
   fontSize?: FontSize;
+  diagrams?: DiagramMode;
 };
 
 export type EffectiveSettings = {
@@ -38,6 +42,7 @@ export type EffectiveSettings = {
   maxBubbles: number;
   summaryLength: SummaryLength;
   fontSize: FontSize;
+  diagrams: DiagramMode;
 };
 
 export const DEFAULT_SETTINGS: EffectiveSettings = {
@@ -49,6 +54,7 @@ export const DEFAULT_SETTINGS: EffectiveSettings = {
   maxBubbles: LIMITS.maxBubbles,
   summaryLength: 'medium',
   fontSize: 'normal',
+  diagrams: 'auto',
 };
 
 const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -104,6 +110,9 @@ export function normalizeSettings(patch: SettingsPatch): SettingsPatch {
   if (patch.fontSize !== undefined) {
     if (patch.fontSize === 'normal' || patch.fontSize === 'large') clean.fontSize = patch.fontSize;
   }
+  if (patch.diagrams !== undefined) {
+    if (patch.diagrams === 'auto' || patch.diagrams === 'off') clean.diagrams = patch.diagrams;
+  }
   return clean;
 }
 
@@ -125,6 +134,7 @@ export function effectiveSettings(config: {
   maxBubbles?: number;
   summaryLength?: SummaryLength;
   appearance?: { fontSize?: FontSize };
+  diagrams?: DiagramMode;
 }): EffectiveSettings {
   const provider = findProvider(config.provider);
   return {
@@ -140,5 +150,6 @@ export function effectiveSettings(config: {
     maxBubbles: clamp(config.maxBubbles ?? DEFAULT_SETTINGS.maxBubbles, 0, LIMITS.maxBubbles),
     summaryLength: config.summaryLength ?? DEFAULT_SETTINGS.summaryLength,
     fontSize: config.appearance?.fontSize ?? DEFAULT_SETTINGS.fontSize,
+    diagrams: config.diagrams ?? DEFAULT_SETTINGS.diagrams,
   };
 }

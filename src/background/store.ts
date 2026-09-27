@@ -5,6 +5,7 @@ import type { SummaryLength } from '../core/limits';
 import { findProvider, type ProviderId } from '../core/model-providers';
 import {
   normalizeSettings,
+  type DiagramMode,
   type FontSize,
   type PromptOverrides,
   type SettingsPatch,
@@ -66,6 +67,8 @@ export type Config = {
   /** 摘要长度偏好（默认 medium）。 */
   summaryLength?: SummaryLength;
   appearance?: { fontSize?: FontSize };
+  /** 回答里的图表（默认 auto）。 */
+  diagrams?: DiagramMode;
 };
 
 /** 内容脚本被授权注入后记录的当前页信息（一次工具栏点击的结果）。 */
@@ -250,6 +253,7 @@ export async function applySettings(patch: SettingsPatch): Promise<void> {
   if (clean.maxBubbles !== undefined) next.maxBubbles = clean.maxBubbles;
   if (clean.summaryLength !== undefined) next.summaryLength = clean.summaryLength;
   if (clean.fontSize !== undefined) next.appearance = { ...current.appearance, fontSize: clean.fontSize };
+  if (clean.diagrams !== undefined) next.diagrams = clean.diagrams;
 
   if (patch.prompts !== undefined) {
     const merged: PromptOverrides = { ...current.prompts };

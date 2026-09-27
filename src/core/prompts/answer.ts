@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { Quote } from '../quote';
 import type { SearchResult } from '../search/types';
-import { HARNESS_RULES, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
+import { DIAGRAM_GUIDANCE, HARNESS_RULES, MARKDOWN_DISCIPLINE, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
 
 /**
  * 策略二：自由问答。
@@ -58,12 +58,19 @@ const QUOTE_DISCIPLINE = [
 ].join('\n');
 
 /** 覆盖只作用于策略段；传空或不传则使用内置默认值。 */
-export function answerSystem(override?: string, withWebResults = false, withQuote = false): string {
+export function answerSystem(
+  override?: string,
+  withWebResults = false,
+  withQuote = false,
+  withDiagrams = true,
+): string {
   const policy = override?.trim() ? override.trim() : ANSWER_DEFAULT_POLICY;
   return [
     HARNESS_RULES,
     SOURCE_DISCIPLINE,
     policy,
+    MARKDOWN_DISCIPLINE,
+    ...(withDiagrams ? [DIAGRAM_GUIDANCE] : []),
     ...(withWebResults ? [WEB_RESULTS_DISCIPLINE] : []),
     ...(withQuote ? [QUOTE_DISCIPLINE] : []),
     ANSWER_CONTRACT,
@@ -82,6 +89,8 @@ export function answerMessages(input: {
   webResults?: SearchResult[];
   /** 读者划出的原文。 */
   quote?: Quote | null;
+  /** 用户设置「不要图」时为 false：不注入画图引导。 */
+  diagrams?: boolean;
 }) {
   const marker = randomBoundary();
   const payload = JSON.stringify({
@@ -96,7 +105,12 @@ export function answerMessages(input: {
   return [
     {
       role: 'system' as const,
-      content: answerSystem(input.override, Boolean(input.webResults?.length), Boolean(input.quote)),
+      content: answerSystem(
+        input.override,
+        Boolean(input.webResults?.length),
+        Boolean(input.quote),
+        input.diagrams !== false,
+      ),
     },
     { role: 'user' as const, content: wrapUntrusted(marker, 'SOURCE', payload) },
   ];

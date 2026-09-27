@@ -8,7 +8,7 @@ import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
 import { Busy, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
-import { BrandMark, Icon, type IconName } from './components/Icon';
+import { BrandMark, Icon } from './components/Icon';
 import { outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
 
 const START_LABEL: Record<string, string> = {
@@ -17,15 +17,18 @@ const START_LABEL: Record<string, string> = {
 };
 
 /**
- * 已就绪后的两个能力用分段切换：「问 AI」是摘要 + 话题 + 自己提问，
+ * 已就绪后的两个能力用文字标签切换：「问 AI」是摘要 + 话题 + 自己提问，
  * 「AI 问」是它反过来考你。进行中也能随时切回（会话留在后台，不因切换而中断）；
  * 两个面板都保持挂载，所以切回来时草稿还在。
+ *
+ * 标签只写名字，不再摆图标 + 一句说明的大卡片：那一层盒子会和下面的
+ * 话题卡片、回答内容叠成三层，而「谁在提问」看一眼标签就知道。
  */
 type View = 'qa' | 'learn';
 
-const MODES: { id: View; label: string; hint: string; icon: IconName; busyKind: 'answer' | 'learn' }[] = [
-  { id: 'qa', label: '问 AI', hint: '你来提问', icon: 'book', busyKind: 'answer' },
-  { id: 'learn', label: 'AI 问', hint: '它来提问', icon: 'chat', busyKind: 'learn' },
+const MODES: { id: View; label: string; busyKind: 'answer' | 'learn' }[] = [
+  { id: 'qa', label: '问 AI', busyKind: 'answer' },
+  { id: 'learn', label: 'AI 问', busyKind: 'learn' },
 ];
 
 const tabDomId = (view: View) => `mode-tab-${view}`;
@@ -279,17 +282,12 @@ export function App() {
                     role="tab"
                     className="mode"
                     data-mode={mode.id}
-                    aria-label={mode.label}
                     aria-selected={view === mode.id}
                     aria-controls={panelDomId(mode.id)}
                     tabIndex={view === mode.id ? 0 : -1}
                     onClick={() => setView(mode.id)}
                   >
-                    <Icon name={mode.icon} small />
-                    <span className="mode-copy">
-                      <span className="mode-label">{mode.label}</span>
-                      <span className="mode-hint">{mode.hint}</span>
-                    </span>
+                    {mode.label}
                     {busy?.kind === mode.busyKind && (
                       <>
                         <span className="dot" aria-hidden="true" />

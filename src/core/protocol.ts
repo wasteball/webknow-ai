@@ -2,7 +2,7 @@ import type { Completeness, DomAnchor } from './blocks';
 import type { AppError } from './errors';
 import type { SummaryLength } from './limits';
 import type { ProviderId } from './model-providers';
-import type { FontSize, PromptOverrides } from './settings';
+import type { DiagramMode, FontSize, PromptOverrides } from './settings';
 import type { Skill, SkillChoice } from './skills';
 import type { Quote } from './quote';
 import type { Bubble, ChatTurn, LearningState, RequestKind, SessionState } from './session';
@@ -40,6 +40,8 @@ export type PanelSettings = {
   maxBubbles: number;
   summaryLength: SummaryLength;
   fontSize: FontSize;
+  /** 回答里的图表：auto / off。 */
+  diagrams: DiagramMode;
 };
 
 export type PanelState = {

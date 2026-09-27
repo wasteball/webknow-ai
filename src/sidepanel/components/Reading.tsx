@@ -5,14 +5,17 @@ import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { shouldSubmitComposer } from '../composer';
 import { visibleSuggestions } from '../suggest';
-import { Busy, SourceTag } from './bits';
+import { Busy, SourceTag, SuggestRow } from './bits';
 import { Icon } from './Icon';
+import { Rich } from './Rich';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
  * 「问 AI」：摘要与话题在最上面，点一张卡片就是发出去一句；
  * 下面自己接着问。输入区吸在底部。
+ *
+ * 回答正文走 <Rich>：模型写的是受控 markdown 子集，这里是它唯一的渲染入口。
  */
 export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const [draft, setDraft] = useState('');
@@ -23,6 +26,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
   const endRef = useRef<HTMLDivElement>(null);
   const busy = state.busy?.kind === 'answer';
   const searchEnabled = state.settings.search.enabled;
+  const diagrams = state.settings.diagrams === 'auto';
   const guide = state.guide;
   const lastTurn = state.chat[state.chat.length - 1];
   const row = visibleSuggestions({
@@ -91,30 +95,27 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <>
-      {guide && (
-        <article className="msg ai">
-          <div className="bubble ai bubble-guide">
-            <h2 id="guide-heading">这篇文章讲了什么</h2>
-            <p className="summary">{guide.summary}</p>
-            {row.openers.length > 0 && (
+      <div className="chat">
+        {guide && (
+          <article className="msg ai">
+            <div className="said said-guide">
+              <Rich text={guide.summary} diagrams={false} />
               <SuggestRow
-                lead="想接着弄懂，点一张发出去："
+                lead="想接着弄懂哪一点"
                 items={row.openers}
                 disabled={busy}
                 onPick={(item) => void sendTopic(item.id)}
               />
-            )}
-          </div>
-        </article>
-      )}
+            </div>
+          </article>
+        )}
 
-      <div className="chat">
         {state.chat.map((turn) => (
-          <Turn key={turn.id} turn={turn} tabId={tabId} send={send} />
+          <Turn key={turn.id} turn={turn} tabId={tabId} send={send} diagrams={diagrams} />
         ))}
         {row.next.length > 0 && (
           <SuggestRow
-            lead={row.nextFrom === 'follow' ? '可以接着问：' : '还可以接着问：'}
+            lead="可以接着问"
             items={row.next}
             disabled={busy}
             onPick={(item) =>
@@ -135,7 +136,6 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
       <div className="dock">
         {quote && (
           <div className="quote-chip">
-            <p className="quote-chip-label">针对这段原文</p>
             <blockquote>
               <button
                 type="button"
@@ -170,7 +170,7 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
             value={draft}
             rows={2}
             maxLength={500}
-            placeholder={quote ? '针对这段，你想问什么？Enter 发送' : '把问题写在这里。Enter 发送'}
+            placeholder={quote ? '针对这段，你想问什么？' : '有什么不懂的？'}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onComposerKeyDown}
           />
@@ -186,9 +186,9 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
                 联网搜索
               </button>
             )}
-            <button type="submit" disabled={busy || !draft.trim()}>
+            {/* 草稿为空时不禁用：禁用而不说原因，看起来像坏了。空着按就什么也不做。 */}
+            <button type="submit" className="send-btn" disabled={busy} aria-label="发送">
               <Icon name="send" small />
-              发送
             </button>
           </div>
         </form>
@@ -197,38 +197,18 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
   );
 }
 
-function SuggestRow({
-  lead,
-  items,
-  disabled,
-  onPick,
+/** 一轮问答 = 你的气泡（右） + AI 的正文（左，无气泡）。 */
+function Turn({
+  turn,
+  tabId,
+  send,
+  diagrams,
 }: {
-  lead: string;
-  items: { id: string; question: string }[];
-  disabled: boolean;
-  onPick: (item: { id: string; question: string }) => void;
+  turn: ChatTurn;
+  tabId: number | null;
+  send: Send;
+  diagrams: boolean;
 }) {
-  return (
-    <div className="chiprow">
-      <p className="chip-lead">{lead}</p>
-      {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          className="chip"
-          disabled={disabled}
-          onClick={() => onPick(item)}
-        >
-          <span className="chip-text">{item.question}</span>
-          <span className="chip-go">发出去</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** 一轮问答 = 你的气泡 + AI 的气泡，和上面摘要那条连成一段对话。 */
-function Turn({ turn, tabId, send }: { turn: ChatTurn; tabId: number | null; send: Send }) {
   return (
     <>
       <article className="msg user">
@@ -238,11 +218,9 @@ function Turn({ turn, tabId, send }: { turn: ChatTurn; tabId: number | null; sen
         </div>
       </article>
       <article className="msg ai">
-        <div className="bubble ai">
-          <p className="answer">
-            <SourceTag source={turn.source} />
-            <span className="answer-text">{turn.answer}</span>
-          </p>
+        <div className="said">
+          <SourceTag source={turn.source} />
+          <Rich text={turn.answer} diagrams={diagrams} />
           {turn.citations.length > 0 && (
             <p className="citations">
               {turn.citations.map((citation, index) => (

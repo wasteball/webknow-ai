@@ -222,6 +222,7 @@ async function runAsk(
     'answer',
     async (session, runId, signal) => {
       const ctx = contextOf(session);
+      const diagrams = effectiveSettings(config).diagrams === 'auto';
 
       // 联网搜索（F3）：失败或无结果时如实降级，只用文章本身回答，不阻断整个请求。
       let webResults: SearchResult[] = [];
@@ -246,6 +247,7 @@ async function runAsk(
           override: resolvePolicy('answer', config),
           webResults: webResults.length ? webResults : undefined,
           quote,
+          diagrams,
         }),
         signal,
         progress(hooks, tabId),
@@ -426,9 +428,10 @@ async function runLearnStep(
       }
 
       const ctx = contextOf(session);
+      const settings = effectiveSettings(config);
       const frozen = frozenLearnCall(learning, {
         policy: resolvePolicy('learn', config),
-        style: effectiveSettings(config).learningStyle,
+        style: settings.learningStyle,
       });
       let next = await callLearn(
         session,
@@ -441,6 +444,7 @@ async function runLearnStep(
         tabId,
         frozen.override,
         frozen.style,
+        settings.diagrams === 'auto',
       );
       // 预算用尽或模型判断应当收束时，本轮直接补一次收束，不留给用户一个悬空状态（FR-012）。
       if (mode !== 'close' && !next.current && next.status === 'active') {
@@ -455,6 +459,7 @@ async function runLearnStep(
           tabId,
           frozen.override,
           frozen.style,
+          settings.diagrams === 'auto',
         );
       }
 
@@ -482,6 +487,7 @@ async function callLearn(
   tabId: number,
   override: string | undefined,
   style: 'mixed' | 'quiz' | 'open',
+  diagrams: boolean,
 ): Promise<LearningState> {
   const parsed = await callModel(
     learnMessages({
@@ -520,6 +526,7 @@ async function callLearn(
       hintUsed: input.hintUsed ?? (learning.current?.kind === 'open' ? learning.current.hintUsed : false),
       override,
       style,
+      diagrams,
     }),
     signal,
     progress(hooks, tabId),
@@ -650,13 +657,11 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
       next = advance(next, clean.nextQuestion);
       break;
     case 'summary':
-      next = appendLearn({ ...next, current: null, status: 'closed' }, { role: 'summary', text: clean.summary });
-      if (clean.nextDirections.length) {
-        next = appendLearn(next, {
-          role: 'note',
-          text: `可以继续的方向：${clean.nextDirections.join('；')}`,
-        });
-      }
+      // 继续方向做成可点的卡片（界面用 SuggestRow 渲染），不再拼成一句流水账。
+      next = appendLearn(
+        { ...next, current: null, status: 'closed', nextDirections: clean.nextDirections },
+        { role: 'summary', text: clean.summary },
+      );
       break;
   }
   return next;

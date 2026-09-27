@@ -1,64 +1,61 @@
 /*
- * 侧栏 + 设置页共用样式。视觉取「页边批注」：纸、墨、朱红印、荧光笔。
- * 不是聊天机器人蓝，也不做卡片堆砌。
+ * 侧栏 + 设置页共用样式。面向 C 端，视觉取向：简约、高级。
  *
- * 1. 墨色是主操作（发送、确认）；朱红是品牌印和「AI 问」；荧光笔是可点的话题条。
- * 2. 中文排版：正文 16px / 行高 1.8；话题条至少 44px 高，点一下就发出去。
- * 3. 结构常驻、内容滚动：品牌头与模式切换吸顶，输入区吸底。
- * 4. 动效只回应动作。无障碍：3px 焦点环、对比度、reduced-motion、深浅色。
+ * 1. 中性无彩基底。全局唯一的有彩色是错误红——它必须被看见。
+ *    强调靠字重、留白与一条 2px 下划线，不靠色块。
+ * 2. 只有「你说的话」有气泡；AI 说的话是正文，不装在盒子里——
+ *    它是这一栏的主体内容，给它整幅宽度读起来才像读文章。
+ * 3. 徽章只在异常时出现：来源是原文、答得不错这类默认情况不标。
+ * 4. 结构常驻、内容滚动：品牌头与模式切换吸顶，输入区吸底。
+ * 5. 动效只回应动作。无障碍：焦点环、对比度、reduced-motion、深浅色。
  */
 
 :root {
   color-scheme: light dark;
 
-  --canvas: #ebe6dc;
-  --paper: #f7f4ef;
-  --paper-2: #efeae1;
-  --paper-3: #e7e0d4;
+  --canvas: #f5f5f5;
+  --paper: #ffffff;
+  --paper-2: #fafafa;
+  --paper-3: #f2f2f2;
 
-  --ink: #1c1814;
-  --ink-2: #5a5148;
-  --ink-3: #7a7166;
+  --ink: #171717;
+  --ink-2: #5c5c5c;
+  --ink-3: #8a8a8a;
 
-  --line: #d9d0c3;
-  --line-soft: #ebe4d8;
+  --line: #e8e8e8;
+  --line-soft: #f2f2f2;
 
-  /* 主操作：墨，不是蓝 */
-  --accent: #1c1814;
+  /* 主操作与强调：一律是墨色本身。没有品牌色块。 */
+  --accent: #171717;
   --accent-strong: #000000;
-  --accent-soft: #efeae1;
-  --accent-ink: #f7f4ef;
+  --accent-soft: #f2f2f2;
+  --accent-ink: #ffffff;
 
-  /* 品牌印 */
-  --seal: #b42318;
-  --seal-strong: #8e1a12;
-  --seal-soft: #f6e4e0;
+  /* 曾经的「品牌印」「荧光笔」「翡翠」都并入中性色，保留变量名以免遗漏引用。 */
+  --seal: #171717;
+  --seal-strong: #000000;
+  --seal-soft: #f2f2f2;
+  --mark: #fafafa;
+  --mark-ink: #171717;
+  --jade: #8a8a8a;
+  --jade-strong: #171717;
+  --jade-soft: #f7f7f7;
 
-  /* 荧光笔：话题条 */
-  --mark: #ead28a;
-  --mark-ink: #3d3418;
+  /* 唯一的有彩色：出错必须能被看见。 */
+  --danger: #b3261e;
+  --danger-soft: #fdf1f0;
 
-  /* AI 问时间线 */
-  --jade: #2f5c4a;
-  --jade-strong: #214236;
-  --jade-soft: #e4efe9;
-
-  --danger: #a84242;
-  --danger-soft: #f8eceb;
-
-  /* 圆角、阴影、缓动都照原型的标尺来：它比默认值更松、更圆，
-     也靠一点极浅的投影把"浮起来的表面"和背景分开——这是它显得精致的主要原因。 */
-  --radius-sm: 10px;
-  --radius: 14px;
-  --radius-lg: 20px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 18px;
   --radius-pill: 999px;
 
-  --sh-1: 0 1px 2px rgba(11, 32, 39, 0.06), 0 1px 3px rgba(11, 32, 39, 0.05);
-  --sh-2: 0 6px 20px rgba(11, 32, 39, 0.1);
+  --sh-1: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --sh-2: 0 8px 24px rgba(0, 0, 0, 0.08);
 
   --ease: cubic-bezier(0.2, 0.75, 0.25, 1);
-  --fast: 150ms;
-  --normal: 240ms;
+  --fast: 140ms;
+  --normal: 220ms;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -69,44 +66,43 @@
 
   /* 品牌头高度。下面的模式切换吸在它下沿，两者必须严丝合缝——
      中间漏一条缝，正文会从缝里穿过去。改动这里只需改这一个数。 */
-  --topbar-h: 64px;
+  --topbar-h: 56px;
 
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas: #12100e;
-    --paper: #1c1916;
-    --paper-2: #26221d;
-    --paper-3: #2e2923;
+    --canvas: #0f0f0f;
+    --paper: #141414;
+    --paper-2: #1a1a1a;
+    --paper-3: #212121;
 
-    --ink: #f3eee6;
-    --ink-2: #c4b8a8;
-    --ink-3: #8f8578;
+    --ink: #ededed;
+    --ink-2: #a8a8a8;
+    --ink-3: #757575;
 
-    --line: #3a342c;
-    --line-soft: #2a261f;
+    --line: #2a2a2a;
+    --line-soft: #202020;
 
-    --accent: #f3eee6;
+    --accent: #ededed;
     --accent-strong: #ffffff;
-    --accent-soft: #2a261f;
-    --accent-ink: #1c1916;
+    --accent-soft: #212121;
+    --accent-ink: #141414;
 
-    --seal: #e07060;
-    --seal-strong: #f0a090;
-    --seal-soft: #3a221e;
+    --seal: #ededed;
+    --seal-strong: #ffffff;
+    --seal-soft: #212121;
+    --mark: #1c1c1c;
+    --mark-ink: #ededed;
+    --jade: #757575;
+    --jade-strong: #ededed;
+    --jade-soft: #1a1a1a;
 
-    --mark: #7a6230;
-    --mark-ink: #f6e7b8;
-
-    --jade: #7eb89a;
-    --jade-strong: #a6d4bc;
-    --jade-soft: #1c2a24;
-
-    --danger: #ff8b8b;
-    --danger-soft: #2e1a1a;
+    --danger: #ff9a94;
+    --danger-soft: #2a1716;
   }
 }
 
@@ -135,7 +131,7 @@ body {
 }
 
 /* 长 URL、代码块、用户粘贴的内容都要能换行，不能让窄栏横溢。 */
-:where(p, li, h1, h2, h3, legend, .tag, .answer-text) {
+:where(p, li, h1, h2, h3, h4, legend, .tag, .said, td, th) {
   overflow-wrap: anywhere;
 }
 
@@ -203,7 +199,7 @@ body {
 }
 
 .brand-seal {
-  color: var(--seal);
+  color: var(--ink);
   flex: none;
   display: block;
   border-radius: 8px;
@@ -275,104 +271,58 @@ body {
   padding: var(--space-3) 0 var(--space-2);
 }
 
-/* ── 模式切换：两段式分段控件，吸在品牌头下面 ───────────────── */
+/* ── 模式切换：文字标签 + 一条 2px 下划线，吸在品牌头下面 ───────
+   两张大卡片会和下面的话题卡片、回答卡片叠成三层盒子。这里只留文字：
+   选中态靠字色与下划线表达，不靠色块。 */
 
 .modes {
   position: sticky;
   top: var(--topbar-h);
   z-index: 2;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  gap: var(--space-2);
+  display: flex;
+  gap: var(--space-5);
   padding: 0;
-  margin: var(--space-3) 0 var(--space-4);
-  background: transparent;
-  border: 0;
-  border-radius: 0;
+  margin: 0 0 var(--space-4);
+  background: var(--paper);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .mode {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
   gap: var(--space-2);
-  min-height: 52px;
+  min-height: 44px;
   font-family: var(--font);
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--ink-2);
-  background: var(--paper-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: var(--space-2) var(--space-3);
-  transition: background-color var(--fast) var(--ease), color var(--fast) var(--ease), border-color var(--fast) var(--ease);
-}
-
-.mode-copy {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  min-width: 0;
-}
-
-.mode-label {
-  line-height: 1.2;
-}
-
-.mode-hint {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--ink-3);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  /* 下移 1px，让选中态的下划线盖住容器那条分隔线，而不是在它上面叠成三像素。 */
+  margin-bottom: -1px;
+  padding: 0 0 2px;
+  transition: color var(--fast) var(--ease), border-color var(--fast) var(--ease);
 }
 
 .mode:hover:not(:disabled) {
-  color: var(--ink);
-  background: var(--paper);
-  opacity: 1;
-}
-
-.mode[aria-selected='true'][data-mode='qa']:hover:not(:disabled) {
-  background: var(--mark);
-}
-
-.mode[aria-selected='true'][data-mode='learn']:hover:not(:disabled) {
-  background: var(--seal-soft);
+  color: var(--ink-2);
+  background: none;
 }
 
 .mode[aria-selected='true'] {
   color: var(--ink);
-  background: var(--paper);
-  border-color: var(--ink);
-  box-shadow: none;
-}
-
-.mode[aria-selected='true'][data-mode='qa'] {
-  background: var(--mark);
-  border-color: #c4a44a;
-  color: var(--mark-ink);
-}
-
-.mode[aria-selected='true'][data-mode='learn'] {
-  background: var(--seal-soft);
-  border-color: var(--seal);
-  color: var(--seal-strong);
-}
-
-.mode[aria-selected='true'] .mode-hint {
-  color: inherit;
-  opacity: 0.8;
+  border-bottom-color: var(--ink);
 }
 
 /* 这个能力正在后台干活时的低调提示；状态不只靠颜色表达，Tab 内还有转圈与按钮态。 */
 .mode .dot {
   flex: none;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: var(--seal);
-  box-shadow: 0 0 0 3px var(--seal-soft);
+  background: var(--ink-3);
 }
 
 /* ── 区块：靠留白与小节标题分层，不用外框 ───────────────────── */
@@ -412,94 +362,47 @@ details.section summary {
   cursor: pointer;
 }
 
-/* ── 导读摘要：对话里的第一口气泡 ───────────────────────────
-   全屏只有这里用蓝色底：它是用户打开侧栏想读的那一段。后面每一轮
-   回答都是中性底色，不跟它抢。 */
+/* ── 快捷选项：一排中性淡灰卡片 ─────────────────────────────
+   它们是「接下来可以聊什么」，点了就发出去。卡片本身就是按钮，
+   不再挂一枚「发出去」徽章重复说一遍。 */
 
-.bubble-guide {
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--seal);
-}
-
-.bubble-guide h2 {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--seal);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  margin-bottom: var(--space-2);
-}
-
-.bubble-guide .summary {
-  max-width: 40em;
-}
-
-/* 话题是一排 chip，不是卡片：它们是"接下来可以聊什么"，点了就进对话。 */
 .chiprow {
   display: flex;
   flex-direction: column;
-  flex-wrap: nowrap;
   gap: var(--space-2);
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--line);
+  margin-top: var(--space-4);
 }
 
 .chip-lead {
   margin: 0 0 var(--space-1);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-3);
 }
 
 .chip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+  display: block;
   width: 100%;
-  max-width: 100%;
-  min-height: 48px;
+  min-height: 44px;
   text-align: left;
   font-family: var(--font);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.45;
-  color: var(--mark-ink);
-  background: var(--mark);
-  border: 1px solid transparent;
-  border-left: 4px solid #c4a44a;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-3);
+  padding: var(--space-3);
   cursor: pointer;
-  transition: filter 140ms ease, transform 100ms ease;
-}
-
-.chip-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.chip-go {
-  flex: none;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--seal);
-  background: var(--paper);
-  border-radius: 999px;
-  padding: 4px 10px;
+  transition: background-color var(--fast) var(--ease), border-color var(--fast) var(--ease);
 }
 
 .chip:hover:not(:disabled) {
-  background: var(--mark);
-  filter: brightness(0.97);
+  background: var(--paper-3);
+  border-color: var(--line);
 }
 
-/* 按下去要有手感：原型里也是往下一像素。 */
 .chip:active:not(:disabled) {
   transform: translateY(1px);
 }
@@ -509,29 +412,11 @@ details.section summary {
   cursor: not-allowed;
 }
 
-.chip-learn {
-  color: var(--seal-strong);
-  background: var(--seal-soft);
-  border-left-color: var(--seal);
-}
-
-.chip-learn:hover:not(:disabled) {
-  background: var(--seal-soft);
-  filter: brightness(0.97);
-}
-
-.topic-picker {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
-}
-
 /* ── 正文与摘要 ─────────────────────────────────────────── */
 
 /* 长正文在宽面板下限制每行字数（40 个汉字左右），拖宽也不变成一眼扫不到头的大片文字。 */
 .summary,
-.answer,
-.entry {
+.answer {
   max-width: 40em;
 }
 
@@ -561,17 +446,25 @@ details.section summary {
   border-radius: var(--radius-pill);
 }
 
-/* ── 对话：你的话靠右、AI 的话靠左，靠形状和位置分清谁说的 ──────
-   侧栏最窄只有 360px，再摆头像要吃掉 40px 宽，所以这里不用头像：
-   位置（左/右）、底色（白/蓝）、圆角缺口方向已经够区分了。 */
+/* ── 对话：只有「你说的话」有气泡 ────────────────────────────
+   AI 说的话是这一栏的主体内容，给它整幅宽度、不装盒子，读起来才像读文章。
+   两侧都做成气泡时，正文被夹在圆角里，长回答尤其难读。
+   侧栏最窄 360px，摆头像要吃掉 40px，所以不用头像：位置 + 有无气泡已经够区分谁说的。 */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--space-2);
+}
 
 .msg {
   display: flex;
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-5);
 }
 
 .msg.user {
   justify-content: flex-end;
+  margin-bottom: var(--space-3);
 }
 
 .bubble {
@@ -585,37 +478,50 @@ details.section summary {
 .bubble.user {
   color: var(--accent-ink);
   background: var(--ink);
-  border-radius: var(--radius-lg) var(--radius-sm) var(--radius-lg) var(--radius-lg);
+  border-radius: var(--radius) var(--radius) var(--radius-sm) var(--radius);
   font-size: 14px;
   line-height: 1.65;
 }
 
-.bubble.ai {
+/* AI 说的话：不是盒子，就是正文。 */
+.said {
   width: 100%;
-  background: var(--paper-2);
-  border-radius: var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  min-width: 0;
+  max-width: 42em;
+  font-size: 15px;
+  line-height: 1.8;
 }
 
-/* 摘要气泡是这一栏的开场，给它整幅宽度和一点留白，读起来像一段正文。 */
-.bubble.ai > h2 {
-  margin-bottom: var(--space-2);
+/* 首屏摘要是开场，用一条细线把它和后面的问答分开，不用底色。 */
+.said-guide {
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+/* 小结是一轮学习的收口：左侧一条竖线表示"这一段是总结"，仍然不用底色。 */
+.said-summary {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
 }
 
 .answer {
   margin: 0;
   font-size: 15px;
   line-height: 1.8;
-  white-space: pre-wrap;
   text-wrap: pretty;
 }
 
-.answer-text {
-  white-space: pre-wrap;
+/* 跳过、旁注这类不算进展的记录：退到背景里，不占一条对话的位置。 */
+.aside {
+  margin: 0 0 var(--space-4);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-3);
 }
 
 .citations,
 .unanswered {
-  margin: 0;
+  margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
   font-size: 13px;
@@ -623,40 +529,39 @@ details.section summary {
   color: var(--ink-3);
 }
 
+.citations button.link + button.link,
+.citations a.link + a.link {
+  margin-left: var(--space-3);
+}
+
 .unanswered li::before {
   content: "· ";
 }
 
-/* ── 来源标签：结构承载信息，不靠颜色单独表达 ────────────────── */
+/* ── 标签：只在异常时出现，所以一律低调 ──────────────────────
+   来源是原文、答得不错这类默认情况不标（见 bits.tsx 的 SourceTag）。
+   会出现在这里的都是"需要留意一下"的情况，不需要再用颜色喊。 */
 
 .tag {
   display: inline-block;
   font-size: 11px;
   line-height: 1.7;
   color: var(--ink-2);
+  background: var(--paper-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 0 var(--space-1);
+  padding: 0 6px;
   margin-right: var(--space-2);
   vertical-align: 1px;
   white-space: nowrap;
 }
 
-/* 只有"原文里说的"是最强主张，给它唯一的强调；其余保持中性。 */
-.tag-original {
-  color: var(--seal-strong);
-  border-color: var(--seal);
-  background: var(--seal-soft);
-  font-weight: 600;
+/* 标签跟在正文块前面时它自己占一行（后面是 <p>），补一点行距，别贴着正文。 */
+.said > .tag {
+  margin-bottom: var(--space-2);
 }
 
-.tag-correct {
-  color: var(--jade-strong);
-  border-color: var(--jade);
-  background: var(--jade-soft);
-  font-weight: 600;
-}
-
+/* 理解偏了、没答上来：这两个必须被看见，用唯一的有彩色。 */
 .tag-misconception,
 .tag-unknown {
   color: var(--danger);
@@ -664,79 +569,22 @@ details.section summary {
   background: var(--danger-soft);
 }
 
-/* ── 学习时间线：翡翠脊柱，当前问题在最下面 ─────────────────── */
+/* ── 「AI 问」的一行状态：在问什么、用了几轮 ───────────────── */
 
-.timeline {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 var(--space-4);
-  position: relative;
+.learn-head {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-3);
 }
 
-/* 一条线串起整个学习过程，读的时候能看见自己走到哪了。 */
-.timeline::before {
-  content: "";
-  position: absolute;
-  left: 5px;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  background: var(--jade-soft);
-  border-radius: 1px;
-}
-
-.entry {
-  position: relative;
-  font-size: 15px;
-  line-height: 1.8;
-  white-space: pre-wrap;
-}
-
-/* 每个节点是脊柱上的一个圆点；已完成的用实心翡翠，代表"走过的路"。 */
-.entry::before {
-  content: "";
-  position: absolute;
-  left: calc(-1 * var(--space-4) + 2px);
-  top: 9px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--paper);
-  border: 2px solid var(--jade);
-}
-
-.entry-skip::before,
-.entry-note::before {
-  border-color: var(--line);
-}
-
-.entry-question {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.65;
-  color: var(--ink);
-}
-
-.entry-answer {
-  color: var(--ink-2);
-  font-size: 14px;
-}
-
-/* 你自己写的那一句：从时间线里"抬"出来，一眼看出哪些是你说的。
-   同一轮里 AI 的评析保持中性，不跟它抢。 */
-.your-answer {
-  max-width: 40em;
-  padding: var(--space-2) var(--space-3);
-  color: var(--ink);
-  background: var(--paper-2);
-  border-radius: var(--radius-sm);
-}
-
-.your-answer p {
-  margin: var(--space-1) 0 0;
+.learn-budget {
+  margin-left: auto;
+  flex: none;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 题目在上、你的答案在下：像一次问答，而不是一行"题目｜答案"。 */
@@ -744,43 +592,28 @@ details.section summary {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  margin: 0 0 var(--space-2);
+}
+
+.qa-line:last-of-type {
+  margin-bottom: 0;
 }
 
 .qa-q {
   font-size: 13px;
-  color: var(--ink-3);
+  opacity: 0.75;
 }
 
 .qa-a {
   font-weight: 600;
 }
 
-.entry-feedback .answer,
-.entry-explain {
-  color: var(--ink);
-}
-
-.entry-hint .hint-line,
-.entry-hint {
-  color: var(--ink-2);
-  font-size: 14px;
-}
-
-/* 跳过的那一轮不算走过的路：明显退到背景里，别和真正的进展混在一起。 */
-.entry-skip {
-  color: var(--ink-3);
-  font-size: 13px;
-}
-
-.entry-summary {
-  background: var(--jade-soft);
-  border-radius: 0 var(--radius) var(--radius) 0;
-  padding: var(--space-3);
-  margin-left: calc(-1 * var(--space-2));
-}
-
-.entry-summary::before {
-  background: var(--jade);
+/* 看了提示才答出来的那一轮要留痕（FR-014），但不该抢走回答本身。 */
+.qa-assisted {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 /* ── 选择题轮（F5）：题目是主角，选项是轻量可点的行 ─────────────── */
@@ -886,9 +719,9 @@ details.section summary {
 }
 
 .search-chip[aria-pressed='true'] {
-  color: var(--seal-strong);
-  background: var(--seal-soft);
-  border-color: var(--seal);
+  color: var(--paper);
+  background: var(--ink);
+  border-color: var(--ink);
 }
 
 /* 存入知识库（K-ima）：显式动作 + 一句去向说明。 */
@@ -917,16 +750,15 @@ details.section summary {
   padding: 10px 12px;
   background: var(--paper-2);
   border: 1px solid var(--line);
-  border-left: 4px solid var(--seal);
+  border-left: 2px solid var(--ink-3);
   border-radius: var(--radius-sm);
 }
 
 .quote-chip-label {
   margin: 0;
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--seal);
+  font-weight: 500;
+  color: var(--ink-3);
 }
 
 .quote-chip blockquote {
@@ -957,10 +789,10 @@ details.section summary {
   margin: 0 0 8px;
   padding: 0 0 8px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.5;
-  opacity: 0.82;
-  border-bottom: 1px solid rgba(247, 244, 239, 0.25);
+  opacity: 0.7;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 /* 吸底输入区会盖住滚到最底的那一排。留出它的高度，联想问题才露得出来。 */
@@ -1138,8 +970,7 @@ button.quiet {
 
 /* 图标比文字矮一点，视觉上才和字面中线对齐 */
 button .icon-sm,
-.link .icon-sm,
-.bubble-guide h2 .icon-sm {
+.link .icon-sm {
   width: 15px;
   height: 15px;
 }
@@ -1149,24 +980,34 @@ button.quiet:hover:not(:disabled) {
   color: var(--ink);
 }
 
+/* 纯图标的发送按钮：正方形，不写字。 */
+button.send-btn {
+  margin-left: auto;
+  width: 42px;
+  padding: 0;
+}
+
 button.link {
-  color: var(--seal);
+  color: var(--ink-2);
   background: none;
   border: 0;
   padding: 0;
   min-height: 0;
   font-size: 13px;
   font-weight: 400;
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
 }
 
 button.link:hover:not(:disabled) {
   background: none;
-  text-decoration: underline;
+  color: var(--ink);
+  text-decoration-color: currentColor;
 }
 
 :focus-visible {
-  outline: 3px solid var(--seal);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
@@ -1249,9 +1090,9 @@ button.link:hover:not(:disabled) {
 }
 
 .settings-nav button[aria-current='true'] {
-  background: var(--seal-soft);
-  color: var(--seal-strong);
-  font-weight: 700;
+  background: var(--paper-3);
+  color: var(--ink);
+  font-weight: 650;
 }
 
 .settings-content {
@@ -1447,9 +1288,9 @@ button.link:hover:not(:disabled) {
 }
 
 .choice-row button[aria-checked='true'] {
-  color: var(--mark-ink);
-  background: var(--mark);
-  border-color: #c4a44a;
+  color: var(--paper);
+  background: var(--ink);
+  border-color: var(--ink);
 }
 
 .choice-grid {
@@ -1497,8 +1338,9 @@ button.link:hover:not(:disabled) {
   margin: 0;
   padding: 10px 14px;
   font-size: 13px;
-  background: var(--seal-soft);
-  color: var(--seal-strong);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
 }
 
@@ -1642,8 +1484,10 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  color: var(--accent);
-  text-decoration: none;
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
 }
 
 /* 行内的外链图标不参与换行，否则会掉到下一行单独站着 */
@@ -1652,7 +1496,12 @@ a .icon-sm {
 }
 
 a:hover {
-  text-decoration: underline;
+  text-decoration-color: currentColor;
+}
+
+a.link {
+  font-size: 13px;
+  color: var(--ink-2);
 }
 
 .skip-link {
@@ -1677,6 +1526,271 @@ a:hover {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* ── Markdown 正文（Rich.tsx 的输出）─────────────────────────
+   模型只能用一个受控子集（见 core/markdown.ts）。这里给这些节点定排版：
+   块之间靠间距分层，不用底色也不用外框，才和「AI 说的话是正文」一致。 */
+
+.rich-p {
+  margin: 0 0 var(--space-3);
+  text-wrap: pretty;
+}
+
+.said > .rich-p:last-child,
+.bubble > .rich-p:last-child {
+  margin-bottom: 0;
+}
+
+/* 小标题和上一段之间要有明显断点，才看得出这是新的一节。 */
+.rich-h3,
+.rich-h4 {
+  margin: var(--space-5) 0 var(--space-2);
+  line-height: 1.45;
+  font-weight: 650;
+}
+
+.rich-h3 {
+  font-size: 15px;
+}
+
+.rich-h4 {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.said > .rich-h3:first-child,
+.said > .rich-h4:first-child {
+  margin-top: 0;
+}
+
+.rich-ul,
+.rich-ol {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.4em;
+}
+
+.rich-ul li,
+.rich-ol li {
+  margin-bottom: var(--space-1);
+}
+
+.rich-ul li:last-child,
+.rich-ol li:last-child {
+  margin-bottom: 0;
+}
+
+.rich-ul ul,
+.rich-ul ol,
+.rich-ol ul,
+.rich-ol ol {
+  margin: var(--space-1) 0 0;
+}
+
+.rich-ul {
+  list-style: disc;
+}
+
+.rich-quote {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--line);
+  color: var(--ink-2);
+}
+
+.rich-quote > .rich-p:last-child {
+  margin-bottom: 0;
+}
+
+.rich-code {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  background: var(--paper-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.rich-inline-code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  padding: 1px 4px;
+  background: var(--paper-3);
+  border-radius: 4px;
+}
+
+/* 窄栏放不下的表格横向滚动，不撑破侧栏也不缩成一团。 */
+.rich-table-scroll {
+  margin: 0 0 var(--space-3);
+  overflow-x: auto;
+}
+
+.rich-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.rich-table th,
+.rich-table td {
+  padding: 6px var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.rich-table th {
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+  border-bottom-color: var(--line);
+}
+
+.rich-img {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 var(--space-3);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.rich-img img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+button.rich-img {
+  cursor: zoom-in;
+  min-height: 0;
+}
+
+/* ── 图表（mermaid）─────────────────────────────────────── */
+
+.diagram {
+  margin: 0 0 var(--space-3);
+}
+
+/* 图本身是可点的：点开就是放大看。整块当按钮，比角上摆一枚小图标好点。 */
+.diagram-canvas {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: var(--space-3);
+  background: var(--paper-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  cursor: zoom-in;
+}
+
+.diagram-canvas:hover:not(:disabled) {
+  background: var(--paper-3);
+  border-color: var(--line);
+}
+
+.diagram-canvas svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+.diagram figcaption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+.diagram-loading {
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+  font-size: 13px;
+  color: var(--ink-3);
+  background: var(--paper-2);
+  border-radius: var(--radius-sm);
+}
+
+/* 画不出来的图如实显示源码 + 原因，不静默消失（FR-018 同一条纪律）。 */
+.diagram-failed {
+  margin: 0 0 var(--space-3);
+}
+
+.diagram-failed figcaption {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ── 放大看图：覆盖整个侧栏的浮层 ───────────────────────────── */
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+}
+
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.viewer-scale {
+  min-width: 3.5em;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.viewer-close {
+  margin-left: auto;
+}
+
+.viewer-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.viewer-stage:active {
+  cursor: grabbing;
+}
+
+.viewer-canvas {
+  transform-origin: center;
+  will-change: transform;
+}
+
+.viewer-canvas svg {
+  max-width: none;
+  height: auto;
+}
+
+.viewer-hint {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: 11px;
+  color: var(--ink-3);
+  border-top: 1px solid var(--line-soft);
 }
 
 @media (prefers-reduced-motion: reduce) {
