@@ -1,12 +1,21 @@
 /**
  * 跑在页面主世界：微信会在 selectstart 里 preventDefault，选区根本不会开始。
- * 捕获阶段先截断，目标上的那段监听就收不到，浏览器才能划出字。
- * 不调用 preventDefault，输入框里的原生选区仍然可用。
+ *
+ * 只靠捕获阶段截断不够——页面自己也在 window 捕获阶段注册，而且比我们早，
+ * 它的 preventDefault 先执行完，我们的 stopImmediatePropagation 再也追不上。
+ * 所以直接让 selectstart 的 preventDefault 失效：谁先注册都不影响结果。
+ * 只动 selectstart 这一种事件，其它事件的默认行为照旧。
  */
 export function unlockPageSelection(): void {
   const scope = globalThis as typeof globalThis & { __wkaSelectUnlock?: boolean };
   if (scope.__wkaSelectUnlock) return;
   scope.__wkaSelectUnlock = true;
+  const preventDefault = Event.prototype.preventDefault;
+  Event.prototype.preventDefault = function patched(this: Event): void {
+    if (this.type === 'selectstart') return;
+    preventDefault.call(this);
+  };
+  // 顺带截断：注册在我们之后的那些 selectstart 监听连执行机会都没有。
   window.addEventListener(
     'selectstart',
     (event) => {

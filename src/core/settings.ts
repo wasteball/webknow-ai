@@ -1,7 +1,6 @@
 import { LIMITS, SUMMARY_LENGTH_CHARS, type SummaryLength } from './limits';
 import { MODEL_PROVIDERS, findProvider, type ProviderId } from './model-providers';
 import { resolveThinking, type ThinkingLevel, type ThinkingStore } from './model-thinking';
-import type { SkillChoice, SkillTarget } from './skills';
 
 /**
  * 用户设置（产品化改造 F2）：纯逻辑部分——类型、默认值、校验与归一化。
@@ -23,9 +22,6 @@ export type SettingsPatch = {
   provider?: ProviderId;
   model?: string;
   prompts?: PromptOverrides;
-  /** 每个板块选择的技能 ID；空字符串 = 取消技能选择（回退到默认/自定义文本）。 */
-  skillChoices?: SkillChoice;
-  learningBudget?: number;
   /** 出题方式（F5）：mixed=模型按内容选择；quiz=总是选择题；open=总是开放问答。 */
   learningStyle?: 'mixed' | 'quiz' | 'open';
   maxBubbles?: number;
@@ -39,8 +35,6 @@ export type SettingsPatch = {
 export type EffectiveSettings = {
   model: string;
   prompts: PromptOverrides;
-  skillChoices: SkillChoice;
-  learningBudget: number;
   learningStyle: 'mixed' | 'quiz' | 'open';
   maxBubbles: number;
   summaryLength: SummaryLength;
@@ -53,8 +47,6 @@ export type EffectiveSettings = {
 export const DEFAULT_SETTINGS: EffectiveSettings = {
   model: findProvider(undefined).defaultModel,
   prompts: {},
-  skillChoices: {},
-  learningBudget: LIMITS.learningBudget,
   learningStyle: 'mixed',
   maxBubbles: LIMITS.maxBubbles,
   summaryLength: 'medium',
@@ -88,19 +80,6 @@ export function normalizeSettings(patch: SettingsPatch): SettingsPatch {
       }
     }
     clean.prompts = prompts;
-  }
-  if (patch.skillChoices !== undefined) {
-    const choices: SkillChoice = {};
-    for (const target of Object.keys(patch.skillChoices) as SkillTarget[]) {
-      const value = patch.skillChoices[target];
-      if (typeof value !== 'string') continue;
-      const trimmed = value.trim().slice(0, 100);
-      if (trimmed && /^[\w.-]+$/.test(trimmed)) choices[target] = trimmed;
-    }
-    clean.skillChoices = choices;
-  }
-  if (patch.learningBudget !== undefined) {
-    clean.learningBudget = clamp(Math.round(patch.learningBudget), LIMITS.learningBudgetMin, LIMITS.learningBudgetMax);
   }
   if (patch.learningStyle !== undefined) {
     if (patch.learningStyle === 'mixed' || patch.learningStyle === 'quiz' || patch.learningStyle === 'open') {
@@ -139,8 +118,6 @@ export function effectiveSettings(config: {
   provider?: string;
   models?: Partial<Record<ProviderId, string>>;
   prompts?: PromptOverrides;
-  skillChoices?: SkillChoice;
-  learningBudget?: number;
   learningStyle?: 'mixed' | 'quiz' | 'open';
   maxBubbles?: number;
   summaryLength?: SummaryLength;
@@ -153,12 +130,6 @@ export function effectiveSettings(config: {
   return {
     model,
     prompts: config.prompts ?? {},
-    skillChoices: config.skillChoices ?? {},
-    learningBudget: clamp(
-      config.learningBudget ?? DEFAULT_SETTINGS.learningBudget,
-      LIMITS.learningBudgetMin,
-      LIMITS.learningBudgetMax,
-    ),
     learningStyle: config.learningStyle ?? DEFAULT_SETTINGS.learningStyle,
     maxBubbles: clamp(config.maxBubbles ?? DEFAULT_SETTINGS.maxBubbles, 0, LIMITS.maxBubbles),
     summaryLength: config.summaryLength ?? DEFAULT_SETTINGS.summaryLength,

@@ -2,12 +2,13 @@ import { appError, type AppError } from './errors';
 import { LIMITS } from './limits';
 
 /**
- * 技能（产品化改造 F6）：针对某个板块的提示词预设。
- * 技能 body 只替换该板块的策略段；harness 与输出契约仍由代码拼接，因此技能
- * 无法解除预算、读取 Key、改变数据接收方或输出格式（FR-029）。
+ * 写法模板（原“技能”）：某个板块的提示词预设，用来往编辑框里填一份现成写法。
+ * 模板只是起点：点了之后正文会进入那一块的编辑框，用户可以接着改。
+ * 真正生效的始终是编辑框里的那段文字（prompts.<target>），没有第二个隐藏来源——
+ * 「选了没变化」就是从前那种隐藏来源造出来的。
  *
- * 生效优先级：用户自定义文本（prompts.<target>）> 所选技能 body > 内置默认策略。
- * 内置技能随代码发布；自定义技能存 storage.local，只在设置页管理。
+ * 不管这段文字怎么写，harness 与输出契约仍由代码拼接，因此它无法
+ * 读取 Key、改变数据接收方或改变输出格式（FR-029）。
  */
 
 export type SkillTarget = 'guide' | 'answer' | 'learn';
@@ -22,9 +23,8 @@ export type Skill = {
   builtin?: boolean;
 };
 
-export type SkillChoice = Partial<Record<SkillTarget, string>>;
-
 const SKILL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
 
 /** 内置技能。内容即产品：每条都按“普通读者、网页伴随”的场景撰写。 */
 export const BUILTIN_SKILLS: Skill[] = [
@@ -117,22 +117,20 @@ export function findSkill(id: string, customSkills: Skill[]): Skill | undefined 
 }
 
 /**
- * 解析某板块实际生效的策略段：自定义文本 > 所选技能 > 内置默认（返回 undefined）。
- * 选中的技能已不存在（被删除）时静默回退，不让一次设置损坏整个板块。
+ * 某板块实际生效的策略段：用户存下的那段文字，没存就用内置默认（返回 undefined）。
  *
- * 入参字段名与 Config（存储形态）一致：`prompts`/`skills`。曾经这里叫
- * `overrides`/`customSkills`，调用方按存储名传参就永远读不到自定义内容——
- * 同一个东西有两个名字，是那类 bug 的温床。
+ * 只有这一个来源。曾经这里还有一层「选中的模板」：界面上点一下模板，生效的东西
+ * 变了、看到的文字没变，用户只能得出「选了没反应」。现在点模板等于把正文填进
+ * 编辑框，看到的就是生效的。
+ *
+ * 入参字段名与 Config（存储形态）一致：`prompts`。
  */
 export function resolvePolicy(
   target: SkillTarget,
-  input: { prompts?: Partial<Record<SkillTarget, string>>; skillChoices?: SkillChoice; skills?: Skill[] },
+  input: { prompts?: Partial<Record<SkillTarget, string>> },
 ): string | undefined {
   const override = input.prompts?.[target]?.trim();
-  if (override) return override;
-  const chosenId = input.skillChoices?.[target];
-  if (!chosenId) return undefined;
-  return findSkill(chosenId, input.skills ?? [])?.body;
+  return override ? override : undefined;
 }
 
 /** 自定义技能的新增/修改校验：不合格直接拒绝，不静默修正。 */

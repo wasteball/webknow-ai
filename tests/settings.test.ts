@@ -5,8 +5,7 @@ import { DEFAULT_SETTINGS, effectiveSettings, normalizeSettings } from '../src/c
 
 describe('设置归一化（产品化改造 F2）', () => {
   it('数值类设置被夹进硬上限范围', () => {
-    const clean = normalizeSettings({ learningBudget: 99, maxBubbles: -2 });
-    expect(clean.learningBudget).toBe(10);
+    const clean = normalizeSettings({ maxBubbles: -2 });
     expect(clean.maxBubbles).toBe(0);
   });
 
@@ -34,9 +33,6 @@ describe('设置归一化（产品化改造 F2）', () => {
 
   it('生效设置：缺省时用默认值，覆盖时用配置值', () => {
     expect(effectiveSettings({})).toEqual(DEFAULT_SETTINGS);
-    expect(
-      effectiveSettings({ learningBudget: 3, maxBubbles: 1, models: { deepseek: ' custom-model.1 ' } }).learningBudget,
-    ).toBe(3);
     expect(effectiveSettings({ maxBubbles: 1 }).maxBubbles).toBe(1);
     expect(effectiveSettings({ models: { deepseek: ' custom-model.1 ' } }).model).toBe('custom-model.1');
     expect(effectiveSettings({ appearance: { fontSize: 'large' } }).fontSize).toBe('large');
@@ -67,8 +63,7 @@ describe('设置归一化（产品化改造 F2）', () => {
   });
 
   it('生效设置：越界存储值也被夹回安全范围', () => {
-    const effective = effectiveSettings({ learningBudget: 500, maxBubbles: 99 });
-    expect(effective.learningBudget).toBe(10);
+    const effective = effectiveSettings({ maxBubbles: 99 });
     expect(effective.maxBubbles).toBe(3);
   });
 

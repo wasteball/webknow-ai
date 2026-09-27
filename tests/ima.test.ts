@@ -124,7 +124,6 @@ describe('阅读笔记构造（K-ima）', () => {
       learning: {
         goal: 'g',
         promptVersion: 'v',
-        budget: 5,
         used: 1,
         current: null,
         status: 'active',

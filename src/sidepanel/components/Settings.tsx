@@ -8,7 +8,7 @@ import type { Command, PanelState, Reply } from '../../core/protocol';
 import { MODEL_PROVIDERS } from '../../core/model-providers';
 import { thinkingChoices } from '../../core/model-thinking';
 import type { PromptTarget } from '../../core/settings';
-import { BUILTIN_SKILLS } from '../../core/skills';
+import { BUILTIN_SKILLS, type Skill } from '../../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS } from '../../core/search/registry';
 import { Notice, Section } from './bits';
 import { BrandMark, Icon, type IconName } from './Icon';
@@ -414,134 +414,142 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
   );
 }
 
+/**
+ * 提示词（2026-09-27 改版）：一块一个编辑框，框里就是正在生效的那段话。
+ *
+ * 从前这里是「默认 / 一排模板 / 自己写」的单选：选了模板，生效的东西变了，
+ * 屏幕上一个字都没变——用户只能得出「选了没反应」。现在模板不再是一个隐藏的
+ * 生效来源，它只是「把这份写法填进来」的按钮；填进来之后可以接着改。
+ * 看到的 = 生效的，只有一个来源。
+ */
 function Prompts({ state, send }: { state: PanelState; send: Send }) {
   const { settings } = state;
-  const [drafts, setDrafts] = useState<Record<PromptTarget, string>>({
-    guide: settings.prompts.guide ?? '',
-    answer: settings.prompts.answer ?? '',
-    learn: settings.prompts.learn ?? '',
-  });
-  const [busy, setBusy] = useState(false);
-  /**
-   * “自己写”是一个覆盖层，不是第三套预设：选中它只切换这一块显示什么，
-   * 不丢掉上面选好的技能——把自写内容清掉时还能落回那套技能。
-   * 未保存过自写内容时也要能打开输入框，否则这个选项点了没有任何反应（曾经的缺陷）。
-   */
-  const [writing, setWriting] = useState<Record<string, boolean>>({});
-
-  const run = async (command: Command) => {
-    setBusy(true);
-    await send(command);
-    setBusy(false);
-  };
 
   const defaults: Record<PromptTarget, string> = {
-    guide: GUIDE_DEFAULT_POLICY({ maxBubbles: settings.maxBubbles, summaryMaxChars: summaryCharsFor(settings.summaryLength) }),
+    guide: GUIDE_DEFAULT_POLICY({
+      maxBubbles: settings.maxBubbles,
+      summaryMaxChars: summaryCharsFor(settings.summaryLength),
+    }),
     answer: ANSWER_DEFAULT_POLICY,
     learn: LEARN_DEFAULT_POLICY,
   };
 
-  const skillsFor = (target: PromptTarget) =>
-    [...BUILTIN_SKILLS, ...settings.customSkills].filter((skill) => skill.target === target);
-
   return (
     <Section title="提示词">
-      <p className="hint">三块各选一种写法。自己写的优先；去向、费用和格式仍由程序管。</p>
-      {PROMPT_TARGETS.map(({ key, title, hint }) => {
-        const chosen = settings.skillChoices[key] ?? '';
-        const custom = settings.prompts[key] ?? '';
-        const isWriting = writing[key] ?? Boolean(custom);
-        const current = isWriting ? '__custom__' : chosen || '__default__';
-        return (
-          <article className="set-card" key={key}>
-            <div className="set-card-head">
-              <h3>{title}</h3>
-              <p>{hint}</p>
-            </div>
-            <div className="choice-row" role="radiogroup" aria-label={title}>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={current === '__default__'}
-                disabled={busy}
-                onClick={() => {
-                  setWriting((item) => ({ ...item, [key]: false }));
-                  void run({ type: 'saveSettings', patch: { skillChoices: { [key]: '' } } });
-                }}
-              >
-                默认
-              </button>
-              {skillsFor(key).map((skill) => (
-                <button
-                  key={skill.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={current === skill.id}
-                  disabled={busy}
-                  title={skill.description}
-                  onClick={() => {
-                    setWriting((item) => ({ ...item, [key]: false }));
-                    void run({ type: 'saveSettings', patch: { skillChoices: { [key]: skill.id } } });
-                  }}
-                >
-                  {skill.name}
-                </button>
-              ))}
-              <button
-                type="button"
-                role="radio"
-                aria-checked={current === '__custom__'}
-                disabled={busy}
-                onClick={() => setWriting((item) => ({ ...item, [key]: true }))}
-              >
-                自己写
-              </button>
-            </div>
-            {isWriting && (
-              <>
-                <textarea
-                  id={`prompt-${key}`}
-                  aria-label={`${title}：我自己写的写法`}
-                  rows={6}
-                  maxLength={8000}
-                  value={drafts[key]}
-                  placeholder="写你希望它怎么写。保存后会盖过上面选的写法。"
-                  onChange={(event) => setDrafts((currentDrafts) => ({ ...currentDrafts, [key]: event.target.value }))}
-                />
-                <div className="composer-actions">
-                  <button
-                    type="button"
-                    disabled={busy || !drafts[key].trim() || drafts[key].trim() === custom}
-                    onClick={() => void run({ type: 'saveSettings', patch: { prompts: { [key]: drafts[key] } } })}
-                  >
-                    保存我的写法
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => {
-                      setDrafts((currentDrafts) => ({ ...currentDrafts, [key]: '' }));
-                      setWriting((item) => ({ ...item, [key]: false }));
-                      if (custom) void run({ type: 'saveSettings', patch: { prompts: { [key]: '' } } });
-                    }}
-                  >
-                    {custom ? '清掉我的写法' : '取消'}
-                  </button>
-                </div>
-              </>
-            )}
-            <details>
-              <summary className="link">看看当前生效的是什么</summary>
-              <p className="hint">{custom || defaults[key]}</p>
-            </details>
-          </article>
-        );
-      })}
+      <p className="hint">
+        每一块下面那段话就是它现在照着做的事。直接改、存下来就换成你的写法；想回到出厂那份，点「恢复默认」。
+        发给谁、怎么收费、输出什么格式仍由程序管，改这里改不动。
+      </p>
+      {PROMPT_TARGETS.map((target) => (
+        <PromptCard
+          key={target.key}
+          target={target}
+          fallback={defaults[target.key]}
+          saved={settings.prompts[target.key] ?? ''}
+          templates={[...BUILTIN_SKILLS, ...settings.customSkills].filter(
+            (skill) => skill.target === target.key,
+          )}
+          send={send}
+        />
+      ))}
     </Section>
   );
 }
 
+function PromptCard({
+  target,
+  fallback,
+  saved,
+  templates,
+  send,
+}: {
+  target: { key: PromptTarget; title: string; hint: string };
+  /** 没存过自己的写法时，用的是这份内置默认。 */
+  fallback: string;
+  saved: string;
+  templates: Skill[];
+  send: Send;
+}) {
+  const inEffect = saved || fallback;
+  const [draft, setDraft] = useState(inEffect);
+  const [busy, setBusy] = useState(false);
+  // 别处（比如恢复默认、或另一个设置页）改过之后，跟上新的生效内容；
+  // 正在改的草稿不能被覆盖掉，所以只在草稿等于上一份生效内容时才跟。
+  const [synced, setSynced] = useState(inEffect);
+  if (synced !== inEffect) {
+    setSynced(inEffect);
+    if (draft === synced) setDraft(inEffect);
+  }
+
+  const save = async (text: string) => {
+    setBusy(true);
+    await send({ type: 'saveSettings', patch: { prompts: { [target.key]: text } } });
+    setBusy(false);
+  };
+
+  const isDefault = !saved;
+  const dirty = draft.trim() !== inEffect.trim();
+
+  return (
+    <article className="set-card">
+      <div className="set-card-head">
+        <h3>
+          {target.title}
+          <span className="tag">{isDefault ? '出厂默认' : '你改过'}</span>
+        </h3>
+        <p>{target.hint}</p>
+      </div>
+      <textarea
+        id={`prompt-${target.key}`}
+        aria-label={`${target.title}：现在照着做的那段话`}
+        rows={10}
+        maxLength={8000}
+        value={draft}
+        disabled={busy}
+        onChange={(event) => setDraft(event.target.value)}
+      />
+      <div className="composer-actions">
+        <button type="button" disabled={busy || !draft.trim() || !dirty} onClick={() => void save(draft)}>
+          {dirty ? '保存' : '已保存'}
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy || (isDefault && !dirty)}
+          onClick={() => {
+            setDraft(fallback);
+            // 存空串 = 清掉覆盖、回到出厂默认（core/settings 的既有语义）。
+            if (saved) void save('');
+          }}
+        >
+          恢复默认
+        </button>
+      </div>
+      {dirty && <p className="hint">改完要点保存才会生效。下一次生成才用新的写法，已经写出来的内容不会重写。</p>}
+      {templates.length > 0 && (
+        <details>
+          <summary className="link">换一种现成写法（{templates.length} 份）</summary>
+          <ul className="skill-list">
+            {templates.map((template) => (
+              <li key={template.id}>
+                <p className="skill-name">
+                  {template.name}
+                  <button type="button" disabled={busy} onClick={() => setDraft(template.body)}>
+                    填进上面
+                  </button>
+                </p>
+                <p className="hint">{template.description || '（没有说明）'}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="hint">填进来只是起草，可以接着改；点保存才生效。</p>
+        </details>
+      )}
+    </article>
+  );
+}
+
+/** 我的写法模板：把常用写法存下来，之后在上面「换一种现成写法」里直接填进编辑框。 */
 function Skills({ state, send }: { state: PanelState; send: Send }) {
   const customs = state.settings.customSkills;
   const [adding, setAdding] = useState(false);
@@ -570,7 +578,7 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <Section title="我的写法模板">
-      <p className="hint">上面点选的是现成模板。这里可以把常用写法存下来，下次直接点。</p>
+      <p className="hint">存下来的写法会出现在上面每一块的「换一种现成写法」里，点一下就填进编辑框。</p>
       <ul className="skill-list">
         {customs.length === 0 && !adding && <li className="hint">还没有自己存的模板。</li>}
         {customs.map((skill) => (
@@ -593,7 +601,7 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
       </ul>
       {adding ? (
         <div className="field">
-          <label htmlFor="skill-name">技能名称</label>
+          <label htmlFor="skill-name">模板名称</label>
           <input
             id="skill-name"
             type="text"
@@ -619,7 +627,7 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
-          <label htmlFor="skill-body">技能内容（怎么干活的说明）</label>
+          <label htmlFor="skill-body">模板内容（怎么干活的说明）</label>
           <textarea
             id="skill-body"
             rows={8}
@@ -630,7 +638,7 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
           />
           <div className="composer-actions">
             <button type="button" disabled={busy || !name.trim() || !body.trim()} onClick={() => void submit()}>
-              保存技能
+              保存模板
             </button>
             <button type="button" className="secondary" onClick={() => setAdding(false)}>
               取消
@@ -640,7 +648,7 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
       ) : (
         <div className="composer-actions">
           <button type="button" className="secondary" onClick={() => setAdding(true)}>
-            添加自定义技能
+            添加模板
           </button>
         </div>
       )}
@@ -949,27 +957,12 @@ function ReadingPrefs({ state, send }: { state: PanelState; send: Send }) {
     setBusy(true);
     void send(patch).finally(() => setBusy(false));
   };
-  const budget = String(settings.learningBudget) as '3' | '5' | '8' | string;
-  const budgetValue = budget === '3' || budget === '5' || budget === '8' ? budget : '5';
 
   return (
     <>
-      <PageLead title="阅读" lead="摘要多长、问你几轮、字大不大。改完立刻生效。" />
+      <PageLead title="阅读" lead="摘要多长、它怎么问你、字大不大。改完立刻生效。" />
       <SetList>
-        <SetRow title="「AI 问」一轮几题" hint="问完就给小结，不会无限追问。">
-          <Seg
-            name="「AI 问」一轮最多问几个问题"
-            value={budgetValue}
-            options={[
-              { value: '3', label: '3' },
-              { value: '5', label: '5' },
-              { value: '8', label: '8' },
-            ]}
-            disabled={busy}
-            onChange={(value) => change({ type: 'saveSettings', patch: { learningBudget: Number(value) } })}
-          />
-        </SetRow>
-        <SetRow title="它怎么问你" hint="选择题好勾；开口答能看出你是不是真懂。">
+        <SetRow title="它怎么问你" hint="选择题好勾；开口答能看出你是不是真懂。聊到哪里算完，你说了算。">
           <Seg
             name="「AI 问」怎么出题"
             value={settings.learningStyle}

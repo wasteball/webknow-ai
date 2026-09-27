@@ -19,9 +19,7 @@ function panel(over: Partial<PanelState> = {}): PanelState {
     settings: {
       model: 'deepseek-flash',
       prompts: {},
-      skillChoices: {},
       customSkills: [],
-      learningBudget: 5,
       learningStyle: 'open',
       provider: 'deepseek',
       providerKeys: { deepseek: true, zhipu: false },
@@ -42,7 +40,7 @@ function panel(over: Partial<PanelState> = {}): PanelState {
     quote: null,
     busy: null,
     error: null,
-    budget: { used: 0, total: 5 },
+    rounds: 0,
     unsupportedReason: null,
     ...over,
   };

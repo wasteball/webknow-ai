@@ -32,7 +32,16 @@ declare const chrome: {
     sendMessage(tabId: number, message: unknown): Promise<unknown>;
   };
   scripting: {
-    executeScript(injection: { target: { tabId: number }; files: string[] }): Promise<unknown[]>;
+    executeScript(
+      injection:
+        | { target: { tabId: number }; files: string[] }
+        | {
+            target: { tabId: number };
+            world?: 'MAIN' | 'ISOLATED';
+            args?: unknown[];
+            func: (...args: never[]) => unknown;
+          },
+    ): Promise<unknown[]>;
   };
   permissions: { contains(permissions: { origins: string[] }): Promise<boolean> };
   sidePanel: {

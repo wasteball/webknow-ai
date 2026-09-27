@@ -4,7 +4,7 @@ import type { SummaryLength } from './limits';
 import type { ProviderId } from './model-providers';
 import type { ThinkingLevel } from './model-thinking';
 import type { DiagramMode, FontSize, PromptOverrides } from './settings';
-import type { Skill, SkillChoice } from './skills';
+import type { Skill } from './skills';
 import type { Quote } from './quote';
 import type { Bubble, ChatTurn, LearningState, RequestKind, SessionState } from './session';
 
@@ -24,10 +24,8 @@ export type Phase =
 export type PanelSettings = {
   model: string;
   prompts: PromptOverrides;
-  skillChoices: SkillChoice;
-  /** 用户自建的技能；内置技能由界面直接从 core/skills 读取。 */
+  /** 用户自建的写法模板；内置模板由界面直接从 core/skills 读取。 */
   customSkills: Skill[];
-  learningBudget: number;
   learningStyle: 'mixed' | 'quiz' | 'open';
   /** 当前用哪家模型供应商、每家配没配好钥匙、每家各自选的模型。
       Key 本身永不进界面——这里只有布尔值。 */
@@ -67,7 +65,8 @@ export type PanelState = {
   /** draft 是正在写的读者正文；reasoning 是同一轮的思考过程。引用和后续卡片不在这里。 */
   busy: { kind: RequestKind; chars: number; draft: string; reasoning: string } | null;
   error: AppError | null;
-  budget: { used: number; total: number };
+  /** 这一轮「AI 问」已经聊了多少个来回。0 表示还没开始。 */
+  rounds: number;
   /** 页面不支持时给用户的原因说明。 */
   unsupportedReason: string | null;
 };

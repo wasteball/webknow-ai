@@ -116,7 +116,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       quote: null,
       busy: null,
       error: null,
-      budget: { used: 0, total: settings.learningBudget },
+      rounds: 0,
       unsupportedReason: '还没有取得当前页面的地址。请点击工具栏图标授权当前页面。',
     };
   }
@@ -164,10 +164,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
         }
       : null,
     error: session?.error ?? null,
-    budget: {
-      used: session?.learning?.used ?? 0,
-      total: session?.learning?.budget ?? settings.learningBudget,
-    },
+    rounds: session?.learning?.used ?? 0,
     unsupportedReason,
   };
 }

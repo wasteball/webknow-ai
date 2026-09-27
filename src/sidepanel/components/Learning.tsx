@@ -120,9 +120,7 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
           <>
             <p className="learn-head">
               正在问：{learning.goal}
-              <span className="learn-budget">
-                {state.budget.used}/{state.budget.total} 轮
-              </span>
+              {state.rounds > 0 && <span className="learn-budget">第 {state.rounds} 轮</span>}
             </p>
             {learning.log.map((entry, index) => (
               <Entry key={`${entry.role}-${entry.at}-${index}`} entry={entry} diagrams={diagrams} />

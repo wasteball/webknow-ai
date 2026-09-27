@@ -91,9 +91,7 @@ export type LearningState = {
   style?: 'mixed' | 'quiz' | 'open';
   /** 这一页已经拿去开过一轮的方向；对应的卡片不再出现。 */
   usedGoals?: string[];
-  /** 启动时固定的提问预算；旧会话可能没有此字段，此时用默认值。 */
-  budget?: number;
-  /** 已用提问预算（按“提出一轮问题”计数）。 */
+  /** 已经问过多少轮。只用于防死循环护栏与界面显示，不是配额。 */
   used: number;
   /** 当前待回答的轮次。 */
   current: CurrentRound | null;
@@ -269,13 +267,12 @@ export function canStartLearning(session: PageSession): AppError | null {
   return null;
 }
 
-export function remainingBudget(learning: LearningState): number {
-  return Math.max(0, (learning.budget ?? LIMITS.learningBudget) - learning.used);
-}
-
-/** 预算用尽后不再提问，先收束，由用户明确决定是否续开（FR-012/FR-039）。 */
+/**
+ * 还能不能再问一轮。伴随式对话不设「一轮几题」的配额：只要用户还在答，就接着聊。
+ * 这里只剩一道防死循环的护栏——正常对话到不了这个数（LIMITS.learnRoundsCap）。
+ */
 export function nextQuestionAllowed(learning: LearningState): boolean {
-  return remainingBudget(learning) > 0;
+  return learning.used < LIMITS.learnRoundsCap;
 }
 
 export function appendLearn(learning: LearningState, entry: Omit<LearnEntry, 'at'>): LearningState {

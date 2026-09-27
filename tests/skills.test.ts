@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { BUILTIN_SKILLS, findSkill, resolvePolicy, validateCustomSkill, type Skill } from '../src/core/skills';
+import { BUILTIN_SKILLS, findSkill, resolvePolicy, validateCustomSkill } from '../src/core/skills';
 
 describe('技能（产品化改造 F6）', () => {
   it('内置技能覆盖三个板块且内容完整', () => {
@@ -14,35 +14,19 @@ describe('技能（产品化改造 F6）', () => {
     }
   });
 
-  it('策略解析优先级：自定义文本 > 技能 > 默认', () => {
-    const custom = BUILTIN_SKILLS[0]!;
+  it('生效的策略只有一个来源：用户存下的那段文字，否则内置默认', () => {
+    // 回归：从前还有一层「选中的模板」——界面上点一下，生效的变了、屏幕上没变，
+    // 用户只能得出「选了没反应」。现在模板只负责把正文填进编辑框。
     expect(resolvePolicy('guide', {})).toBeUndefined();
-    expect(resolvePolicy('guide', { skillChoices: { guide: custom.id } })).toBe(custom.body);
-    expect(
-      resolvePolicy('guide', {
-        prompts: { guide: '我自己写的' },
-        skillChoices: { guide: custom.id },
-      }),
-    ).toBe('我自己写的');
+    expect(resolvePolicy('guide', { prompts: {} })).toBeUndefined();
+    expect(resolvePolicy('guide', { prompts: { guide: '   ' } })).toBeUndefined();
+    expect(resolvePolicy('guide', { prompts: { guide: '我自己写的' } })).toBe('我自己写的');
   });
 
   it('入参字段名与存储形态一致：Config 直接传入即可读到自定义内容', () => {
-    // 回归：core 曾经叫 overrides/customSkills，调用方按存储名传 prompts/skills
-    // 就永远读不到自定义内容，且没有任何测试会发现。
-    const mine: Skill = {
-      id: 'custom.mine',
-      name: '我的技能',
-      description: '',
-      target: 'answer',
-      body: '我的技能正文',
-    };
-    const config = { prompts: { answer: '我的覆盖' }, skillChoices: { guide: 'custom.mine' }, skills: [mine] };
+    const config = { prompts: { answer: '我的覆盖' } };
     expect(resolvePolicy('answer', config)).toBe('我的覆盖');
-    expect(resolvePolicy('guide', config)).toBe('我的技能正文');
-  });
-
-  it('选中的技能被删除后静默回退默认', () => {
-    expect(resolvePolicy('guide', { skillChoices: { guide: 'custom.gone' } })).toBeUndefined();
+    expect(resolvePolicy('guide', config)).toBeUndefined();
   });
 
   it('findSkill 能在内置与自定义里查找', () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BlocksPayload } from '../src/core/blocks';
+import { LIMITS } from '../src/core/limits';
 import { derivePhase } from '../src/core/phase';
 import {
   acceptsWriteBack,
@@ -137,7 +138,7 @@ describe('会话与请求身份', () => {
     expect(stateAfterFailure({ ...session, learning: { goal: 'g', promptVersion: 'v', used: 1, current: null, status: 'active', log: [] } }, 'learn')).toBe('LEARNING');
   });
 
-  it('学习预算用尽后不再允许提问', () => {
+  it('对话不设「一轮几题」的配额，只剩一道防死循环护栏', () => {
     const base = {
       goal: 'g',
       promptVersion: 'v',
@@ -145,8 +146,10 @@ describe('会话与请求身份', () => {
       status: 'active' as const,
       log: [],
     };
-    expect(nextQuestionAllowed({ ...base, used: 4 })).toBe(true);
-    expect(nextQuestionAllowed({ ...base, used: 5 })).toBe(false);
+    // 伴随式对话由用户和内容决定聊到哪里，不由配额决定：第 5、第 20 轮都还能继续。
+    expect(nextQuestionAllowed({ ...base, used: 5 })).toBe(true);
+    expect(nextQuestionAllowed({ ...base, used: 20 })).toBe(true);
+    expect(nextQuestionAllowed({ ...base, used: LIMITS.learnRoundsCap })).toBe(false);
   });
 
   it('没有首屏内容时不能进入学习', () => {

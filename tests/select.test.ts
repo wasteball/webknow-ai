@@ -135,6 +135,20 @@ describe('划词提问按钮', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  it('页面比我们更早注册也没用：selectstart 上的取消默认行为直接失效', () => {
+    // 真实微信就是这样：它的 window 捕获监听在扩展之前注册，只靠截断追不上。
+    const scope = globalThis as typeof globalThis & { __wkaSelectUnlock?: boolean };
+    delete scope.__wkaSelectUnlock;
+    unlockPageSelection();
+    const selectstart = new Event('selectstart', { cancelable: true });
+    selectstart.preventDefault();
+    expect(selectstart.defaultPrevented).toBe(false);
+    // 只动 selectstart：别的事件照样能取消。
+    const click = new MouseEvent('click', { cancelable: true });
+    click.preventDefault();
+    expect(click.defaultPrevented).toBe(true);
+  });
+
   it('微信正文上的禁止选择，划的时候改成可以选', () => {
     document.body.innerHTML =
       '<div id="js_content" style="user-select: none"><p>市政府今天公布了新的公交线路调整方案，从下周一开始试行。</p></div>';

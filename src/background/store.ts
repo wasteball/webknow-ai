@@ -11,7 +11,7 @@ import {
   type PromptOverrides,
   type SettingsPatch,
 } from '../core/settings';
-import type { Skill, SkillChoice, SkillTarget } from '../core/skills';
+import { findSkill, type Skill, type SkillTarget } from '../core/skills';
 import type { PageSession } from '../core/session';
 
 /**
@@ -45,12 +45,8 @@ export type Config = {
   thinking?: ThinkingStore;
   outbound?: { version: string; acceptedAt: number; receiver: string };
   prompts?: PromptOverrides;
-  /** 每个板块选择的技能 ID（技能=提示词预设）。 */
-  skillChoices?: SkillChoice;
-  /** 用户自建的技能；内置技能在代码里，不进存储。 */
+  /** 用户自建的写法模板；内置模板在代码里，不进存储。 */
   skills?: Skill[];
-  /** 学习提问预算（1–10，默认 5），在开始学习时固定进会话。 */
-  learningBudget?: number;
   /** 出题方式（F5）：mixed=模型按内容选择；quiz=总是选择题；open=总是开放问答。 */
   learningStyle?: 'mixed' | 'quiz' | 'open';
   /** 联网搜索（F3）：providerId=null 表示未启用。凭证只存这里，不进界面。 */
@@ -81,7 +77,13 @@ const CONFIG_KEY: `local:${string}` = 'local:config';
 const sessionKey = (tabId: number): `session:${string}` => `session:sess:${tabId}`;
 const pendingKey = (tabId: number): `session:${string}` => `session:pending:${tabId}`;
 
-type LegacyConfig = Config & { teachingPrompt?: string; apiKey?: string; model?: string };
+type LegacyConfig = Config & {
+  teachingPrompt?: string;
+  apiKey?: string;
+  model?: string;
+  /** 旧版：每个板块「选中的技能」。生效的东西藏在这里，界面上看不到，已废弃。 */
+  skillChoices?: Partial<Record<SkillTarget, string>>;
+};
 
 export async function readConfig(): Promise<Config> {
   const stored = await storage.getItem<LegacyConfig>(CONFIG_KEY);
@@ -94,6 +96,23 @@ export async function readConfig(): Promise<Config> {
       prompts: { ...(rest.prompts ?? {}), learn: old || undefined },
     };
     if (!migrated.prompts?.learn) delete migrated.prompts?.learn;
+    await storage.setItem(CONFIG_KEY, migrated);
+    return migrated;
+  }
+  // 一次性迁移：旧版「选中的技能」是一个看不见的生效来源，界面上点了却看不出变化。
+  // 现在只有一个来源——编辑框里的文字。把当时选中的模板正文落成用户自己的文字，
+  // 这样升级后生效内容不变，而且终于看得见、改得动。
+  if (stored.skillChoices) {
+    const { skillChoices, ...rest } = stored;
+    const prompts: PromptOverrides = { ...rest.prompts };
+    for (const target of ['guide', 'answer', 'learn'] as const) {
+      const id = skillChoices[target];
+      if (!id || prompts[target]) continue;
+      const body = findSkill(id, rest.skills ?? [])?.body;
+      if (body) prompts[target] = body;
+    }
+    const migrated: Config = { ...rest };
+    if (Object.keys(prompts).length) migrated.prompts = prompts;
     await storage.setItem(CONFIG_KEY, migrated);
     return migrated;
   }
@@ -211,7 +230,7 @@ export async function clearImaConfig(): Promise<void> {
   await storage.setItem(CONFIG_KEY, rest);
 }
 
-/** 保存自定义技能：同 id 覆盖更新，其余技能不动。 */
+/** 保存写法模板：同 id 覆盖更新，其余模板不动。 */
 export async function saveCustomSkill(skill: Skill): Promise<void> {
   const current = await readConfig();
   const skills = (current.skills ?? []).filter((item) => item.id !== skill.id);
@@ -219,20 +238,11 @@ export async function saveCustomSkill(skill: Skill): Promise<void> {
   await storage.setItem(CONFIG_KEY, { ...current, skills });
 }
 
-/** 删除自定义技能：同时取消各板块对该技能的选择。 */
+/** 删除写法模板。已经填进编辑框的文字不受影响——那段文字是用户自己的了。 */
 export async function deleteCustomSkill(id: string): Promise<void> {
   const current = await readConfig();
   const skills = (current.skills ?? []).filter((item) => item.id !== id);
-  const next: Config = { ...current, skills };
-  if (current.skillChoices) {
-    const choices = { ...current.skillChoices };
-    for (const target of Object.keys(choices) as SkillTarget[]) {
-      if (choices[target] === id) delete choices[target];
-    }
-    if (Object.keys(choices).length) next.skillChoices = choices;
-    else delete next.skillChoices;
-  }
-  await storage.setItem(CONFIG_KEY, next);
+  await storage.setItem(CONFIG_KEY, { ...current, skills });
 }
 
 /**
@@ -251,7 +261,6 @@ export async function applySettings(patch: SettingsPatch): Promise<void> {
     const provider = findProvider(next.provider).id;
     next.models = { ...(next.models ?? {}), [provider]: clean.model };
   }
-  if (clean.learningBudget !== undefined) next.learningBudget = clean.learningBudget;
   if (clean.learningStyle !== undefined) next.learningStyle = clean.learningStyle;
   if (clean.maxBubbles !== undefined) next.maxBubbles = clean.maxBubbles;
   if (clean.summaryLength !== undefined) next.summaryLength = clean.summaryLength;
@@ -275,18 +284,6 @@ export async function applySettings(patch: SettingsPatch): Promise<void> {
     }
     if (Object.keys(merged).length) next.prompts = merged;
     else delete next.prompts;
-  }
-
-  if (patch.skillChoices !== undefined) {
-    const merged: SkillChoice = { ...current.skillChoices };
-    for (const target of ['guide', 'answer', 'learn'] as const) {
-      if (typeof patch.skillChoices[target] !== 'string') continue;
-      const kept = clean.skillChoices?.[target];
-      if (kept) merged[target] = kept;
-      else delete merged[target];
-    }
-    if (Object.keys(merged).length) next.skillChoices = merged;
-    else delete next.skillChoices;
   }
 
   await storage.setItem(CONFIG_KEY, next);

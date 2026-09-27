@@ -64,7 +64,7 @@ export function buildReadingNote(input: ReadingNoteInput): { title: string; mark
     } else {
       const questions = input.learning.log
         .filter((entry) => entry.role === 'question' || entry.role === 'quiz')
-        .slice(-LIMITS.learningBudget);
+        .slice(-LIMITS.maxHistoryTurns);
       for (const question of questions) {
         parts.push(`- ${sectionHeading(question.text.split('\n')[0] ?? '', 200)}`);
       }

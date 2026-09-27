@@ -49,7 +49,6 @@ const CHAT = [
 const LEARNING = {
   goal: '理解这篇文章的核心内容',
   promptVersion: '2026-09-18.1',
-  budget: 5,
   used: 1,
   current: {
     kind: 'open' as const,
@@ -72,7 +71,6 @@ const LEARNING = {
 const QUIZ_CURRENT = {
   goal: '理解这篇文章的核心内容',
   promptVersion: '2026-09-18.1',
-  budget: 5,
   used: 1,
   current: {
     kind: 'quiz' as const,
@@ -380,7 +378,7 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
   await expect(settings).toHaveURL(/options\.html/);
 
   // 左侧分类导航可切换，右侧内容随分类变化。
-  await expect(settings.getByLabel('「AI 问」一轮最多问几个问题')).toBeVisible();
+  await expect(settings.getByRole('radiogroup', { name: '「AI 问」怎么出题' })).toBeVisible();
   const nav = settings.getByRole('navigation', { name: '设置分类' });
   // 这台浏览器里已经有钥匙（beforeAll 放的），所以模型这一步直接可选。
   await nav.getByRole('button', { name: '模型' }).click();
@@ -390,11 +388,11 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
   await expect(settings.getByRole('radiogroup', { name: '用哪家' }).getByRole('radio', { name: '智谱' })).toBeVisible();
   await expect(settings.getByLabel('DeepSeek 的钥匙已保存')).toBeVisible();
   await expect(settings.getByLabel('用哪个模型')).toBeVisible();
-  // 提示词：选“自己写”必须立刻出现输入框——没保存过自写内容时也不能点了没反应。
+  // 提示词：编辑框里直接就是正在生效的那段话——看到的就是生效的，不存在“选了没变化”。
   await nav.getByRole('button', { name: '提示词' }).click();
-  await expect(settings.getByLabel('导读摘要：我自己写的写法')).toBeHidden();
-  await settings.getByRole('radiogroup', { name: '导读摘要' }).getByRole('radio', { name: '自己写' }).click();
-  await expect(settings.getByLabel('导读摘要：我自己写的写法')).toBeVisible();
+  const guideBox = settings.getByLabel('导读摘要：现在照着做的那段话');
+  await expect(guideBox).toBeVisible();
+  expect((await guideBox.inputValue()).trim().length).toBeGreaterThan(0);
 
   await nav.getByRole('button', { name: '知识库' }).click();
   await expect(settings.getByText('Client ID')).toBeVisible();
@@ -568,7 +566,7 @@ test('设置：窄窗口下分类导航变成横向可滚动条，正文不横�
   const settings = await context.newPage();
   await settings.setViewportSize({ width: 480, height: 820 });
   await settings.goto(`chrome-extension://${extensionId}/options.html`);
-  await expect(settings.getByLabel('「AI 问」一轮最多问几个问题')).toBeVisible();
+  await expect(settings.getByRole('radiogroup', { name: '「AI 问」怎么出题' })).toBeVisible();
 
   // 导航占满一行并且自己能横向滚动，正文区不跟着一起横溢。
   const nav = settings.getByRole('navigation', { name: '设置分类' });

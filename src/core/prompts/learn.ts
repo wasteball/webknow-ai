@@ -7,11 +7,11 @@ import type { CurrentRound, QuizChoice } from '../session';
  * 策略三：引导学习（“AI 问我”）。这是首个允许用户覆盖内容策略的提示词板块（FR-027）。
  *
  * 覆盖只替换 POLICY 段；HARNESS_RULES、SOURCE_DISCIPLINE 与 LEARN_CONTRACT 由代码拼接，
- * 因此教学覆盖无法解除预算、读取 Key、改变数据接收方或改变输出契约（FR-029）。
+ * 因此教学覆盖无法读取 Key、改变数据接收方或改变输出契约（FR-029）。
  * 产品化改造 F5：出题方式支持选择题测验轮，评分由程序按答案钥匙判定，模型只写分析。
  */
 
-export const LEARN_VERSION = '2026-09-18.2';
+export const LEARN_VERSION = '2026-09-27.1';
 
 /** 五类回答（FR-013）。 */
 export const VERDICTS = ['correct', 'partial', 'misconception', 'unknown', 'objection'] as const;
@@ -111,7 +111,7 @@ const LEARN_CONTRACT = [
   '- mode=explain：{"action":"explain","explanation":"...","nextQuestion":"..."|null}（当前是选择题轮时 nextQuestion 必须为 null，讲完后读者继续作答）',
   '- mode=close：{"action":"summary","summary":"...","nextDirections":["..."]}',
   '收束只覆盖四件事：本轮已展示的理解、经提示后完成的部分、尚未验证或仍有疑问的部分、可选的继续方向。',
-  '当剩余提问预算为 0 时使用 mode=close，不得继续提问。',
+  '只在读者说想结束、或这个方向已经问清楚时才用 mode=close；否则就接着聊下去，不要主动给对话设上限。',
 ].join('\n');
 
 /** 覆盖只作用于 POLICY 段；传空或不传则使用内置默认值。 */
@@ -140,8 +140,8 @@ export function learnMessages(input: {
   contextJson: string;
   disclosure: string;
   goal: string;
-  used: number;
-  budget: number;
+  /** 已经聊了多少轮。给模型做节奏参考，不是配额。 */
+  round: number;
   history: { question: string; answer: string; verdict: string; hintUsed: boolean }[];
   /** 当前轮次：开放问题或选择题（含答案钥匙，程序判定用）。 */
   current: CurrentRound | null;
@@ -163,7 +163,7 @@ export function learnMessages(input: {
     disclosure: input.disclosure,
     blocks: JSON.parse(input.contextJson),
     goal: input.goal,
-    budget: { used: input.used, total: input.budget, remaining: Math.max(0, input.budget - input.used) },
+    round: input.round,
     history: input.history,
     // 当前是选择题轮时把答案钥匙一并发给模型：程序按钥匙判分，模型据此写评析。
     currentRound:

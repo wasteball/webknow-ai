@@ -471,7 +471,6 @@ async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): P
     goal: nextGoal,
     ...frozen,
     usedGoals: rememberLearnGoal(session.learning, nextGoal),
-    budget: settings.learningBudget,
     used: 0,
     current: null,
     status: 'active',
@@ -566,7 +565,7 @@ async function runLearnStep(
         frozen.style,
         settings.diagrams === 'auto',
       );
-      // 预算用尽或模型判断应当收束时，本轮直接补一次收束，不留给用户一个悬空状态（FR-012）。
+      // 模型判断应当收束时，本轮直接补一次收束，不留给用户一个悬空状态（FR-012）。
       if (mode !== 'close' && !next.current && next.status === 'active') {
         next = await callLearn(
           current,
@@ -621,8 +620,7 @@ async function callLearn(
       contextJson,
       disclosure: describeCompleteness(session.completeness),
       goal: learning.goal,
-      used: learning.used,
-      budget: learning.budget ?? LIMITS.learningBudget,
+      round: learning.used,
       history: learning.log
         .filter((entry) => entry.role === 'question' || entry.role === 'quiz' || entry.role === 'answer')
         .slice(-LIMITS.maxHistoryTurns * 2)
@@ -744,7 +742,7 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
         .join('\n');
       next = appendLearn(next, { role: 'feedback', text: feedbackText, graded, score });
 
-      // 下一轮：选择题优先，其次开放问题；预算用尽则交给收束。
+      // 下一轮：选择题优先，其次开放问题；模型判断问清楚了才交给收束。
       const canContinue = nextQuestionAllowed(next);
       if (clean.nextQuiz && canContinue) {
         next = appendLearn(
@@ -792,7 +790,7 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
   return next;
 }
 
-/** 是否还有下一轮开放问题：预算用尽时不再提问，交给收束（FR-012/FR-039）。 */
+/** 是否还有下一轮开放问题：模型给了下一问就接着问，直到它判断该收束（FR-012）。 */
 function advance(learning: LearningState, nextQuestion: string | null): LearningState {
   if (!nextQuestion || !nextQuestionAllowed(learning)) return { ...learning, current: null };
   return appendLearn(
