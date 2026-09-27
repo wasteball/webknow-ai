@@ -27,6 +27,7 @@ pnpm check          # typecheck + test + build
 | `tests/deepseek.test.ts` | SSE 跨分片解析、错误映射、截断处理、请求体固定项 | 否 |
 | `tests/validate.test.ts` | 引用必须落在本地块、来源降级、模式与动作匹配、教学提示词校验 | 否 |
 | `tests/session.test.ts` | 并发限制、迟到结果丢弃、状态恢复、预算 | 否 |
+| `tests/page-drift.test.ts` | 同一页改稿仍写回，换页或对不上页面时说明原因 | 否 |
 | `tests/extract.test.ts` | 正文提取、唯一锚点、原文回跳、歧义不误跳、内容版本 | 否（jsdom） |
 | `tests/e2e/*.spec.ts` | 打包扩展在真实 Chromium 里的启动、状态推导、CORS 豁免、主路径首屏 | 主路径需要 |
 

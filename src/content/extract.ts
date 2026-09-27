@@ -165,11 +165,11 @@ function tableContext(element: Element): EvidenceBlock['table'] {
   return context;
 }
 
-/** 内容版本：同一 URL 下正文发生实质变化时，旧结果必须失效（FR-005）。 */
 function parseArticle(doc: Document) {
   return new Readability(doc).parse();
 }
 
+/** 同一地址下正文或图片变了，这个指纹就变。 */
 export function documentFingerprint(): string {
   // 展开克隆顺带把图片的真实地址写进副本，因此不再需要按索引对齐。
   const clone = cloneExpanded(document) as Document;
@@ -196,9 +196,8 @@ function coverage(status: CoverageStatus, found: number, captured: number): Cove
  * 刻意**不自动滚动**去加载：滚动会改变用户正在读的位置、触发页面自己去发网络请求
  * （广告、埋点），还可能根本停不下来。对阅读伴随工具来说，这些副作用比收益大。
  *
- * 取而代之：只在页面上真的存在“展开全文/加载更多”这类入口时如实披露；
- * 用户自己点开后，正文变化会让内容版本失效（STALE），重新开始伴读即可读到新内容——
- * 已有的“变化即失效”机制正好覆盖这条路径。
+ * 取而代之：只在页面上真的存在“展开全文/加载更多”这类入口时如实披露。
+ * 用户自己点开或改完再发布后，下一次提问会按当时的正文来回答。
  */
 const UNLOADED_HINT = /(展开全文|阅读全文|查看全文|加载更多|查看更多|继续阅读|load more|read more|show more)/i;
 
@@ -414,7 +413,7 @@ export function jumpToAnchor(anchor: DomAnchor): JumpOutcome {
   return { outcome: 'relocated' };
 }
 
-/** 页面身份与内容版本是否仍然一致；用于写回前判定迟到结果。 */
+/** 当前页的地址和正文指纹。后台用它区分改稿、换页，以及读不到页面。 */
 export function currentIdentity(): { url: string; fingerprint: string } {
   return { url: location.href, fingerprint: documentFingerprint() };
 }

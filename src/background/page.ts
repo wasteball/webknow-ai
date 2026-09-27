@@ -3,7 +3,6 @@ import { browser } from 'wxt/browser';
 import type { BlocksPayload, DomAnchor, JumpOutcome } from '../core/blocks';
 import { appError, fromThrown, isAppError, type AppError } from '../core/errors';
 import type { ContentReply, ContentRequest } from '../core/protocol';
-import type { PageSession } from '../core/session';
 
 /**
  * 与内容脚本的桥。页面内容只在这里进出扩展，且只在用户明确启动之后（FR-005）。
@@ -52,9 +51,7 @@ function unwrap<T>(reply: ContentReply): T {
 
 /**
  * 提取正文；这一步之后才第一次产生可以外发的正文（FR-006）。
- *
- * 不向 Chrome 申请站点权限。读取靠用户点工具栏图标时的 activeTab：
- * 打开产品 = 读当前这一页，换页后再点一次图标。不是常驻监听。
+ * 只在用户点了入口，或在同一页发出问题、而正文已经改过时调用。换页本身不读。
  */
 export async function extractPage(tabId: number): Promise<BlocksPayload> {
   await ensureInjected(tabId);
@@ -70,12 +67,13 @@ export async function watchPage(tabId: number): Promise<void> {
   await send(tabId, { type: 'watch' });
 }
 
-/** 写回前核验：页面身份与内容版本仍与开始时一致（FR-024）。 */
-export async function pageStillMatches(tabId: number, session: PageSession): Promise<boolean> {
+/** 问内容脚本要当前地址和正文指纹。脚本不应或页面已关时返回 null。 */
+export async function readPageIdentity(tabId: number): Promise<{ url: string; fingerprint: string } | null> {
   const reply = await send(tabId, { type: 'fingerprint' });
-  if (!reply.ok) return false;
-  const identity = reply.data as { url: string; fingerprint: string };
-  return identity.url === session.url && identity.fingerprint === session.fingerprint;
+  if (!reply.ok) return null;
+  const identity = reply.data as { url?: string; fingerprint?: string };
+  if (!identity?.url || typeof identity.fingerprint !== 'string') return null;
+  return { url: identity.url, fingerprint: identity.fingerprint };
 }
 
 export async function jumpToOriginal(tabId: number, anchor: DomAnchor): Promise<JumpOutcome> {

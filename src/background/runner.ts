@@ -32,10 +32,16 @@ import {
   type PageSession,
   type RequestKind,
 } from '../core/session';
+import {
+  classifyPageDrift,
+  planWriteBack,
+  sessionWithNewExtract,
+  writeBackError,
+} from '../core/page-drift';
 import { presentReasoning } from '../core/stream-draft';
 import { cleanAnswer, cleanGuide, cleanLearn, omitBlockIds, type LearnResult } from '../core/validate';
 import { callModel } from './model';
-import { pageStillMatches, toAppError } from './page';
+import { extractPage, readPageIdentity, toAppError } from './page';
 import { getSession, putSession, readConfig, readSearchCredentials, type Config } from './store';
 
 /**
@@ -142,17 +148,50 @@ async function withRun(
   return failure;
 }
 
-/** 写回守卫：页面身份/内容版本仍在，且会话与请求身份未变，否则丢弃迟到结果（FR-024）。 */
+/**
+ * 用户发出去之后，若仍是这一页、只是正文改过，先换成新正文再问。
+ * 已经说过的话留着。地址已经换了就停在这里，并告诉用户。
+ */
+async function adoptCurrentPage(tabId: number, session: PageSession): Promise<PageSession> {
+  const live = await readPageIdentity(tabId);
+  const drift = classifyPageDrift(session, live);
+  if (drift === 'replaced' && live) {
+    if (session.run) await dropReplaced(tabId, session.run.id, live.url);
+    throw writeBackError(planWriteBack(drift, live));
+  }
+  if (drift !== 'edited') return session;
+  const page = await extractPage(tabId);
+  const next = sessionWithNewExtract(session, page);
+  if (next === 'replaced') {
+    if (session.run) await dropReplaced(tabId, session.run.id, page.url);
+    throw writeBackError({ action: 'replaced', url: page.url });
+  }
+  await putSession(next);
+  return next;
+}
+
+async function dropReplaced(tabId: number, runId: string, url: string): Promise<void> {
+  const fresh = await getSession(tabId);
+  if (fresh && acceptsWriteBack(fresh, runId)) await putSession(markStale(fresh, url));
+}
+
+/**
+ * 写回守卫：请求身份必须还是这一次。
+ * 同一地址上正文改过，结果仍写上（它对应发出去时读到的正文）。
+ * 地址变了就标成换页并说明；对不上页面时说明原因，不清掉已有对话。
+ */
 async function writeBack(
   tabId: number,
   session: PageSession,
   runId: string,
   mutate: (fresh: PageSession) => PageSession,
 ): Promise<PageSession | null> {
-  if (!(await pageStillMatches(tabId, session))) {
-    const fresh = await getSession(tabId);
-    if (fresh && acceptsWriteBack(fresh, runId)) await putSession(markStale(fresh));
-    return null;
+  const live = await readPageIdentity(tabId);
+  const plan = planWriteBack(classifyPageDrift(session, live), live);
+  const error = writeBackError(plan);
+  if (error) {
+    if (plan.action === 'replaced') await dropReplaced(tabId, runId, plan.url);
+    throw error;
   }
   const fresh = await getSession(tabId);
   if (!fresh || !acceptsWriteBack(fresh, runId)) return null;
@@ -185,18 +224,19 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
     tabId,
     'guide',
     async (session, runId, signal) => {
-      const ctx = contextOf(session);
+      const current = await adoptCurrentPage(tabId, session);
+      const ctx = contextOf(current);
       const watch = watchProgress(
         hooks,
         tabId,
-        session.blocks.map((block) => block.id),
+        current.blocks.map((block) => block.id),
       );
       const parsed = await callModel(
         guideMessages({
-          title: session.title,
-          url: session.url,
+          title: current.title,
+          url: current.url,
           contextJson: ctx.json,
-          disclosure: describeCompleteness(session.completeness),
+          disclosure: describeCompleteness(current.completeness),
           override: resolvePolicy('guide', config),
           maxBubbles: settings.maxBubbles,
           summaryMaxChars: summaryCharsFor(settings.summaryLength),
@@ -207,12 +247,11 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
       const clean = cleanGuide(
         parsed,
         settings.maxBubbles,
-        session.blocks.map((block) => block.id),
+        current.blocks.map((block) => block.id),
       );
       if (!clean.ok) throw clean.error;
       const reasoning = watch.reasoning();
-      // 首屏结果只在页面身份与内容版本仍然一致时写回（FR-024）。
-      return writeBack(tabId, session, runId, (fresh) => ({
+      return writeBack(tabId, current, runId, (fresh) => ({
         ...fresh,
         guide: reasoning ? { ...clean.value, reasoning } : clean.value,
         state: 'READY',
@@ -238,7 +277,8 @@ async function runAsk(
     tabId,
     'answer',
     async (session, runId, signal) => {
-      const ctx = contextOf(session);
+      const current = await adoptCurrentPage(tabId, session);
+      const ctx = contextOf(current);
       const diagrams = effectiveSettings(config).diagrams === 'auto';
 
       // 联网搜索（F3）：失败或无结果时如实降级，只用文章本身回答，不阻断整个请求。
@@ -250,19 +290,19 @@ async function runAsk(
         else searchFailed = true;
       }
 
-      const quote = session.quote ?? null;
+      const quote = current.quote ?? null;
       const watch = watchProgress(
         hooks,
         tabId,
-        session.blocks.map((block) => block.id),
+        current.blocks.map((block) => block.id),
       );
       const parsed = await callModel(
         answerMessages({
-          title: session.title,
-          url: session.url,
+          title: current.title,
+          url: current.url,
           contextJson: ctx.json,
-          disclosure: describeCompleteness(session.completeness),
-          history: session.chat
+          disclosure: describeCompleteness(current.completeness),
+          history: current.chat
             .slice(-LIMITS.maxHistoryTurns)
             .map((turn) => ({ question: turn.question, answer: turn.answer })),
           question,
@@ -274,16 +314,16 @@ async function runAsk(
         signal,
         watch.onProgress,
       );
-      const clean = cleanAnswer(parsed, session.blocks, webResults);
+      const clean = cleanAnswer(parsed, current.blocks, webResults);
       if (!clean.ok) throw clean.error;
       const unanswered = [...clean.value.unanswered];
       if (searchFailed || (webResults.length === 0 && searchRequested)) {
         unanswered.push('联网搜索没有可用的结果，这次只依据文章本身回答。');
       }
-      const citations = withQuoteCitation(clean.value.citations, session.blocks, quote);
-      const asked = new Set([...session.chat.map((turn) => turn.question), question]);
+      const citations = withQuoteCitation(clean.value.citations, current.blocks, quote);
+      const asked = new Set([...current.chat.map((turn) => turn.question), question]);
       const followUps = clean.value.followUps.filter((item) => !asked.has(item.question));
-      return writeBack(tabId, session, runId, (fresh) => ({
+      return writeBack(tabId, current, runId, (fresh) => ({
         ...fresh,
         chat: [
           ...fresh.chat,
@@ -442,7 +482,8 @@ async function runLearnStep(
     tabId,
     'learn',
     async (session, runId, signal) => {
-      const learning = session.learning;
+      const current = await adoptCurrentPage(tabId, session);
+      const learning = current.learning;
       if (!learning || learning.status !== 'active') {
         throw appError('INTERNAL', '当前没有进行中的学习会话。', false);
       }
@@ -450,14 +491,14 @@ async function runLearnStep(
         throw appError('INTERNAL', '当前没有待回答的问题。', false);
       }
 
-      const ctx = contextOf(session);
+      const ctx = contextOf(current);
       const settings = effectiveSettings(config);
       const frozen = frozenLearnCall(learning, {
         policy: resolvePolicy('learn', config),
         style: settings.learningStyle,
       });
       let next = await callLearn(
-        session,
+        current,
         learning,
         mode,
         input,
@@ -472,7 +513,7 @@ async function runLearnStep(
       // 预算用尽或模型判断应当收束时，本轮直接补一次收束，不留给用户一个悬空状态（FR-012）。
       if (mode !== 'close' && !next.current && next.status === 'active') {
         next = await callLearn(
-          session,
+          current,
           next,
           'close',
           {},
@@ -486,7 +527,7 @@ async function runLearnStep(
         );
       }
 
-      return writeBack(tabId, session, runId, (fresh) => ({
+      return writeBack(tabId, current, runId, (fresh) => ({
         ...fresh,
         learning: next,
         // 收束即回到 READY：问答 Tab 与“再来一轮”立即可用，不再需要一个退出动作（FR-011）。

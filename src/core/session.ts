@@ -183,7 +183,7 @@ export function emptySession(tabId: number, url: string): PageSession {
   };
 }
 
-/** 页面身份或内容版本变化：旧结果立即陈旧，正文不再作为当前页上下文（FR-005/FR-024）。 */
+/** 换了一页：旧结果立即作废，正文不再当作当前页。同一地址上的改稿不走这里。 */
 export function markStale(session: PageSession, url?: string): PageSession {
   const nextUrl = url ?? session.url;
   // 导航刚开始时往往还不知道新地址。这时不能继续把上一页的标题当成这一页。
@@ -228,8 +228,8 @@ export function endRun(session: PageSession, runId: string): PageSession {
 }
 
 /**
- * 写回判定：只有同一次在途请求、且会话未被替换时才允许写入（FR-024）。
- * 页面身份与内容版本另行由内容脚本核对，见 background/runner.ts。
+ * 写回判定：只有同一次在途请求、且会话未被替换时才允许写入。
+ * 同一页改稿、换页、对不上页面时怎么处理，见 core/page-drift.ts。
  */
 export function acceptsWriteBack(session: PageSession, runId: string): boolean {
   return session.run?.id === runId;
