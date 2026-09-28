@@ -1,5 +1,7 @@
 import { browser } from 'wxt/browser';
 
+import { diagramFit } from '../../src/core/diagram-fit';
+
 import './style.css';
 
 /**
@@ -15,6 +17,7 @@ const root = document.getElementById('root');
 let scale = 1;
 let offset = { x: 0, y: 0 };
 let canvas: HTMLDivElement | null = null;
+let controller = new AbortController();
 
 function apply() {
   if (canvas) canvas.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${scale})`;
@@ -22,12 +25,24 @@ function apply() {
 
 function mount(svg: string) {
   if (!root) return;
+  controller.abort();
+  controller = new AbortController();
   root.textContent = '';
   scale = 1;
   offset = { x: 0, y: 0 };
 
   const stage = document.createElement('div');
   stage.className = 'stage';
+  const fit = () => {
+    const diagram = canvas?.querySelector('svg');
+    if (!diagram) return;
+    const next = diagramFit(stage, diagram, scale);
+    const width = diagram.getBoundingClientRect().width / scale;
+    scale = next;
+    offset = { x: width > stage.clientWidth ? (stage.clientWidth - width * scale) / 2 : (width - width * scale) / 2, y: 0 };
+    setLabel();
+    apply();
+  };
   canvas = document.createElement('div');
   canvas.className = 'canvas';
   canvas.innerHTML = svg;
@@ -47,7 +62,7 @@ function mount(svg: string) {
     return element;
   };
   const zoom = (factor: number) => {
-    scale = Math.min(8, Math.max(0.25, scale * factor));
+    scale = Math.min(8, Math.max(0.02, scale * factor));
     setLabel();
     apply();
   };
@@ -55,17 +70,7 @@ function mount(svg: string) {
   smaller.setAttribute('aria-label', '缩小');
   const larger = button('＋', () => zoom(1.4));
   larger.setAttribute('aria-label', '放大');
-  bar.append(
-    smaller,
-    label,
-    larger,
-    button('复位', () => {
-      scale = 1;
-      offset = { x: 0, y: 0 };
-      setLabel();
-      apply();
-    }),
-  );
+  bar.append(smaller, label, larger, button('复位', fit));
   const status = document.createElement('p');
   status.className = 'viewer-status';
   status.setAttribute('role', 'status');
@@ -86,7 +91,7 @@ function mount(svg: string) {
   document.addEventListener('fullscreenchange', () => {
     fullscreen.textContent = document.fullscreenElement === root ? '退出全屏' : '全屏';
     status.textContent = '';
-  });
+  }, { signal: controller.signal });
   bar.append(fullscreen);
   setLabel();
 
@@ -114,15 +119,12 @@ function mount(svg: string) {
   };
   stage.addEventListener('pointerup', stop);
   stage.addEventListener('pointercancel', stop);
-  stage.addEventListener('dblclick', () => {
-    scale = 1;
-    offset = { x: 0, y: 0 };
-    setLabel();
-    apply();
-  });
+  stage.addEventListener('dblclick', fit);
 
   root.append(bar, status, stage);
-  apply();
+  fit();
+  window.addEventListener('resize', fit, { signal: controller.signal });
+  document.addEventListener('fullscreenchange', fit, { signal: controller.signal });
 }
 
 browser.runtime.onMessage.addListener((message: unknown) => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { diagramFit } from '../../core/diagram-fit';
 import { Icon } from './Icon';
 
 /**
@@ -9,7 +10,7 @@ import { Icon } from './Icon';
  * 缩放平移都作用在 wrapper 的 transform 上，不改 SVG 内部，因此不会重排、不会模糊。
  */
 
-const MIN = 0.5;
+const MIN = 0.02;
 const MAX = 8;
 
 export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
@@ -19,18 +20,31 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
   const [fullscreenError, setFullscreenError] = useState(false);
   const shell = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   // 侧栏里 requestFullscreen 未必可用；即使可用，请求失败也要指向整页查看入口。
   const canFullscreen = typeof document.fullscreenEnabled === 'boolean' ? document.fullscreenEnabled : false;
 
+  const reset = useCallback(() => {
+    const diagram = host.current?.querySelector('svg');
+    if (diagram && stage.current) {
+      const next = diagramFit(stage.current, diagram, scale);
+      const width = diagram.getBoundingClientRect().width / scale;
+      setScale(next);
+      setOffset({ x: width > stage.current.clientWidth ? (stage.current.clientWidth - width * next) / 2 : (width - width * next) / 2, y: 0 });
+    }
+  }, [scale]);
+
   useEffect(() => {
     if (host.current) host.current.innerHTML = svg;
+    const diagram = host.current?.querySelector('svg');
+    if (diagram && stage.current) {
+      const next = diagramFit(stage.current, diagram, 1);
+      const width = diagram.getBoundingClientRect().width;
+      setScale(next);
+      setOffset({ x: width > stage.current.clientWidth ? (stage.current.clientWidth - width * next) / 2 : (width - width * next) / 2, y: 0 });
+    }
   }, [svg]);
-
-  const reset = useCallback(() => {
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
-  }, []);
 
   // 焦点陷阱 + Esc 关闭：浮层是对话框，键盘必须能进能出（FR-036）。
   useEffect(() => {
@@ -98,10 +112,11 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
     const update = () => {
       setFullscreen(document.fullscreenElement === shell.current);
       setFullscreenError(false);
+      reset();
     };
     document.addEventListener('fullscreenchange', update);
     return () => document.removeEventListener('fullscreenchange', update);
-  }, []);
+  }, [reset]);
 
   const toggleFullscreen = () => {
     const element = shell.current;
@@ -160,6 +175,7 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
       </div>
       <div
         className="viewer-stage"
+        ref={stage}
         onWheel={onWheel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

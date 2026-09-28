@@ -1899,7 +1899,9 @@ button.rich-img {
 }
 
 .viewer-canvas {
-  transform-origin: center;
+  width: max-content;
+  align-self: center;
+  transform-origin: left center;
   will-change: transform;
 }
 
