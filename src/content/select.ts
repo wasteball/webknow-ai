@@ -27,8 +27,12 @@ function hide(): void {
 }
 
 function fromOwnUi(event: Event): boolean {
-  if (event.composedPath().some((node) => node instanceof Element && node.id === HOST_ID)) return true;
-  return event.target instanceof Element && event.target.id === HOST_ID;
+  const isHost = (node: EventTarget | null): boolean => {
+    if (!node || typeof node !== 'object') return false;
+    return 'id' in node && (node as { id?: unknown }).id === HOST_ID;
+  };
+  if (event.composedPath().some((node) => isHost(node))) return true;
+  return isHost(event.target);
 }
 
 const SKIP_KEY = '__wkaSkipQuoteUp';
@@ -117,11 +121,16 @@ function show(range: Range, text: string): void {
     </style>
     <button type="button">问这句</button>
   `;
-  root.querySelector('button')?.addEventListener('mousedown', (event) => {
+  const button = root.querySelector('button');
+  const activate = (event: Event) => {
     event.preventDefault();
     event.stopPropagation();
     ask(text);
-  });
+  };
+  // 页面可能在捕获阶段吃掉 mousedown；click 是最后一道可达的按钮事件。
+  button?.addEventListener('pointerdown', activate);
+  button?.addEventListener('mousedown', activate);
+  button?.addEventListener('click', activate);
   document.documentElement.append(host);
 }
 

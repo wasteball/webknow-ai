@@ -94,6 +94,18 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
   await panel.getByRole('button', { name: '总结摘要' }).click();
   await expect(panel.getByText('试点缩短了平均配送时间。')).toBeVisible({ timeout: 20_000 });
 
+  // 走真实的「开始伴读 → 网页划词 → 点击问这句 → 侧栏引用」路径，不预置 READY 会话。
+  const quoteParagraph = page.locator('article p').nth(1);
+  const quoteBox = await quoteParagraph.boundingBox();
+  expect(quoteBox).toBeTruthy();
+  await page.mouse.move(quoteBox!.x + 2, quoteBox!.y + quoteBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(quoteBox!.x + quoteBox!.width - 2, quoteBox!.y + quoteBox!.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await page.locator('#wka-quote-ask button').click();
+  await expect(panel.locator('.quote-chip')).toContainText('八十分钟');
+  await panel.getByRole('button', { name: '不用这段' }).click();
+
   const input = panel.getByLabel('向这篇文章提问');
   await input.fill('第一次为什么更快？');
   await panel.getByRole('button', { name: '发送' }).click();
@@ -170,10 +182,27 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
   await expect(viewer.locator('.viewer-scale')).toHaveText(zoomedScale!);
   await viewer.getByRole('button', { name: '复位' }).click();
   await expectDiagramFits(panel, '.viewer-stage');
+  await viewer.getByRole('button', { name: '放大' }).click();
+  const sidebarStage = await viewer.locator('.viewer-stage').boundingBox();
+  expect(sidebarStage).toBeTruthy();
+  await panel.mouse.move(sidebarStage!.x + sidebarStage!.width / 2, sidebarStage!.y + sidebarStage!.height / 2);
+  await panel.mouse.down();
+  await panel.mouse.move(sidebarStage!.x + sidebarStage!.width / 2 + 24, sidebarStage!.y + sidebarStage!.height / 2 + 18);
+  await panel.mouse.up();
+  const sidebarViewBeforePopup = await viewer.locator('.viewer-canvas').getAttribute('style');
   const diagramPagePromise = context.waitForEvent('page');
   await viewer.getByRole('button', { name: '全屏看图' }).click();
   const diagramPage = await diagramPagePromise;
   await expect(diagramPage).toHaveURL(`chrome-extension://${extensionId}/viewer.html`);
+  const windowType = await diagramPage.evaluate(
+    () => new Promise<{ type?: string; state?: string }>((resolve) => {
+      const chromeApi = (globalThis as typeof globalThis & {
+        chrome: { windows: { getCurrent(callback: (current: { type?: string; state?: string }) => void): void } };
+      }).chrome;
+      chromeApi.windows.getCurrent((current) => resolve({ type: current.type, state: current.state }));
+    }),
+  );
+  expect(windowType.type).toBe('popup');
   await expect(diagramPage.locator('.canvas svg')).toBeVisible({ timeout: 10_000 });
   await expect(diagramPage.locator('.canvas svg')).toContainText('开始');
   await expect(diagramPage.locator('.bar')).toBeVisible();
@@ -223,7 +252,11 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
     await fullscreen.click();
     await expect(diagramPage.getByRole('status')).toContainText('无法全屏');
   }
-  await diagramPage.close();
+  const popupClosed = diagramPage.waitForEvent('close');
+  await diagramPage.getByRole('button', { name: '关闭图表弹窗' }).click();
+  await popupClosed;
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator('.viewer-canvas')).toHaveAttribute('style', sidebarViewBeforePopup!);
   await panel.close();
   await page.close();
 });

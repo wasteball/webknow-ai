@@ -6,7 +6,7 @@ import { DIAGRAM_ICON_PATHS, type DiagramIconName } from '../../src/core/diagram
 import './style.css';
 
 /**
- * 「在新标签页里看」的全窗口图表页面。
+ * 「在独立弹窗里看」的全窗口图表页面。
  *
  * 侧栏只有 380–450px 宽，复杂图在那里一定看不清；这一页不受侧栏宽度限制。
  * SVG 由侧栏经 runtime 消息送来，不落盘、不外发、不进 URL。
@@ -99,10 +99,10 @@ function mount(svg: string) {
       });
     } else if (document.fullscreenEnabled) {
       void root.requestFullscreen().catch(() => {
-        status.textContent = '无法全屏，可以在这个整页标签页里看图。';
+        status.textContent = '无法全屏，可以在这个弹窗里看图。';
       });
     } else {
-      status.textContent = '无法全屏，可以在这个整页标签页里看图。';
+      status.textContent = '无法全屏，可以在这个弹窗里看图。';
     }
   });
   const updateFullscreenButton = () => {
@@ -115,7 +115,7 @@ function mount(svg: string) {
     updateFullscreenButton();
     status.textContent = '';
   }, { signal: controller.signal });
-  bar.append(fullscreen);
+  bar.append(fullscreen, button('close', '关闭图表弹窗', () => window.close()));
   setLabel();
 
   stage.addEventListener(

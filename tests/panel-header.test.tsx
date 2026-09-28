@@ -26,15 +26,15 @@ vi.mock('wxt/browser', () => ({
 import { App } from '../src/sidepanel/App';
 
 describe('侧栏顶栏', () => {
-  it('不写产品名和副标题，只把设置留在最上面', () => {
+  it('不再额外占一条应用顶栏，设置跟上下文操作放在同一行', () => {
     render(<App />);
 
     expect(screen.queryByRole('heading', { name: '知伴' })).toBeNull();
     expect(screen.queryByText('陪你读这一页')).toBeNull();
 
     const settings = screen.getByRole('button', { name: '设置' });
-    const header = document.querySelector('.panel-header');
+    const header = document.querySelector('.context-actions');
     expect(header?.contains(settings)).toBe(true);
-    expect(header?.querySelector('h1, .brand, .brand-sub')).toBeNull();
+    expect(document.querySelector('.panel-header')).toBeNull();
   });
 });

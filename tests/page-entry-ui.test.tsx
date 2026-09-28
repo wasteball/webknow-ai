@@ -40,6 +40,8 @@ describe('换页入口界面', () => {
     );
 
     expect(screen.getByText(/城市配送试点研究/)).toBeTruthy();
+    const heading = document.querySelector('.page-entry-heading');
+    expect(heading?.contains(screen.getByText('城市配送试点研究'))).toBe(true);
     const summary = screen.getByRole('button', { name: /总结摘要/ }) as HTMLButtonElement;
     expect(summary.textContent).toContain('我确认');
     expect(summary.disabled).toBe(false);

@@ -487,7 +487,7 @@ function isDark(page: Page, selector: string): Promise<boolean> {
 
 test('文章标题与设置始终同排，模式条在下面且不被遮挡', async () => {
   test.setTimeout(120_000);
-  const { panel } = await openPanel(560);
+  const { panel, tabId } = await openPanel(560);
   await panel.setViewportSize({ width: 560, height: 360 });
 
   const gear = await panel.getByRole('button', { name: '设置' }).boundingBox();
@@ -516,6 +516,23 @@ test('文章标题与设置始终同排，模式条在下面且不被遮挡', as
   await panel.getByRole('tab', { name: 'AI 问' }).click();
   await expect(panel.getByRole('tab', { name: 'AI 问' })).toHaveAttribute('aria-selected', 'true');
   await panel.screenshot({ path: join(OUTPUT_DIR, 'header-stuck.png') });
+
+  await context.serviceWorkers()[0]!.evaluate(async (id) => {
+    const key = `sess:${id}`;
+    const stored = await chrome.storage.session.get(key);
+    const session = stored[key] as Record<string, unknown>;
+    session.title = '城市配送试点研究：从三个团队的试点记录理解平均处理时间与后续实施条件';
+    await chrome.storage.session.set({ [key]: session });
+  }, tabId);
+  await pushState(panel, tabId);
+  await panel.setViewportSize({ width: 280, height: 360 });
+  const narrowTitle = await panel.locator('.context-actions .page-title').boundingBox();
+  const narrowGear = await panel.getByRole('button', { name: '设置' }).boundingBox();
+  expect(narrowTitle).toBeTruthy();
+  expect(narrowGear).toBeTruthy();
+  expect(narrowTitle!.y + narrowTitle!.height).toBeLessThanOrEqual(narrowGear!.y + narrowGear!.height);
+  expect(narrowTitle!.x + narrowTitle!.width).toBeLessThanOrEqual(narrowGear!.x + 1);
+  expect(await panel.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(280);
   await panel.close();
 });
 

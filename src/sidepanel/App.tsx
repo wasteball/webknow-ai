@@ -165,7 +165,7 @@ export function App() {
     : phase === 'UNCONFIGURED'
       ? '还没有填钥匙。去设置里配一下，顺带看看都能做什么。'
       : PHASE_TEXT[phase];
-  const entryWithoutTitle = Boolean(state) && !state?.pageTitle &&
+  const pageEntryPhase = Boolean(state) &&
     (phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE');
 
   return (
@@ -173,23 +173,26 @@ export function App() {
       className="panel"
       style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
     >
-      {(!entryWithoutTitle || state?.completeness) && (
+      {!pageEntryPhase && (
         <div className="context">
-          {!entryWithoutTitle && (
-            <header className="panel-header">
-              {state?.pageTitle && <p className="page-title">{state.pageTitle}</p>}
-              <button
-                type="button"
-                className="icon-btn"
-                onClick={() => openSettings()}
-                aria-label="设置"
-                title="设置"
-              >
-                <Icon name="settings" />
-              </button>
-            </header>
-          )}
+          <div className="context-actions">
+            {state?.pageTitle ? <p className="page-title">{state.pageTitle}</p> : <span aria-hidden="true" />}
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => openSettings()}
+              aria-label="设置"
+              title="设置"
+            >
+              <Icon name="settings" />
+            </button>
+          </div>
           <ScopeLine completeness={state?.completeness ?? null} />
+        </div>
+      )}
+      {pageEntryPhase && state?.completeness && (
+        <div className="context">
+          <ScopeLine completeness={state.completeness} />
         </div>
       )}
 
@@ -227,7 +230,7 @@ export function App() {
                 busy={busy !== null}
                 askHost={needsPageHost(phase, state.permission, state.error?.code ?? null)}
                 onPick={readPage}
-                onOpenSettings={entryWithoutTitle ? () => openSettings() : undefined}
+                onOpenSettings={() => openSettings()}
               />
             </>
           )}

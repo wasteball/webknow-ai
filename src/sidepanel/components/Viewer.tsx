@@ -122,15 +122,32 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
     drag.current = null;
   };
 
-  /** 整页看图：走扩展内页面，不落盘、不外发。 */
-  const openInTab = async () => {
+  /** 在独立的最大化扩展弹窗里看图；侧栏查看器保持挂载，关掉弹窗就回到原来的缩放与位置。 */
+  const openInWindow = async () => {
     const { browser } = await import('wxt/browser');
-    const tab = await browser.tabs.create({ url: browser.runtime.getURL('/viewer.html') });
+    type WindowApi = typeof browser & {
+      windows: {
+        create(data: { url: string; type: 'popup'; state: 'maximized'; focused: boolean }): Promise<{
+          id?: number;
+        }>;
+      };
+    };
+    const extensionBrowser = browser as WindowApi;
+    const created = await extensionBrowser.windows.create({
+      url: browser.runtime.getURL('/viewer.html'),
+      type: 'popup',
+      state: 'maximized',
+      focused: true,
+    });
+    if (!created) return;
     // 新页面挂上监听后才要图；轮询几次即可，不需要额外的握手协议。
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 120));
       try {
-        if (tab.id) await browser.tabs.sendMessage(tab.id, { type: 'diagram', svg });
+        if (created.id === undefined) continue;
+        const [tab] = await browser.tabs.query({ windowId: created.id });
+        if (tab?.id === undefined) continue;
+        await browser.tabs.sendMessage(tab.id, { type: 'diagram', svg });
         return;
       } catch {
         // 页面还没准备好，继续等。
@@ -158,7 +175,7 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
           <Icon name="fit" small />
         </button>
         <span className="viewer-scale">{Math.round(scale * 100)}%</span>
-        <button type="button" className="quiet viewer-tool" onClick={() => void openInTab()} aria-label="全屏看图" title="在整页看图">
+        <button type="button" className="quiet viewer-tool" onClick={() => void openInWindow()} aria-label="全屏看图" title="在独立弹窗看图">
           <Icon name="fullscreen" small />
         </button>
         <button type="button" className="quiet viewer-tool viewer-close" onClick={onClose} aria-label="关闭" title="关闭">

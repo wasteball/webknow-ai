@@ -76,6 +76,18 @@ describe('划词提问按钮', () => {
     });
   });
 
+  it('即使页面没有把 mousedown 传到按钮，click 仍然能发出划词', () => {
+    selectParagraph();
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    const button = quoteButton();
+    expect(button).toBeTruthy();
+    button?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(sendMessage).toHaveBeenCalledWith({
+      type: 'quoteSelected',
+      text: expect.stringContaining('公交线路调整方案'),
+    });
+  });
+
   it('超过八百字仍然给出问这句，发出去的是裁过的原文', () => {
     document.body.innerHTML = `<p>${'甲'.repeat(900)}</p>`;
     selectParagraph();

@@ -27,7 +27,10 @@ export function PageEntry({
   return (
     <section className="section">
       <div className="page-entry-heading">
-        <h2>{phase === 'STALE' ? '换了一页' : '读这一页'}</h2>
+        <div className="page-entry-heading-copy">
+          <h2>{phase === 'STALE' ? '换了一页' : '读这一页'}</h2>
+          {pageTitle && <p className="page-title">{pageTitle}</p>}
+        </div>
         {onOpenSettings && (
           <button type="button" className="icon-btn" onClick={onOpenSettings} aria-label="设置" title="设置">
             <Icon name="settings" />
@@ -35,7 +38,6 @@ export function PageEntry({
         )}
       </div>
       <p>
-        {pageTitle ? `现在打开的是「${pageTitle}」。` : ''}
         点一个，我才读这一页。换页不会自动读。
       </p>
       <div className="composer-actions">

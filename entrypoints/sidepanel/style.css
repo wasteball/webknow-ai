@@ -179,9 +179,9 @@ body {
   height: 16px;
 }
 
-/* ── 顶部：文章标题与设置共用一行，错误提示独占下一行 ─────── */
+/* ── 上下文行：文章标题与设置共用一行；Chrome 原生的图标、置顶、关闭由浏览器负责 ─────── */
 
-.panel-header {
+.context-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -189,13 +189,16 @@ body {
   min-height: 44px;
 }
 
-.panel-header .page-title {
+.context-actions .page-title {
   flex: 1;
   min-width: 0;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.panel-header .icon-btn {
+.context-actions .icon-btn {
   flex: none;
 }
 
@@ -340,6 +343,31 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+}
+
+.page-entry-heading-copy {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.page-entry-heading-copy h2 {
+  flex: none;
+  white-space: nowrap;
+}
+
+.page-entry-heading-copy .page-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page-entry-heading .icon-btn {
