@@ -555,10 +555,22 @@ function headingPathAtFrom(root: Element, element: Element): string[] {
 }
 
 function currentCandidates(): SourceCandidate[] {
+  const articleRoot = directArticleRoot();
+  if (articleRoot) {
+    const nodes = orderedTextNodes(articleRoot);
+    return nodes.map((element, index) => ({
+      element,
+      id: element.getAttribute(ANCHOR_ATTRIBUTE) ?? '',
+      text: normalizeText(element.textContent),
+      headingPath: headingPathAtFrom(articleRoot, element),
+      selector: cssPath(element),
+      prefix: normalizeText(nodes[index - 1]?.textContent).slice(-100),
+      suffix: normalizeText(nodes[index + 1]?.textContent).slice(0, 100),
+    }));
+  }
   const { roots } = readableRoots();
   const found = roots.flatMap((root) =>
-    [...root.querySelectorAll<HTMLElement>(CANDIDATES)]
-      .filter((element) => normalizeText(element.textContent).length >= 2)
+    orderedTextNodes(root)
       .map((element) => ({ element, root })),
   );
   return found.map(({ element, root }, index) => ({
@@ -590,6 +602,7 @@ function highlight(element: HTMLElement): void {
  * 回到原文：校验块 id、摘录一致与内容版本，任一不成立就如实报失效，不假装跳转成功（FR-017）。
  */
 export function jumpToAnchor(anchor: DomAnchor): JumpOutcome {
+  const articleRoot = directArticleRoot();
   const { roots } = readableRoots();
   const directMatches = roots.flatMap((root) =>
     [...root.querySelectorAll<HTMLElement>(`[${ANCHOR_ATTRIBUTE}="${escapeCss(anchor.sessionAnchorId)}"]`)].map(
@@ -605,7 +618,11 @@ export function jumpToAnchor(anchor: DomAnchor): JumpOutcome {
     direct &&
     normalizeText(direct.element.textContent) === anchor.exact &&
     fingerprint(
-      `${normalizeText(direct.element.textContent)}\n${headingPathIn(direct.root, direct.element).join(' > ')}`,
+      `${normalizeText(direct.element.textContent)}\n${(
+        articleRoot?.contains(direct.element)
+          ? headingPathAtFrom(articleRoot, direct.element)
+          : headingPathIn(direct.root, direct.element)
+      ).join(' > ')}`,
     ) === anchor.fingerprint
   ) {
     highlight(direct.element);

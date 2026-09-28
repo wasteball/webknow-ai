@@ -823,7 +823,13 @@ function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <Section title="知识库（腾讯 ima）">
-      <p className="hint">先连上、选一个库。侧栏保存入口还在收尾，凭证先留在这台电脑。</p>
+      <p className="hint">在 ima 官网用微信扫码登录后，可以查看个人、共享和订阅知识库。</p>
+      <a className="ima-open" href="https://ima.qq.com/" target="_blank" rel="noopener noreferrer">
+        打开 ima，扫码查看知识库
+        <Icon name="external" small />
+      </a>
+      <p className="hint">扫码只登录 ima 官网；若要让知伴访问知识库，还需配置开放接口凭证。</p>
+      <p className="hint">开放接口连接用于选择默认知识库；侧栏保存入口仍在联调。</p>
       {current.enabled ? (
         <>
           <p className="hint">已连接{current.kbName ? `，默认保存到「${current.kbName}」` : '，还没有选择默认知识库'}。</p>

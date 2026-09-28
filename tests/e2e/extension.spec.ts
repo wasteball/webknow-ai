@@ -78,6 +78,18 @@ test('未配置 Key 时侧栏引导去设置，不在侧栏里填钥匙', async 
   await page.close();
 });
 
+test('知识库先提供 IMA 官网扫码查看入口，并说明扩展连接所需凭证', async () => {
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/options.html#ima`);
+  await page.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '知识库' }).click();
+  await expect(page.getByRole('link', { name: '打开 ima，扫码查看知识库' })).toHaveAttribute(
+    'href',
+    'https://ima.qq.com/',
+  );
+  await expect(page.getByText('扫码只登录 ima 官网；若要让知伴访问知识库，还需配置开放接口凭证。')).toBeVisible();
+  await page.close();
+});
+
 /**
  * CORS 是 A0 里唯一必须在浏览器内才能证实的假设：DeepSeek 的响应不带
  * access-control-allow-origin，扩展依赖 host 权限豁免。用无效 Key 打真实端点，

@@ -225,6 +225,39 @@ describe('未加载内容的披露', () => {
 describe('jumpToAnchor', () => {
   beforeEach(() => install(article));
 
+  const wechatArticle = `
+    <h1 id="activity-name">文章标题在正文之外</h1>
+    <div id="js_content">
+      <p>第一段正文完整说明了试点条件，只有三个团队参与，观察期为四周。</p>
+      <p>短</p>
+      <section><span>这段证据位于微信小节中，说明新方案只在本次试点内缩短了处理时间。</span></section>
+      <p>微信扫一扫关注公众号</p>
+      <h2>适用边界</h2>
+      <p>样本不足以代表全部组织，因此不能把这次结果直接推广到其他城市。</p>
+    </div>
+    <nav><p>这段页面导航位于正文之外，不应影响正文锚点的上下文。</p></nav>`;
+
+  it('公众号标题在正文外时，每个正文块仍能回跳并高亮', () => {
+    install(wechatArticle);
+    const payload = extractDocument();
+    expect(payload.blocks).toHaveLength(4);
+    for (const block of payload.blocks) {
+      expect(jumpToAnchor(block.anchor).outcome).toBe('jumped');
+      expect(document.querySelector('.wka-evidence-highlight')?.textContent).toBe(block.content);
+    }
+  });
+
+  it('公众号重建段落后，按同一正文范围重定位小节和段落', () => {
+    install(wechatArticle);
+    const payload = extractDocument();
+    document.querySelector('#js_content')!.innerHTML = document.querySelector('#js_content')!.innerHTML
+      .replace(/ data-wka-anchor="[^"]*"/g, '');
+    for (const block of payload.blocks) {
+      expect(jumpToAnchor(block.anchor).outcome).toBe('relocated');
+      expect(document.querySelector('.wka-evidence-highlight')?.textContent).toBe(block.content);
+    }
+  });
+
   it('原文一致时能回到原位置', () => {
     const payload = extractDocument();
     const paragraph = payload.blocks.find((block) => block.role === 'paragraph');
