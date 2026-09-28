@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { chromium, expect, test, type BrowserContext } from '@playwright/test';
 
 const EXTENSION_PATH = resolve(process.cwd(), '.output/chrome-mv3-e2e');
-const ANSWER = '可以画成流程：\n\n```mermaid\nflowchart TD\n  A[开始] --> B[结束]\n```\n\n图下还有说明。';
+const ANSWER = '可以画成流程：\n\n```mermaid flowchart TD; A[开始] --> B[结束]; ```\n\n图下还有说明。';
 const article = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>城市配送试点研究</title></head>
 <body><main><article><h1>城市配送试点研究</h1>
 <p>本研究观察三个配送团队四周，比较新的路径方案与原有方案的处理时间。</p>
@@ -107,6 +107,73 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
   expect(requests).toHaveLength(3);
   expect(requests[1]).toContain('第一次为什么更快？');
   expect(requests[2]).toContain('第二次画个流程图。');
+
+  await panel.locator('.diagram-canvas').click();
+  const viewer = panel.getByRole('dialog', { name: '放大看图' });
+  await expect(viewer.locator('.viewer-canvas svg')).toBeVisible();
+  await viewer.getByRole('button', { name: '放大' }).click();
+  await expect(viewer.locator('.viewer-scale')).toHaveText('140%');
+  const stage = viewer.locator('.viewer-stage');
+  const box = await stage.boundingBox();
+  expect(box).toBeTruthy();
+  await panel.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await panel.mouse.down();
+  await panel.mouse.move(box!.x + box!.width / 2 + 45, box!.y + box!.height / 2 + 30);
+  await panel.mouse.up();
+  await expect(viewer.locator('.viewer-canvas')).toHaveAttribute('style', /translate\(45px, 30px\)/);
+  await viewer.getByRole('button', { name: '复位' }).click();
+  await expect(viewer.locator('.viewer-scale')).toHaveText('100%');
+  if (await viewer.getByRole('button', { name: '全屏' }).isVisible()) {
+    await panel.evaluate(() => {
+      const shell = document.querySelector('.viewer') as HTMLElement;
+      shell.requestFullscreen = () => Promise.reject(new Error('平台不允许侧栏全屏'));
+    });
+    await viewer.getByRole('button', { name: '全屏' }).click();
+    await expect(viewer.getByRole('status')).toContainText('无法全屏');
+  }
+  const diagramPagePromise = context.waitForEvent('page');
+  await viewer.getByRole('button', { name: '新标签页' }).click();
+  const diagramPage = await diagramPagePromise;
+  await expect(diagramPage).toHaveURL(`chrome-extension://${extensionId}/viewer.html`);
+  await expect(diagramPage.locator('.canvas svg')).toBeVisible({ timeout: 10_000 });
+  await expect(diagramPage.locator('.canvas svg')).toContainText('开始');
+  await expect(diagramPage.locator('.bar')).toBeVisible();
+  await diagramPage.getByRole('button', { name: '放大' }).click();
+  await expect(diagramPage.locator('.bar')).toContainText('140%');
+  await diagramPage.getByRole('button', { name: '复位' }).click();
+  await expect(diagramPage.locator('.bar')).toContainText('100%');
+  await diagramPage.setViewportSize({ width: 360, height: 720 });
+  expect(await diagramPage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+  const fullscreen = diagramPage.getByRole('button', { name: '全屏', exact: true });
+  await expect(fullscreen).toBeVisible();
+  if (await diagramPage.evaluate(() => document.fullscreenEnabled)) {
+    await fullscreen.click();
+    await expect.poll(() => diagramPage.evaluate(() => document.fullscreenElement?.id ?? null)).toBe('root');
+    await diagramPage.getByRole('button', { name: '放大' }).click();
+    await expect(diagramPage.locator('.bar')).toContainText('140%');
+    const fullStage = diagramPage.locator('.stage');
+    const fullBox = await fullStage.boundingBox();
+    expect(fullBox).toBeTruthy();
+    await diagramPage.mouse.move(fullBox!.x + fullBox!.width / 2, fullBox!.y + fullBox!.height / 2);
+    await diagramPage.mouse.down();
+    await diagramPage.mouse.move(fullBox!.x + fullBox!.width / 2 + 40, fullBox!.y + fullBox!.height / 2 + 25);
+    await diagramPage.mouse.up();
+    await expect(diagramPage.locator('.canvas')).toHaveAttribute('style', /translate\(40px, 25px\)/);
+    await diagramPage.getByRole('button', { name: '复位' }).click();
+    await diagramPage.getByRole('button', { name: '退出全屏' }).click();
+    await expect.poll(() => diagramPage.evaluate(() => document.fullscreenElement)).toBeNull();
+    await diagramPage.getByRole('button', { name: '放大' }).click();
+    await expect(diagramPage.locator('.bar')).toContainText('140%');
+    await diagramPage.evaluate(() => {
+      document.getElementById('root')!.requestFullscreen = () => Promise.reject(new Error('拒绝全屏'));
+    });
+    await fullscreen.click();
+    await expect(diagramPage.getByRole('status')).toContainText('无法全屏');
+  } else {
+    await fullscreen.click();
+    await expect(diagramPage.getByRole('status')).toContainText('无法全屏');
+  }
+  await diagramPage.close();
   await panel.close();
   await page.close();
 });

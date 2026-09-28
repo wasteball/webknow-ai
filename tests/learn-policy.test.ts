@@ -8,6 +8,7 @@ import {
   unknownAssistMode,
   usedLearnGoals,
 } from '../src/core/learn-policy';
+import { DIAGRAM_GUIDANCE } from '../src/core/prompts/harness';
 import { LEARN_DEFAULT_POLICY } from '../src/core/prompts/learn';
 import type { LearningState } from '../src/core/session';
 
@@ -22,6 +23,13 @@ function session(partial: Partial<LearningState>): LearningState {
     ...partial,
   };
 }
+
+describe('Mermaid 引导', () => {
+  it('共享提示不要求 AI 问把图写到不存在的 answer 字段', () => {
+    expect(DIAGRAM_GUIDANCE).not.toMatch(/answer 字符串/);
+    expect(DIAGRAM_GUIDANCE).toContain('讲解');
+  });
+});
 
 describe('freezeLearnPolicy', () => {
   it('启动时把策略正文和出题方式写进快照，之后改配置也不变', () => {

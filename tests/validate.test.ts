@@ -114,6 +114,41 @@ describe('cleanAnswer', () => {
     expect(result.value.followUps.map((item) => item.question)).toEqual(['这个测试还能怎么看？']);
   });
 
+  it('Mermaid 围栏内的缩进与节点编号不受正文块编号清理影响', () => {
+    const answer = '先解释 b_0。\n\n```mermaid\nmindmap\n  root((主题))\n    b_0[流程]\n```\n\n图表达了层级。';
+    const result = cleanAnswer(
+      { answer, source: 'supplement', citations: [], unanswered: [] },
+      blocks,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.answer).toBe('先解释。\n\n```mermaid\nmindmap\n  root((主题))\n    b_0[流程]\n```\n\n图表达了层级。');
+  });
+
+  it('缩进围栏内的 Mermaid 节点和代码缩进也原样保留', () => {
+    const answer = '先解释 b_0。\n  ```mermaid\nmindmap\n  root((主题))\n    b_0[流程]\n```\n再看代码。\n  ```ts\n    const b_0 = 1;\n```';
+    const result = cleanAnswer({ answer, source: 'supplement', citations: [], unanswered: [] }, blocks);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.answer).toBe('先解释。\n  ```mermaid\nmindmap\n  root((主题))\n    b_0[流程]\n```\n再看代码。\n  ```ts\n    const b_0 = 1;\n```');
+  });
+
+  it('缩进结束围栏不使图表源码回落到正文清洗', () => {
+    const answer = '  ```mermaid\nmindmap\n  root((主题))\n    b_0[节点]\n  ```';
+    const result = cleanAnswer({ answer, source: 'supplement', citations: [], unanswered: [] }, blocks);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.answer).toBe(answer.trim());
+  });
+
+  it('同一行 Mermaid 围栏内的节点编号不被当作原文标记清掉', () => {
+    const answer = '```mermaid flowchart TD; b_0[入口] --> C[结束]; ```';
+    const result = cleanAnswer({ answer, source: 'supplement', citations: [], unanswered: [] }, blocks);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.answer).toBe(answer);
+  });
+
   it('回答只剩块编号时不采用', () => {
     const result = cleanAnswer(
       { answer: '见 b_0', source: 'original', citations: ['b_0'], unanswered: [] },

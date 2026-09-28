@@ -141,9 +141,47 @@ describe('图表块与预算护栏', () => {
     expect(block).toMatchObject({ t: 'diagram' });
   });
 
+  it('允许结束围栏带尾部空格，并保留图后的正文', () => {
+    const blocks = parseMarkdown('先看过程。\n```mermaid\nflowchart TD\nA-->B\n```   \n图下还有说明。');
+    expect(blocks.map((block) => block.t)).toEqual(['p', 'diagram', 'p']);
+    expect(blocks[1]).toMatchObject({ source: 'flowchart TD\nA-->B' });
+    expect(visibleText(blocks)).toContain('图下还有说明。');
+  });
+
+  it('缩进的开闭围栏都能识别，后续正文不被吞掉', () => {
+    const blocks = parseMarkdown('先看过程。\n  ```mermaid\nmindmap\n  root((主题))\n    子主题\n  ```   \n图下还有说明。');
+    expect(blocks.map((block) => block.t)).toEqual(['p', 'diagram', 'p']);
+    expect(blocks[1]).toMatchObject({ source: 'mindmap\n  root((主题))\n    子主题' });
+  });
+
+  it('明确围住且有语句分隔符的单行 Mermaid 能画，普通行内文字仍是文字', () => {
+    const blocks = parseMarkdown('说明。\n```mermaid flowchart TD; A-->B; ```\n图下还有说明。');
+    expect(blocks.map((block) => block.t)).toEqual(['p', 'diagram', 'p']);
+    expect(blocks[1]).toMatchObject({ source: 'flowchart TD; A-->B;' });
+    expect(parseMarkdown('这段 mermaid flowchart TD A-->B 只是普通文字')[0]?.t).toBe('p');
+  });
+
   it('关掉图表时降级为普通代码块', () => {
     const block = parseMarkdown('```mermaid\nflowchart TD\nA-->B\n```', { diagrams: false })[0]!;
     expect(block).toMatchObject({ t: 'code', lang: 'mermaid' });
+  });
+
+  it('单行围栏过长时仍执行图表预算，不把任意行内 Mermaid 当作图', () => {
+    const long = `\`\`\`mermaid flowchart TD; ${'A-->B; '.repeat(400)}\`\`\``;
+    expect(parseMarkdown(long)[0]).toMatchObject({ t: 'diagram-raw' });
+    expect(parseMarkdown('我想知道 `mermaid flowchart TD A-->B` 的含义')[0]?.t).toBe('p');
+  });
+
+  it('单行 Mermaid 关掉图表时仍显示源码，不识别未闭合围栏为图', () => {
+    const text = '```mermaid flowchart TD; A-->B; ```';
+    expect(parseMarkdown(text, { diagrams: false })[0]).toMatchObject({ t: 'code', lang: 'mermaid' });
+    expect(parseMarkdown('```mermaid flowchart TD; A-->B;')[0]?.t).toBe('p');
+  });
+
+  it('单行 Mermaid 的语句数超限时不送去渲染', () => {
+    const statements = Array.from({ length: 61 }, (_, index) => `A${index}-->B${index}`).join('; ');
+    const block = parseMarkdown(`\`\`\`mermaid flowchart TD; ${statements}; \`\`\``)[0];
+    expect(block).toMatchObject({ t: 'diagram-raw', reason: '这张图的内容太多了，没有画出来。' });
   });
 
   it('源码超长降级并说明原因', () => {

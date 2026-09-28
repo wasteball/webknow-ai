@@ -15,10 +15,12 @@ const MAX = 8;
 export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState(false);
   const shell = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
-  // 侧栏里 requestFullscreen 未必可用；不可用时不摆这个按钮，免得点了没反应。
+  // 侧栏里 requestFullscreen 未必可用；即使可用，请求失败也要指向整页查看入口。
   const canFullscreen = typeof document.fullscreenEnabled === 'boolean' ? document.fullscreenEnabled : false;
 
   useEffect(() => {
@@ -92,11 +94,20 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
     drag.current = null;
   };
 
+  useEffect(() => {
+    const update = () => {
+      setFullscreen(document.fullscreenElement === shell.current);
+      setFullscreenError(false);
+    };
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, []);
+
   const toggleFullscreen = () => {
     const element = shell.current;
     if (!element) return;
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void element.requestFullscreen?.().catch(() => undefined);
+    const request = fullscreen ? document.exitFullscreen() : element.requestFullscreen();
+    void request.catch(() => setFullscreenError(true));
   };
 
   /** 在新标签页里看：侧栏宽度不够时的兜底，走扩展内页面，不落盘、不外发。 */
@@ -140,7 +151,7 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
         </button>
         {canFullscreen && (
           <button type="button" className="quiet" onClick={toggleFullscreen}>
-            全屏
+            {fullscreen ? '退出全屏' : '全屏'}
           </button>
         )}
         <button type="button" className="quiet viewer-close" onClick={onClose} aria-label="关闭">
@@ -162,6 +173,7 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
           ref={host}
         />
       </div>
+      {fullscreenError && <p className="viewer-hint" role="status">无法全屏，可以点“新标签页”在整页看图。</p>}
       <p className="viewer-hint">滚轮缩放 · 拖动平移 · 双击复位 · Esc 关闭</p>
     </div>
   );

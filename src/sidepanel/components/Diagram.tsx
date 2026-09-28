@@ -103,7 +103,7 @@ export function Diagram({ source }: { source: string }) {
   return (
     <>
       <figure className="diagram">
-        <button type="button" className="diagram-canvas" onClick={() => setOpen(true)} title="放大看这张图">
+        <button type="button" className="diagram-canvas" onClick={() => setOpen(true)} aria-label="放大看这张图" title="放大看这张图">
           <div ref={host} aria-hidden="true" />
         </button>
         <figcaption>

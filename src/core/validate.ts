@@ -36,17 +36,26 @@ export function omitBlockIds(text: string, ids: readonly string[]): string {
     `(?:[（(\\[【]\\s*)?(?:(?:根据|见|参见|依据|来自|出自|引用)\\s*)?(?:在\\s*)?(?:正文块|块)?\\s*(?<![A-Za-z0-9_])(?:${id})(?![A-Za-z0-9_])(?:\\s*[里中处])?\\s*(?:[）)\\]】])?`,
     'g',
   );
+  // 图表/代码里的缩进与节点名是语法，不能拿清理读者句子的规则去改它。
+  const fence = /(^[ \t]*```mermaid[ \t]+[^`\n]+[ \t]+```[ \t]*(?=\n|$)|^[ \t]*```[^\n]*\n[\s\S]*?^[ \t]*```[ \t]*(?=\n|$))/gim;
+  return text
+    .split(fence)
+    .map((part, index) => index % 2 === 1 ? part : cleanProse(part, mention))
+    .join('')
+    .trim();
+}
+
+function cleanProse(text: string, mention: RegExp): string {
   return text
     .replace(mention, '')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n')
-    .replace(/\s+([，。；、：,])/g, '$1')
-    .replace(/([。！？])[，、,\s]+/g, '$1')
+    .replace(/[ \t]+([，。；、：,])/g, '$1')
+    .replace(/([。！？])[，、, \t]+/g, '$1')
     .replace(/[（(\\[【]\s*[）)\\]】]/g, '')
-    .replace(/^[，、：,\s]+/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+    .replace(/^[，、：, \t]+/gm, '')
+    .replace(/\n{3,}/g, '\n\n');
 }
 
 function badOutput(what: string): AppError {

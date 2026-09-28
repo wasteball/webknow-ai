@@ -23,6 +23,8 @@ function apply() {
 function mount(svg: string) {
   if (!root) return;
   root.textContent = '';
+  scale = 1;
+  offset = { x: 0, y: 0 };
 
   const stage = document.createElement('div');
   stage.className = 'stage';
@@ -49,10 +51,14 @@ function mount(svg: string) {
     setLabel();
     apply();
   };
+  const smaller = button('－', () => zoom(1 / 1.4));
+  smaller.setAttribute('aria-label', '缩小');
+  const larger = button('＋', () => zoom(1.4));
+  larger.setAttribute('aria-label', '放大');
   bar.append(
-    button('－', () => zoom(1 / 1.4)),
+    smaller,
     label,
-    button('＋', () => zoom(1.4)),
+    larger,
     button('复位', () => {
       scale = 1;
       offset = { x: 0, y: 0 };
@@ -60,6 +66,28 @@ function mount(svg: string) {
       apply();
     }),
   );
+  const status = document.createElement('p');
+  status.className = 'viewer-status';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  const fullscreen = button('全屏', () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {
+        status.textContent = '退出全屏失败，请按 Esc。';
+      });
+    } else if (document.fullscreenEnabled) {
+      void root.requestFullscreen().catch(() => {
+        status.textContent = '无法全屏，可以在这个整页标签页里看图。';
+      });
+    } else {
+      status.textContent = '无法全屏，可以在这个整页标签页里看图。';
+    }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    fullscreen.textContent = document.fullscreenElement === root ? '退出全屏' : '全屏';
+    status.textContent = '';
+  });
+  bar.append(fullscreen);
   setLabel();
 
   stage.addEventListener(
@@ -93,7 +121,7 @@ function mount(svg: string) {
     apply();
   });
 
-  root.append(bar, stage);
+  root.append(bar, status, stage);
   apply();
 }
 

@@ -114,7 +114,7 @@ function diagramBlock(source: string, opts: ParseOptions): Block {
   if (source.length > DIAGRAM_LIMITS.maxSourceChars) {
     return { t: 'diagram-raw', source, reason: '这张图太复杂了，没有画出来。' };
   }
-  const lines = source.split('\n').filter((line) => line.trim()).length;
+  const lines = source.split(/[;\n]/).filter((line) => line.trim()).length;
   if (lines > DIAGRAM_LIMITS.maxLines) {
     return { t: 'diagram-raw', source, reason: '这张图的内容太多了，没有画出来。' };
   }
@@ -143,9 +143,17 @@ export function parseMarkdown(text: string, opts: ParseOptions = { diagrams: tru
     }
 
     // 代码块（含 mermaid）。未闭合时把 ``` 与其后内容当普通文字，不吞掉正文。
-    const fence = /^```(\w*)\s*$/.exec(line.trim());
+    const trimmed = line.trim();
+    const single = /^```mermaid\s+([^`]+?)\s+```$/i.exec(trimmed);
+    if (single) {
+      flush();
+      blocks.push(diagramBlock(single[1] ?? '', opts));
+      index += 1;
+      continue;
+    }
+    const fence = /^```(\w*)[ \t]*$/.exec(trimmed);
     if (fence) {
-      const close = lines.indexOf('```', index + 1);
+      const close = lines.findIndex((candidate, at) => at > index && /^```[ \t]*$/.test(candidate.trim()));
       if (close === -1) {
         paragraph.push(line);
         index += 1;

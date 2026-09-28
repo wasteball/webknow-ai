@@ -37,12 +37,20 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  background: var(--bg);
+}
+
+#root:fullscreen {
+  width: 100vw;
+  height: 100vh;
 }
 
 .bar {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   padding: 10px 16px;
   border-bottom: 1px solid var(--line);
   font-variant-numeric: tabular-nums;
@@ -69,6 +77,16 @@ body {
 .bar button:focus-visible {
   outline: 2px solid var(--fg);
   outline-offset: 2px;
+}
+
+.viewer-status {
+  margin: 0;
+  padding: 0 16px;
+  color: var(--fg);
+}
+
+.viewer-status:empty {
+  display: none;
 }
 
 .stage {
