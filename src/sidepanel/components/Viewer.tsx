@@ -22,29 +22,45 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const autoFit = useRef(true);
   // 侧栏里 requestFullscreen 未必可用；即使可用，请求失败也要指向整页查看入口。
   const canFullscreen = typeof document.fullscreenEnabled === 'boolean' ? document.fullscreenEnabled : false;
 
-  const reset = useCallback(() => {
+  const reset = () => {
     const diagram = host.current?.querySelector('svg');
     if (diagram && stage.current) {
       const next = diagramFit(stage.current, diagram, scale);
-      const width = diagram.getBoundingClientRect().width / scale;
+      autoFit.current = true;
       setScale(next);
-      setOffset({ x: width > stage.current.clientWidth ? (stage.current.clientWidth - width * next) / 2 : (width - width * next) / 2, y: 0 });
+      setOffset({ x: 0, y: 0 });
     }
-  }, [scale]);
+  };
 
   useEffect(() => {
     if (host.current) host.current.innerHTML = svg;
     const diagram = host.current?.querySelector('svg');
     if (diagram && stage.current) {
       const next = diagramFit(stage.current, diagram, 1);
-      const width = diagram.getBoundingClientRect().width;
+      autoFit.current = true;
       setScale(next);
-      setOffset({ x: width > stage.current.clientWidth ? (stage.current.clientWidth - width * next) / 2 : (width - width * next) / 2, y: 0 });
+      setOffset({ x: 0, y: 0 });
     }
   }, [svg]);
+
+  useEffect(() => {
+    const element = stage.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      if (!autoFit.current) return;
+      const diagram = host.current?.querySelector('svg');
+      if (diagram) {
+        setScale((current) => diagramFit(element, diagram, current));
+        setOffset({ x: 0, y: 0 });
+      }
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
 
   // 焦点陷阱 + Esc 关闭：浮层是对话框，键盘必须能进能出（FR-036）。
   useEffect(() => {
@@ -85,6 +101,7 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
     const py = event.clientY - box.top - box.height / 2;
     const factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
     const next = Math.min(MAX, Math.max(MIN, scale * factor));
+    autoFit.current = false;
     const ratio = next / scale;
     setOffset((current) => ({
       x: px - (px - current.x) * ratio,
@@ -101,6 +118,7 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
   const onPointerMove = (event: React.PointerEvent) => {
     const start = drag.current;
     if (!start) return;
+    if (event.clientX !== start.x || event.clientY !== start.y) autoFit.current = false;
     setOffset({ x: start.ox + (event.clientX - start.x), y: start.oy + (event.clientY - start.y) });
   };
 
@@ -112,11 +130,10 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
     const update = () => {
       setFullscreen(document.fullscreenElement === shell.current);
       setFullscreenError(false);
-      reset();
     };
     document.addEventListener('fullscreenchange', update);
     return () => document.removeEventListener('fullscreenchange', update);
-  }, [reset]);
+  }, []);
 
   const toggleFullscreen = () => {
     const element = shell.current;
@@ -151,11 +168,11 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
       ref={shell}
     >
       <div className="viewer-bar">
-        <button type="button" className="quiet" onClick={() => setScale((s) => Math.max(MIN, s / 1.4))} aria-label="缩小">
+        <button type="button" className="quiet" onClick={() => { autoFit.current = false; setScale((s) => Math.max(MIN, s / 1.4)); }} aria-label="缩小">
           －
         </button>
         <span className="viewer-scale">{Math.round(scale * 100)}%</span>
-        <button type="button" className="quiet" onClick={() => setScale((s) => Math.min(MAX, s * 1.4))} aria-label="放大">
+        <button type="button" className="quiet" onClick={() => { autoFit.current = false; setScale((s) => Math.min(MAX, s * 1.4)); }} aria-label="放大">
           ＋
         </button>
         <button type="button" className="quiet" onClick={reset}>
@@ -185,7 +202,7 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
       >
         <div
           className="viewer-canvas"
-          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
+          style={{ transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})` }}
           ref={host}
         />
       </div>

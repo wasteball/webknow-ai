@@ -20,7 +20,7 @@ let canvas: HTMLDivElement | null = null;
 let controller = new AbortController();
 
 function apply() {
-  if (canvas) canvas.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${scale})`;
+  if (canvas) canvas.style.transform = `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`;
 }
 
 function mount(svg: string) {
@@ -37,9 +37,8 @@ function mount(svg: string) {
     const diagram = canvas?.querySelector('svg');
     if (!diagram) return;
     const next = diagramFit(stage, diagram, scale);
-    const width = diagram.getBoundingClientRect().width / scale;
     scale = next;
-    offset = { x: width > stage.clientWidth ? (stage.clientWidth - width * scale) / 2 : (width - width * scale) / 2, y: 0 };
+    offset = { x: 0, y: 0 };
     setLabel();
     apply();
   };

@@ -9,6 +9,7 @@ const EXTENSION_PATH = resolve(process.cwd(), '.output/chrome-mv3-e2e');
 const ANSWER = '可以画成流程：\n\n```mermaid flowchart LR; A[开始] --> B[观察] --> C[判断] --> D[分析] --> E[设计] --> F[试行] --> G[评估] --> H[调整] --> I[验证] --> J[汇总] --> K[复盘] --> L[优化] --> M[结束]; ```\n\n图下还有说明。';
 const WIDE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 200" width="2400" height="200"><rect width="2400" height="200" fill="black"/></svg>';
 const SMALL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" width="200" height="100"><rect width="200" height="100" fill="black"/></svg>';
+const TALL_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 2000" width="200" height="2000"><rect width="200" height="2000" fill="black"/></svg>';
 
 async function expectDiagramFits(page: import('@playwright/test').Page, stageSelector: string) {
   await expect.poll(async () => page.evaluate((selector) => {
@@ -144,6 +145,20 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
   await viewer.getByRole('button', { name: '复位' }).click();
   await expectDiagramFits(panel, '.viewer-stage');
   await expect(viewer.locator('.viewer-scale')).toHaveText(initialScale!);
+  await viewer.locator('.viewer-canvas').evaluate((canvas, svg) => { canvas.innerHTML = svg; }, TALL_SVG);
+  await viewer.getByRole('button', { name: '复位' }).click();
+  await expectDiagramFits(panel, '.viewer-stage');
+  await panel.setViewportSize({ width: 300, height: 500 });
+  await expectDiagramFits(panel, '.viewer-stage');
+  await viewer.locator('.viewer-stage').click({ position: { x: 100, y: 100 } });
+  await panel.setViewportSize({ width: 280, height: 450 });
+  await expectDiagramFits(panel, '.viewer-stage');
+  await viewer.getByRole('button', { name: '放大' }).click();
+  const zoomedScale = await viewer.locator('.viewer-scale').textContent();
+  await panel.setViewportSize({ width: 270, height: 420 });
+  await expect(viewer.locator('.viewer-scale')).toHaveText(zoomedScale!);
+  await viewer.getByRole('button', { name: '复位' }).click();
+  await expectDiagramFits(panel, '.viewer-stage');
   if (await viewer.getByRole('button', { name: '全屏' }).isVisible()) {
     await panel.evaluate(() => {
       const shell = document.querySelector('.viewer') as HTMLElement;
@@ -231,6 +246,23 @@ test('宽图在整页查看器打开时适配视口', async () => {
     await expectDiagramFits(viewer, '.stage');
     await viewer.getByRole('button', { name: '退出全屏' }).click();
   }
+  await viewer.close();
+});
+
+test('高图在整页查看器适配初始、复位与视口缩小', async () => {
+  const viewer = await context.newPage();
+  await viewer.setViewportSize({ width: 360, height: 640 });
+  await viewer.goto(`chrome-extension://${extensionId}/viewer.html`);
+  await context.serviceWorkers()[0]!.evaluate(async ({ tabId, svg }) => {
+    await chrome.tabs.sendMessage(tabId, { type: 'diagram', svg });
+  }, { tabId: (await viewer.evaluate(() => chrome.tabs.query({ active: true, currentWindow: true })))[0]!.id!, svg: TALL_SVG });
+  await expect(viewer.locator('.canvas svg')).toBeVisible();
+  await expectDiagramFits(viewer, '.stage');
+  await viewer.getByRole('button', { name: '放大' }).click();
+  await viewer.getByRole('button', { name: '复位' }).click();
+  await expectDiagramFits(viewer, '.stage');
+  await viewer.setViewportSize({ width: 300, height: 500 });
+  await expectDiagramFits(viewer, '.stage');
   await viewer.close();
 });
 

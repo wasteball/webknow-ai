@@ -93,8 +93,7 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  display: grid;
-  place-items: center;
+  position: relative;
   cursor: grab;
   touch-action: none;
 }
@@ -104,9 +103,11 @@ body {
 }
 
 .canvas {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: max-content;
-  align-self: center;
-  transform-origin: left center;
+  transform-origin: center;
   will-change: transform;
 }
 
