@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
+import { DIAGRAM_ICON_PATHS, type DiagramIconName } from '../../core/diagram-icons';
 
 /**
- * 图标取自原型 companion-ai-prototype.html 的 SVG sprite（原样搬运路径数据）。
+ * 基础图标取自原型 companion-ai-prototype.html 的 SVG sprite；图表工具栏图标与整页查看器共用 diagram-icons.ts。
  * 统一 24×24 视框、描边不填充，描边参数在 style.css 的 .icon 里，
  * 所以这里只负责给图形，颜色一律跟着 currentColor 走。
  *
@@ -28,7 +29,7 @@ export function BrandMark({ size = 28 }: { size?: number }) {
   );
 }
 
-export type IconName =
+type BaseIconName =
   | 'book'
   | 'chat'
   | 'settings'
@@ -51,7 +52,9 @@ export type IconName =
   | 'puzzle'
   | 'grid';
 
-const PATHS: Record<IconName, ReactNode> = {
+export type IconName = BaseIconName | DiagramIconName;
+
+const PATHS: Record<BaseIconName, ReactNode> = {
   book: (
     <>
       <path d="M4 5a3 3 0 0 1 3-3h13v17H7a3 3 0 0 0-3 3Z" />
@@ -158,6 +161,9 @@ const PATHS: Record<IconName, ReactNode> = {
  * 单独用图标当按钮时，按钮自己必须带 aria-label。
  */
 export function Icon({ name, small = false }: { name: IconName; small?: boolean }) {
+  const paths = name in DIAGRAM_ICON_PATHS
+    ? DIAGRAM_ICON_PATHS[name as DiagramIconName].map((path) => <path key={path} d={path} />)
+    : PATHS[name as BaseIconName];
   return (
     <svg
       className={name === 'stop' ? (small ? 'icon icon-sm icon-fill' : 'icon icon-fill') : small ? 'icon icon-sm' : 'icon'}
@@ -165,7 +171,7 @@ export function Icon({ name, small = false }: { name: IconName; small?: boolean 
       aria-hidden="true"
       focusable="false"
     >
-      {PATHS[name]}
+      {paths}
     </svg>
   );
 }

@@ -1,4 +1,4 @@
-/* 「在新标签页里看」的全窗口图表页。与侧栏同一套中性无彩基底。 */
+/* 整页图表查看器；图表颜色由 Mermaid SVG 自己提供。 */
 
 :root {
   color-scheme: light dark;
@@ -59,15 +59,35 @@ body {
 
 .bar button {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--line);
   background: var(--bg);
   color: var(--fg);
   border-radius: 8px;
-  min-width: 34px;
-  height: 30px;
-  padding: 0 10px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   font: inherit;
   cursor: pointer;
+}
+
+.tool-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.zoom-label {
+  min-width: 3.2em;
+  text-align: center;
 }
 
 .bar button:hover {

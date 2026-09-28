@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { Viewer } from './Viewer';
+import { Icon } from './Icon';
 
 /**
  * 图表渲染。这个模块被 Rich.tsx 懒加载，因此 mermaid 不进主包。
@@ -32,21 +33,31 @@ function loadMermaid() {
         themeVariables: dark
           ? {
               background: '#131313',
-              primaryColor: '#1e1e1e',
-              primaryTextColor: '#ededed',
-              primaryBorderColor: '#3a3a3a',
-              lineColor: '#6b6b6b',
-              secondaryColor: '#1a1a1a',
-              tertiaryColor: '#161616',
+              primaryColor: '#49302b',
+              primaryTextColor: '#fff1eb',
+              primaryBorderColor: '#e9947b',
+              secondaryColor: '#23413e',
+              secondaryTextColor: '#e1f6f2',
+              secondaryBorderColor: '#71bcb1',
+              tertiaryColor: '#493c24',
+              tertiaryTextColor: '#fff3d2',
+              tertiaryBorderColor: '#dbb867',
+              lineColor: '#b6b3ad',
+              textColor: '#ededed',
             }
           : {
               background: '#ffffff',
-              primaryColor: '#f6f6f6',
-              primaryTextColor: '#171717',
-              primaryBorderColor: '#d8d8d8',
-              lineColor: '#9a9a9a',
-              secondaryColor: '#fafafa',
-              tertiaryColor: '#fcfcfc',
+              primaryColor: '#fbe8df',
+              primaryTextColor: '#492b21',
+              primaryBorderColor: '#bd674b',
+              secondaryColor: '#e1f2ee',
+              secondaryTextColor: '#254940',
+              secondaryBorderColor: '#5aa798',
+              tertiaryColor: '#fff1cc',
+              tertiaryTextColor: '#4d3c16',
+              tertiaryBorderColor: '#c79c44',
+              lineColor: '#6c6b68',
+              textColor: '#171717',
             },
       });
       return mermaid;
@@ -108,8 +119,8 @@ export function Diagram({ source }: { source: string }) {
         </button>
         <figcaption>
           <span>图</span>
-          <button type="button" className="quiet" onClick={() => setOpen(true)}>
-            放大
+          <button type="button" className="quiet diagram-open" onClick={() => setOpen(true)} aria-label="放大看这张图" title="放大看这张图">
+            <Icon name="zoomIn" small />
           </button>
         </figcaption>
       </figure>

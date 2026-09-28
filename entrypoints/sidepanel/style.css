@@ -335,6 +335,17 @@ body {
   border-top: 1px solid var(--line-soft);
 }
 
+.page-entry-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.page-entry-heading .icon-btn {
+  flex: none;
+}
+
 h2 {
   font-size: 13px;
   font-weight: 650;
@@ -1833,6 +1844,12 @@ button.rich-img {
   color: var(--ink-3);
 }
 
+button.quiet.diagram-open {
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+
 .diagram-loading {
   padding: var(--space-4);
   margin-bottom: var(--space-3);
@@ -1872,8 +1889,15 @@ button.rich-img {
   border-bottom: 1px solid var(--line);
 }
 
+button.quiet.viewer-tool {
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
 .viewer-scale {
-  min-width: 3.5em;
+  min-width: 3.2em;
   text-align: center;
   font-size: 12px;
   color: var(--ink-3);

@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 
 import { diagramFit } from '../../src/core/diagram-fit';
+import { DIAGRAM_ICON_PATHS, type DiagramIconName } from '../../src/core/diagram-icons';
 
 import './style.css';
 
@@ -18,6 +19,21 @@ let scale = 1;
 let offset = { x: 0, y: 0 };
 let canvas: HTMLDivElement | null = null;
 let controller = new AbortController();
+
+function icon(name: DiagramIconName) {
+  const namespace = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(namespace, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.classList.add('tool-icon');
+  for (const path of DIAGRAM_ICON_PATHS[name]) {
+    const shape = document.createElementNS(namespace, 'path');
+    shape.setAttribute('d', path);
+    svg.append(shape);
+  }
+  return svg;
+}
 
 function apply() {
   if (canvas) canvas.style.transform = `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`;
@@ -49,14 +65,19 @@ function mount(svg: string) {
 
   const bar = document.createElement('div');
   bar.className = 'bar';
+  bar.setAttribute('role', 'toolbar');
+  bar.setAttribute('aria-label', '图表视图');
   const label = document.createElement('span');
+  label.className = 'zoom-label';
   const setLabel = () => {
     label.textContent = `${Math.round(scale * 100)}%`;
   };
-  const button = (text: string, onClick: () => void) => {
+  const button = (name: DiagramIconName, text: string, onClick: () => void) => {
     const element = document.createElement('button');
     element.type = 'button';
-    element.textContent = text;
+    element.setAttribute('aria-label', text);
+    element.title = text;
+    element.append(icon(name));
     element.addEventListener('click', onClick);
     return element;
   };
@@ -65,16 +86,13 @@ function mount(svg: string) {
     setLabel();
     apply();
   };
-  const smaller = button('－', () => zoom(1 / 1.4));
-  smaller.setAttribute('aria-label', '缩小');
-  const larger = button('＋', () => zoom(1.4));
-  larger.setAttribute('aria-label', '放大');
-  bar.append(smaller, label, larger, button('复位', fit));
+  bar.append(button('zoomOut', '缩小', () => zoom(1 / 1.4)),
+    button('zoomIn', '放大', () => zoom(1.4)), button('fit', '复位', fit), label);
   const status = document.createElement('p');
   status.className = 'viewer-status';
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
-  const fullscreen = button('全屏', () => {
+  const fullscreen = button('fullscreen', '全屏', () => {
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {
         status.textContent = '退出全屏失败，请按 Esc。';
@@ -87,8 +105,14 @@ function mount(svg: string) {
       status.textContent = '无法全屏，可以在这个整页标签页里看图。';
     }
   });
+  const updateFullscreenButton = () => {
+    const active = document.fullscreenElement === root;
+    fullscreen.setAttribute('aria-label', active ? '退出全屏' : '全屏');
+    fullscreen.title = active ? '退出全屏' : '全屏';
+    fullscreen.replaceChildren(icon(active ? 'fullscreenExit' : 'fullscreen'));
+  };
   document.addEventListener('fullscreenchange', () => {
-    fullscreen.textContent = document.fullscreenElement === root ? '退出全屏' : '全屏';
+    updateFullscreenButton();
     status.textContent = '';
   }, { signal: controller.signal });
   bar.append(fullscreen);

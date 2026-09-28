@@ -4,8 +4,8 @@ import { diagramFit } from '../../core/diagram-fit';
 import { Icon } from './Icon';
 
 /**
- * 图表查看器：覆盖整个侧栏的浮层，缩放 / 拖拽 / 复位 / 全屏 / 在新标签页里看。
- * 侧栏只有 380–450px 宽，复杂图在内联态一定看不清，这是必要的配套（方案 2.3）。
+ * 图表查看器：覆盖整个侧栏的浮层，缩放 / 拖拽 / 复位，并可打开整页查看。
+ * 侧栏较窄，复杂图在内联态看不清，这是必要的配套（方案 2.3）。
  *
  * 缩放平移都作用在 wrapper 的 transform 上，不改 SVG 内部，因此不会重排、不会模糊。
  */
@@ -16,15 +16,11 @@ const MAX = 8;
 export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [fullscreen, setFullscreen] = useState(false);
-  const [fullscreenError, setFullscreenError] = useState(false);
   const shell = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const autoFit = useRef(true);
-  // 侧栏里 requestFullscreen 未必可用；即使可用，请求失败也要指向整页查看入口。
-  const canFullscreen = typeof document.fullscreenEnabled === 'boolean' ? document.fullscreenEnabled : false;
 
   const reset = () => {
     const diagram = host.current?.querySelector('svg');
@@ -126,23 +122,7 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
     drag.current = null;
   };
 
-  useEffect(() => {
-    const update = () => {
-      setFullscreen(document.fullscreenElement === shell.current);
-      setFullscreenError(false);
-    };
-    document.addEventListener('fullscreenchange', update);
-    return () => document.removeEventListener('fullscreenchange', update);
-  }, []);
-
-  const toggleFullscreen = () => {
-    const element = shell.current;
-    if (!element) return;
-    const request = fullscreen ? document.exitFullscreen() : element.requestFullscreen();
-    void request.catch(() => setFullscreenError(true));
-  };
-
-  /** 在新标签页里看：侧栏宽度不够时的兜底，走扩展内页面，不落盘、不外发。 */
+  /** 整页看图：走扩展内页面，不落盘、不外发。 */
   const openInTab = async () => {
     const { browser } = await import('wxt/browser');
     const tab = await browser.tabs.create({ url: browser.runtime.getURL('/viewer.html') });
@@ -167,26 +147,21 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
       tabIndex={-1}
       ref={shell}
     >
-      <div className="viewer-bar">
-        <button type="button" className="quiet" onClick={() => { autoFit.current = false; setScale((s) => Math.max(MIN, s / 1.4)); }} aria-label="缩小">
-          －
+      <div className="viewer-bar" role="toolbar" aria-label="图表视图">
+        <button type="button" className="quiet viewer-tool" onClick={() => { autoFit.current = false; setScale((s) => Math.max(MIN, s / 1.4)); }} aria-label="缩小" title="缩小">
+          <Icon name="zoomOut" small />
+        </button>
+        <button type="button" className="quiet viewer-tool" onClick={() => { autoFit.current = false; setScale((s) => Math.min(MAX, s * 1.4)); }} aria-label="放大" title="放大">
+          <Icon name="zoomIn" small />
+        </button>
+        <button type="button" className="quiet viewer-tool" onClick={reset} aria-label="复位" title="适应画布">
+          <Icon name="fit" small />
         </button>
         <span className="viewer-scale">{Math.round(scale * 100)}%</span>
-        <button type="button" className="quiet" onClick={() => { autoFit.current = false; setScale((s) => Math.min(MAX, s * 1.4)); }} aria-label="放大">
-          ＋
+        <button type="button" className="quiet viewer-tool" onClick={() => void openInTab()} aria-label="全屏看图" title="在整页看图">
+          <Icon name="fullscreen" small />
         </button>
-        <button type="button" className="quiet" onClick={reset}>
-          复位
-        </button>
-        <button type="button" className="quiet" onClick={() => void openInTab()}>
-          新标签页
-        </button>
-        {canFullscreen && (
-          <button type="button" className="quiet" onClick={toggleFullscreen}>
-            {fullscreen ? '退出全屏' : '全屏'}
-          </button>
-        )}
-        <button type="button" className="quiet viewer-close" onClick={onClose} aria-label="关闭">
+        <button type="button" className="quiet viewer-tool viewer-close" onClick={onClose} aria-label="关闭" title="关闭">
           <Icon name="x" small />
         </button>
       </div>
@@ -206,7 +181,6 @@ export function Viewer({ svg, onClose }: { svg: string; onClose: () => void }) {
           ref={host}
         />
       </div>
-      {fullscreenError && <p className="viewer-hint" role="status">无法全屏，可以点“新标签页”在整页看图。</p>}
       <p className="viewer-hint">滚轮缩放 · 拖动平移 · 双击复位 · Esc 关闭</p>
     </div>
   );

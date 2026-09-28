@@ -1,5 +1,6 @@
 import type { PageEntryId } from '../page-entry';
 import { pageEntryLabel } from '../page-entry';
+import { Icon } from './Icon';
 
 /**
  * 还没读这一页时的入口。三个按钮都是同一次明确开始：
@@ -12,6 +13,7 @@ export function PageEntry({
   busy,
   askHost,
   onPick,
+  onOpenSettings,
 }: {
   pageTitle: string;
   phase: 'PERMISSION_REQUIRED' | 'READY_TO_START' | 'STALE';
@@ -19,11 +21,19 @@ export function PageEntry({
   busy: boolean;
   askHost: boolean;
   onPick: (entry: PageEntryId) => void;
+  onOpenSettings?: () => void;
 }) {
   const entries: PageEntryId[] = ['summary', 'questions', 'learn'];
   return (
     <section className="section">
-      <h2>{phase === 'STALE' ? '换了一页' : '读这一页'}</h2>
+      <div className="page-entry-heading">
+        <h2>{phase === 'STALE' ? '换了一页' : '读这一页'}</h2>
+        {onOpenSettings && (
+          <button type="button" className="icon-btn" onClick={onOpenSettings} aria-label="设置" title="设置">
+            <Icon name="settings" />
+          </button>
+        )}
+      </div>
       <p>
         {pageTitle ? `现在打开的是「${pageTitle}」。` : ''}
         点一个，我才读这一页。换页不会自动读。

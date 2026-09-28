@@ -104,7 +104,14 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
   await input.fill('第二次画个流程图。');
   await panel.getByRole('button', { name: '发送' }).click();
   await expect(panel.getByRole('status').getByText('这次生成的内容没法用，没有采用。可以再试一次。')).toBeHidden();
-  await expect(panel.locator('.diagram svg')).toBeVisible({ timeout: 30_000 });
+  await expect(panel.locator('.diagram-canvas svg')).toBeVisible({ timeout: 30_000 });
+  const nodeFills = await panel.locator('.diagram-canvas svg').evaluate((diagram) =>
+    Array.from(diagram.querySelectorAll('.node rect, .node polygon, .node path')).map((shape) => getComputedStyle(shape).fill));
+  const hasColoredNode = nodeFills.some((fill) => {
+    const channels = fill.match(/\d+/g)?.slice(0, 3).map(Number);
+    return channels !== undefined && Math.max(...channels) - Math.min(...channels) >= 20;
+  });
+  expect(hasColoredNode, `默认 Mermaid 节点应有可辨认的颜色，实际：${JSON.stringify(nodeFills)}`).toBe(true);
   await expect(panel.getByText('图下还有说明。')).toBeVisible();
   await expect(panel.getByRole('alert')).toBeHidden();
   expect(await worker.evaluate(async (id) => {
@@ -121,9 +128,13 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
   expect(requests[2]).toContain('第二次画个流程图。');
 
   await panel.setViewportSize({ width: 360, height: 720 });
+  await expect(panel.locator('.diagram figcaption button svg')).toBeVisible();
   await panel.locator('.diagram-canvas').click();
   const viewer = panel.getByRole('dialog', { name: '放大看图' });
   await expect(viewer.locator('.viewer-canvas svg')).toBeVisible();
+  for (const name of ['缩小', '放大', '复位', '全屏看图', '关闭']) {
+    await expect(viewer.getByRole('button', { name }).locator('svg')).toBeVisible();
+  }
   await expectDiagramFits(panel, '.viewer-stage');
   const initialScale = await viewer.locator('.viewer-scale').textContent();
   await expect(viewer.locator('.viewer-scale')).not.toHaveText('100%');
@@ -159,21 +170,18 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
   await expect(viewer.locator('.viewer-scale')).toHaveText(zoomedScale!);
   await viewer.getByRole('button', { name: '复位' }).click();
   await expectDiagramFits(panel, '.viewer-stage');
-  if (await viewer.getByRole('button', { name: '全屏' }).isVisible()) {
-    await panel.evaluate(() => {
-      const shell = document.querySelector('.viewer') as HTMLElement;
-      shell.requestFullscreen = () => Promise.reject(new Error('平台不允许侧栏全屏'));
-    });
-    await viewer.getByRole('button', { name: '全屏' }).click();
-    await expect(viewer.getByRole('status')).toContainText('无法全屏');
-  }
   const diagramPagePromise = context.waitForEvent('page');
-  await viewer.getByRole('button', { name: '新标签页' }).click();
+  await viewer.getByRole('button', { name: '全屏看图' }).click();
   const diagramPage = await diagramPagePromise;
   await expect(diagramPage).toHaveURL(`chrome-extension://${extensionId}/viewer.html`);
   await expect(diagramPage.locator('.canvas svg')).toBeVisible({ timeout: 10_000 });
   await expect(diagramPage.locator('.canvas svg')).toContainText('开始');
   await expect(diagramPage.locator('.bar')).toBeVisible();
+  await expect.poll(() => diagramPage.locator('.stage').evaluate((stage) =>
+    stage.getBoundingClientRect().width >= document.documentElement.clientWidth - 1)).toBe(true);
+  for (const name of ['缩小', '放大', '复位', '全屏']) {
+    await expect(diagramPage.getByRole('button', { name, exact: true }).locator('svg')).toBeVisible();
+  }
   await diagramPage.setViewportSize({ width: 360, height: 720 });
   await expectDiagramFits(diagramPage, '.stage');
   const tabScale = await diagramPage.locator('.bar span').textContent();

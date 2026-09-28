@@ -165,27 +165,33 @@ export function App() {
     : phase === 'UNCONFIGURED'
       ? '还没有填钥匙。去设置里配一下，顺带看看都能做什么。'
       : PHASE_TEXT[phase];
+  const entryWithoutTitle = Boolean(state) && !state?.pageTitle &&
+    (phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE');
 
   return (
     <div
       className="panel"
       style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
     >
-      <div className="context">
-        <header className="panel-header">
-          {state?.pageTitle && <p className="page-title">{state.pageTitle}</p>}
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => openSettings()}
-            aria-label="设置"
-            title="设置"
-          >
-            <Icon name="settings" />
-          </button>
-        </header>
-        <ScopeLine completeness={state?.completeness ?? null} />
-      </div>
+      {(!entryWithoutTitle || state?.completeness) && (
+        <div className="context">
+          {!entryWithoutTitle && (
+            <header className="panel-header">
+              {state?.pageTitle && <p className="page-title">{state.pageTitle}</p>}
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => openSettings()}
+                aria-label="设置"
+                title="设置"
+              >
+                <Icon name="settings" />
+              </button>
+            </header>
+          )}
+          <ScopeLine completeness={state?.completeness ?? null} />
+        </div>
+      )}
 
       {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
       {state?.error && <ErrorBanner error={state.error} />}
@@ -221,6 +227,7 @@ export function App() {
                 busy={busy !== null}
                 askHost={needsPageHost(phase, state.permission, state.error?.code ?? null)}
                 onPick={readPage}
+                onOpenSettings={entryWithoutTitle ? () => openSettings() : undefined}
               />
             </>
           )}
