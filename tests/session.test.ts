@@ -161,13 +161,13 @@ describe('会话与请求身份', () => {
 describe('derivePhase', () => {
   it('按配置 → 权限 → 会话状态排序', () => {
     expect(
-      derivePhase({ hasKey: false, permission: 'granted', sessionState: 'READY', unsupportedReason: null }),
+      derivePhase({ hasKey: false, permission: 'granted', sessionState: 'READY', unsupportedReason: null, outboundConfirmed: true }),
     ).toBe('UNCONFIGURED');
     expect(
-      derivePhase({ hasKey: true, permission: 'missing', sessionState: null, unsupportedReason: null }),
+      derivePhase({ hasKey: true, permission: 'missing', sessionState: null, unsupportedReason: null, outboundConfirmed: true }),
     ).toBe('PERMISSION_REQUIRED');
     expect(
-      derivePhase({ hasKey: true, permission: 'granted', sessionState: 'READY', unsupportedReason: null }),
+      derivePhase({ hasKey: true, permission: 'granted', sessionState: 'READY', unsupportedReason: null, outboundConfirmed: true }),
     ).toBe('READY');
     expect(
       derivePhase({
@@ -175,7 +175,20 @@ describe('derivePhase', () => {
         permission: 'granted',
         sessionState: 'READY',
         unsupportedReason: '不支持',
+        outboundConfirmed: true,
       }),
     ).toBe('UNSUPPORTED');
+  });
+
+  it('切换供应商后即使已有结果，也先停在外发确认入口', () => {
+    expect(
+      derivePhase({
+        hasKey: true,
+        permission: 'granted',
+        sessionState: 'READY',
+        unsupportedReason: null,
+        outboundConfirmed: false,
+      }),
+    ).toBe('READY_TO_START');
   });
 });

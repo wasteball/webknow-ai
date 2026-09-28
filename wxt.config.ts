@@ -14,8 +14,8 @@ const E2E_HOST_PERMISSION = 'http://127.0.0.1/*';
 export default defineConfig({
   modules: ['@wxt-dev/module-react'],
   manifest: (env) => ({
-    name: 'webknow-ai',
-    description: '在公开网页旁生成短摘要与探索气泡，支持问 AI 和 AI 问',
+    name: '知伴',
+    description: '在公开文章旁提供短摘要和探索话题，支持向 AI 提问或让 AI 提问；需自备模型 API Key。',
     // activeTab：点工具栏图标时把当前标签页地址交给扩展（无安装警告、不读取浏览历史）。
     // 没有它就拿不到网址，也就不知道该向哪个网站申请读取权限——真实故障就是这样发生的。
     permissions: ['storage', 'sidePanel', 'scripting', 'activeTab'],

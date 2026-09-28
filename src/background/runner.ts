@@ -41,7 +41,7 @@ import {
 import { presentReasoning } from '../core/stream-draft';
 import { cleanAnswer, cleanGuide, cleanLearn, omitBlockIds, type LearnResult } from '../core/validate';
 import { applyImageReadings } from '../core/vision';
-import { callModel, currentProvider, readImage } from './model';
+import { assertOutboundConfirmation, callModel, currentProvider, readImage } from './model';
 import { captureImage, extractPage, readPageIdentity, toAppError } from './page';
 import { getSession, putSession, readApiKey, readConfig, readSearchCredentials, type Config } from './store';
 
@@ -84,6 +84,11 @@ export function abortRun(tabId: number): boolean {
   return true;
 }
 
+/** 更换接收方时终止所有仍在执行的正文请求。 */
+export function abortAllRuns(): void {
+  for (const tabId of [...controllers.keys()]) abortRun(tabId);
+}
+
 export async function handleIntent(intent: Intent, hooks: RunnerHooks): Promise<AppError | null> {
   switch (intent.kind) {
     case 'guide':
@@ -107,6 +112,11 @@ async function withRun(
   task: Task,
   hooks: RunnerHooks,
 ): Promise<AppError | null> {
+  try {
+    assertOutboundConfirmation(await readConfig());
+  } catch (error) {
+    return toAppError(error);
+  }
   const session = await getSession(tabId);
   if (!session) {
     return appError('STALE_PAGE', '当前标签页没有可用的页面会话。请重新开始伴读。', true);

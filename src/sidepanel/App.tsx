@@ -105,7 +105,7 @@ export function App() {
     if (!state || state.tabId === null) return;
     const tabId = state.tabId;
     const confirm = !state.outboundConfirmed;
-    const askHost = needsPageHost(state.phase, state.permission, state.error?.code ?? null);
+    const askHost = needsPageHost(state.permission, state.error?.code ?? null);
     void (async () => {
       if (askHost) {
         let granted = false;
@@ -115,7 +115,7 @@ export function App() {
           granted = false;
         }
         if (!granted) {
-          setNotice('要读换过的网页，需要允许读取你打开的网页。也可以点一下工具栏上的知伴图标，只读这一页。');
+          setNotice('没有获得网页读取权限。可以在当前页再点一次工具栏上的知伴图标，随后点侧栏阅读入口，只授权这一页。');
           return;
         }
       }
@@ -167,6 +167,8 @@ export function App() {
       : PHASE_TEXT[phase];
   const pageEntryPhase = Boolean(state) &&
     (phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE');
+  const awaitingNewReceiver = !state?.outboundConfirmed &&
+    (state?.sessionState === 'READY' || state?.sessionState === 'LEARNING');
 
   return (
     <div
@@ -220,18 +222,30 @@ export function App() {
                 />
               ) : (
                 <p className="hint">
-                  {outboundConfirmedHint(findProvider(state.settings.provider).receiver)}
+                  {outboundConfirmedHint(
+                    findProvider(state.settings.provider).receiver,
+                    state.settings.provider === 'deepseek',
+                  )}
                 </p>
               )}
-              <PageEntry
-                pageTitle={state.pageTitle}
-                phase={phase}
-                outboundConfirmed={state.outboundConfirmed}
-                busy={busy !== null}
-                askHost={needsPageHost(phase, state.permission, state.error?.code ?? null)}
-                onPick={readPage}
-                onOpenSettings={() => openSettings()}
-              />
+              {awaitingNewReceiver ? (
+                <Section title="换了模型供应商">
+                  <p>之前的摘要与对话仍在，由此前的模型生成。确认后可以继续；新的提问会发给当前选中的供应商。</p>
+                  <button type="button" disabled={busy !== null} onClick={() => readPage('retry')}>
+                    我确认，继续伴读
+                  </button>
+                </Section>
+              ) : (
+                <PageEntry
+                  pageTitle={state.pageTitle}
+                  phase={phase}
+                  outboundConfirmed={state.outboundConfirmed}
+                  busy={busy !== null}
+                  askHost={needsPageHost(state.permission, state.error?.code ?? null)}
+                  onPick={readPage}
+                  onOpenSettings={() => openSettings()}
+                />
+              )}
             </>
           )}
 
@@ -351,7 +365,10 @@ function OutboundNotice({
           你正在看的这一页的文字，会发给 <strong>{provider.receiver}</strong> 这家公司（不是发给我们）。
           你换了模型供应商，接收方就会跟着换——换完之后这里会再问你一次。
         </li>
-        <li>发过去的是：这一页的正文和图片、你提的问题，以及前面几轮对话。</li>
+        <li>
+          发过去的是：这一页的正文、你提的问题，以及前面几轮对话。
+          {provider.id === 'deepseek' && ' 使用 DeepSeek 时，还会尝试发送可读取的内容图片供模型转述。'}
+        </li>
         {searchProviderName && (
           <li>
             你还启用了联网搜索（{searchProviderName}）：打开那个开关提问时，你的<strong>搜索词</strong>会发给它；

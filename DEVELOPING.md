@@ -2,8 +2,7 @@
 
 > 使用者请看 [README.md](README.md)。本页是构建、测试和维护说明。
 >
-> 产品合同与验收标准见 `../docs/PRD.md`；代码结构与边界见 [ARCHITECTURE.md](ARCHITECTURE.md)；
-> 产品文档索引见 `../README.md`。
+> 对外产品范围见 [README.md](README.md)；代码结构与边界见 [ARCHITECTURE.md](ARCHITECTURE.md)。产品规划、BRD 和 PRD 保存在项目工作台资料中，不属于本公开源码仓库。
 
 ## 命令
 
@@ -18,7 +17,7 @@ pnpm check          # typecheck + test + build
 ```
 
 手动加载：Chrome → `chrome://extensions` → 开发者模式 → 加载已解压的扩展程序 → 选 `.output/chrome-mv3`。
-点击工具栏图标打开侧栏。
+点击工具栏里的知伴图标打开侧栏，再点当前页阅读入口开始。
 
 ## 测试
 
@@ -26,7 +25,7 @@ pnpm check          # typecheck + test + build
 |---|---|---|
 | `tests/deepseek.test.ts` | SSE 跨分片解析、错误映射、截断处理、请求体固定项 | 否 |
 | `tests/validate.test.ts` | 引用必须落在本地块、来源降级、模式与动作匹配、教学提示词校验 | 否 |
-| `tests/session.test.ts` | 并发限制、迟到结果丢弃、状态恢复、预算 | 否 |
+| `tests/session.test.ts` | 并发限制、迟到结果丢弃、状态恢复、程序上限 | 否 |
 | `tests/page-drift.test.ts` | 同一页改稿仍写回，换页或对不上页面时说明原因 | 否 |
 | `tests/extract.test.ts` | 正文提取、唯一锚点、原文回跳、歧义不误跳、内容版本 | 否（jsdom） |
 | `tests/e2e/*.spec.ts` | 打包扩展在真实 Chromium 里的启动、状态推导、CORS 豁免、主路径首屏 | 主路径需要 |
@@ -58,7 +57,7 @@ DEEPSEEK_KEY=sk-... pnpm vitest run tests/live.deepseek.test.ts
 
 ## 视觉读图基准
 
-在决定视觉能力是否进入产品之前，先用这个拿数字（结论见 `../docs/视觉读图实测.md`）：
+DeepSeek 的有限内容图转述已经进入伴读；继续用以下基准检查图表数字和语义准确率。一次合成样本结果不能替代真实网页验证：
 
 ```bash
 npx playwright test tests/e2e/chart-fixture.spec.ts   # 造 14 张有标准答案的图表到 .bench/charts
@@ -75,10 +74,13 @@ DEEPSEEK_KEY=sk-... python3 scripts/vision-bench.py   # 逐张调用视觉模型
 
 ```bash
 pnpm build:e2e
-DEEPSEEK_KEY=sk-... npx playwright test tests/e2e/screenshots.spec.ts
+pnpm exec playwright test tests/e2e/screenshots.spec.ts --grep 首次配置界面
+pnpm exec playwright test tests/e2e/widths.spec.ts --grep 'READY 视图在三种宽度下排版正确|LEARNING 视图在宽面板下排版正确'
+cp test-results/widths/ready-560.png docs/images/panel-02-guide.png
+cp test-results/widths/learning-720.png docs/images/panel-03-learning.png
 ```
 
-图片写到 `docs/images/`，供 README 引用；UI 改动后重跑即可更新。
+README 的阅读与学习截图使用模拟内容，只展示当前界面。真实模型截图可单独用 `DEEPSEEK_KEY=... pnpm exec playwright test tests/e2e/screenshots.spec.ts --grep 首屏摘要与话题` 生成在 `test-results/live-screenshots/`，不会覆盖 README 图片。
 
 ## 权限边界
 
@@ -86,23 +88,20 @@ DEEPSEEK_KEY=sk-... npx playwright test tests/e2e/screenshots.spec.ts
 
 - `permissions`: `storage`、`sidePanel`、`scripting`、`activeTab`
 - `host_permissions`: `https://api.deepseek.com/*`
-- `optional_host_permissions`: `https://*/*`、`http://*/*`（换页后点「总结摘要」等按钮、且工具栏那一次的读取权已失效时才问一次。允许之后仍然只在点这些按钮时读）
+- `optional_host_permissions`: `https://*/*`、`http://*/*`（换页后从侧栏直接点击阅读入口、且工具栏的当前页临时授权已失效时，可能请求覆盖全部 HTTP(S) 网页的可选权限；再次点击工具栏可重新取得当前页 `activeTab` 权限，随后仍须点阅读入口才读正文）
 
-没有 `tabs`，没有 `<all_urls>`。页面地址来自内容脚本上报与一次性工具栏点击，不靠 `tabs` 权限。
+没有 `tabs` 权限，也没有字面量 `<all_urls>`；但可选 host 权限实际覆盖全部 HTTP(S) 网站，不能将它描述为单站点授权。页面地址来自内容脚本上报与一次性工具栏点击，不靠 `tabs` 权限。
 
-## 当前状态（2026-09-18）
+## 当前状态（2026-09-29）
 
-- 本仓库是按新架构重建的首版：`core` 纯逻辑 + 后台流水线 + 内容脚本 + 侧栏界面。
-- 正文提取、唯一锚点、DOM 回跳沿用 2026-08-22 版本（`735171c`）并已重跑测试。
-- **DeepSeek 接入已实测**（真实 Key）：`deepseek-flash` 可用；流式 + `response_format: json_object`
-  可用；延迟 0.6–1.5 秒；网页里的注入句被当作数据处理。实测发现默认思考会占用输出预算并让延迟翻倍，
-  因此缺省仍关闭思考。设置里可以为已知模型改档，见 `src/core/model-thinking.ts`。
-- **已在真实 Chromium 中端到端跑通**：后台启动、面板状态推导、CORS 豁免、主路径首屏。
-- **仍未验证**：站点授权弹窗的人工体验、普通读者能否独立完成配置、真实费用计量、
-  错误注入矩阵、可访问性专项。路线图处于 A0，未通过该阶段门。
+- 当前代码内置 DeepSeek 与智谱官方接口；Key 各自存储，切换供应商会重新确认正文外发。两家都支持摘要、问答和「AI 问」。
+- DeepSeek 会尝试转述一页最多 6 张内容图片，并披露未读范围；智谱不走视觉路径。内容图转述不能算作者原文，也不能作为图片为主页面的完整理解。
+- 逐页阅读入口、正文提取、唯一锚点和 DOM 回跳有确定性测试与打包扩展 Chromium 回归；v0.9.7 修复了微信文章正文范围与回跳范围不一致的问题。
+- 设置页可打开腾讯 ima 官网扫码查看，OpenAPI 列库与保存有源码原型；官网扫码不会授权扩展，侧栏保存尚未开放，也未用真实 ima 账号联调。
+- 仍需桌面 Chrome 人工验证目标站点回跳与授权流程、真实费用、错误注入、可访问性及普通读者价值。阶段门是否通过不能由发布版本号推断。
 
 ## 已知限制
 
-- 只支持 `http(s)` 上公开、有连续正文的 HTML 页面；不支持登录态、PDF、视频、列表页与主要依赖图片的页面。
+- 只正式支持 `http(s)` 上公开、有连续正文且用户有权外发的 HTML 页面；不支持登录态、PDF、视频、列表页与主要依赖图片的页面。
 - 正文超过约 4.5 万字或 400 个块时直接阻断，不静默截断。
 - 浏览器外壳界面（`chrome://extensions`、工具栏）无法自动化截图或点击，相关验证只能人工完成。

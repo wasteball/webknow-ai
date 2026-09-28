@@ -1,7 +1,7 @@
 import { appError } from '../core/errors';
 import { chatJson, chatVision, type Message } from '../core/model-call';
 import { findProvider, type ModelProvider } from '../core/model-providers';
-import { readApiKey, readConfig } from './store';
+import { hasOutboundConfirmation, readApiKey, readConfig, type Config } from './store';
 
 /**
  * 唯一允许的模型网络边界（FR-032）。
@@ -19,12 +19,24 @@ export async function currentProvider(): Promise<ModelProvider> {
   return findProvider((await readConfig()).provider);
 }
 
+/** 网络出口必须重新检查当前接收方，防止旧侧栏或并发切换绕过确认。 */
+export function assertOutboundConfirmation(config: Config): void {
+  if (!hasOutboundConfirmation(config)) {
+    throw appError(
+      'OUTBOUND_CONFIRMATION_REQUIRED',
+      '模型接收方还没有经过你确认。请回到侧栏阅读外发说明并点确认后继续。',
+      false,
+    );
+  }
+}
+
 export async function callModel(
   messages: Message[],
   signal: AbortSignal,
   onProgress: (chars: number, draft: string, reasoning: string) => void,
 ): Promise<unknown> {
   const config = await readConfig();
+  assertOutboundConfirmation(config);
   const provider = findProvider(config.provider);
   const apiKey = await readApiKey(provider.id);
   if (!apiKey) {
@@ -46,6 +58,7 @@ export async function callModel(
 /** 读一张图。只有 DeepSeek 有这个视觉模型；别的供应商返回空字符串。 */
 export async function readImage(imageUrl: string, signal: AbortSignal): Promise<string> {
   const config = await readConfig();
+  assertOutboundConfirmation(config);
   const provider = findProvider(config.provider);
   if (provider.id !== 'deepseek') return '';
   const apiKey = await readApiKey(provider.id);

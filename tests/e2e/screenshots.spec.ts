@@ -7,17 +7,19 @@ import { join, resolve } from 'node:path';
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 /**
- * 生成使用指南里的界面截图。UI 改动后重跑本文件即可更新文档配图：
+ * 生成首次配置图，并单独保存真实模型对话截图：
  *
  *   pnpm build:e2e
  *   DEEPSEEK_KEY=sk-... npx playwright test tests/e2e/screenshots.spec.ts
  *
- * 图片写到本仓库的 docs/images/，供 README.md 与安装说明引用。
+ * 首次配置图写到 docs/images/；真实模型截图写到 test-results/live-screenshots/。
+ * README 的阅读与学习界面图来自 widths.spec.ts 的模拟会话，避免将一次模型回答当作质量样本。
  * 浏览器外壳（chrome://extensions、工具栏图标）无法由 Playwright 截图，指南里那几步只能用文字。
  */
 
 const EXTENSION_PATH = resolve(process.cwd(), '.output/chrome-mv3-e2e');
 const OUTPUT_DIR = resolve(process.cwd(), 'docs/images');
+const LIVE_OUTPUT_DIR = resolve(process.cwd(), 'test-results/live-screenshots');
 const liveKey = process.env.DEEPSEEK_KEY ?? '';
 
 const FIXTURE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>城市配送试点研究</title></head>
@@ -37,6 +39,7 @@ let server: ReturnType<typeof createServer>;
 
 test.beforeAll(async () => {
   mkdirSync(OUTPUT_DIR, { recursive: true });
+  mkdirSync(LIVE_OUTPUT_DIR, { recursive: true });
   server = createServer((_request, response) => {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     response.end(FIXTURE);
@@ -103,7 +106,7 @@ test('首屏摘要与话题', async () => {
 
   await panel.getByRole('button', { name: '总结摘要' }).click();
   await expect(panel.locator('.chip').first()).toBeVisible({ timeout: 60_000 });
-  await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-02-guide.png'), fullPage: true });
+  await panel.screenshot({ path: join(LIVE_OUTPUT_DIR, 'panel-02-guide.png'), fullPage: true });
 
   // 「AI 问」：真答一轮再截图。只截第一题的话，画面大半是空白，
   // 看不出"一次一个问题"是怎么一步步推进的——那正是翠色时间线要表达的东西。
@@ -117,7 +120,7 @@ test('首屏摘要与话题', async () => {
   await panel.getByRole('button', { name: '回答' }).click();
   await expect(panel.locator('.msg.user').first()).toBeVisible({ timeout: 60_000 });
   await expect(panel.locator('.msg.ai').nth(1)).toBeVisible({ timeout: 60_000 });
-  await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-03-learning.png'), fullPage: true });
+  await panel.screenshot({ path: join(LIVE_OUTPUT_DIR, 'panel-03-learning.png'), fullPage: true });
   await article.close();
   await panel.close();
 });

@@ -30,6 +30,12 @@ import type { PageSession } from '../core/session';
  */
 export const OUTBOUND_NOTICE_VERSION = '2026-09-19.2';
 
+/** 外发确认只对当前版本与当前接收方有效。 */
+export function hasOutboundConfirmation(config: Config): boolean {
+  return config.outbound?.version === OUTBOUND_NOTICE_VERSION &&
+    config.outbound?.receiver === findProvider(config.provider).receiver;
+}
+
 /**
  * 用户设置（产品化改造 F2）。非敏感设置通过 saveSettings 命令整体保存；
  * Key 仍走独立命令。数值类设置只能在 limits.ts 的硬上限内生效（core/settings.ts 归一化）。
@@ -250,12 +256,14 @@ export async function deleteCustomSkill(id: string): Promise<void> {
  * prompts 采用逐项合并语义：传空字符串 = 恢复该板块默认；未提到的板块保持不变。
  * 数值范围与格式由 core/settings.normalizeSettings 归一化，非法条目被丢弃。
  */
-export async function applySettings(patch: SettingsPatch): Promise<void> {
+export async function applySettings(patch: SettingsPatch): Promise<boolean> {
   const current = await readConfig();
   const clean = normalizeSettings(patch);
   const next: Config = { ...current };
 
+  const providerChanged = clean.provider !== undefined && clean.provider !== findProvider(current.provider).id;
   if (clean.provider !== undefined) next.provider = clean.provider;
+  if (providerChanged) delete next.outbound;
   // 模型按供应商存：切供应商时各自记住各自的选择。
   if (clean.model !== undefined) {
     const provider = findProvider(next.provider).id;
@@ -287,6 +295,7 @@ export async function applySettings(patch: SettingsPatch): Promise<void> {
   }
 
   await storage.setItem(CONFIG_KEY, next);
+  return providerChanged;
 }
 
 export async function getSession(tabId: number): Promise<PageSession | null> {

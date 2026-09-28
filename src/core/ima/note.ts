@@ -34,7 +34,7 @@ export function buildReadingNote(input: ReadingNoteInput): { title: string; mark
   const parts: string[] = [];
   parts.push(`# ${title}`);
   parts.push(`> 原文：${input.url}`);
-  parts.push(`> 由 webknow-ai 保存于 ${stamp}`);
+  parts.push(`> 由知伴保存于 ${stamp}`);
 
   parts.push('\n## 这篇文章讲了什么');
   parts.push(sectionHeading(input.summary, 2_000));

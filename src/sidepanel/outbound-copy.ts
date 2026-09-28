@@ -8,6 +8,7 @@ export function outboundRetentionLine(providerName: string): string {
   return `${providerName} 收到内容后怎么保存，由它自己的规则决定，我们没法替你保证它不留存。`;
 }
 
-export function outboundConfirmedHint(receiver: string): string {
-  return `你已经确认过：正文、图片和你的问题会发给 ${receiver}，费用从你的账号扣。`;
+export function outboundConfirmedHint(receiver: string, readsImages: boolean): string {
+  const images = readsImages ? '、可读取的内容图片' : '';
+  return `你已经确认过：正文${images}和你的问题会发给 ${receiver}，费用从你的账号扣。`;
 }

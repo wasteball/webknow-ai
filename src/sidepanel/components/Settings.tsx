@@ -270,7 +270,7 @@ function ModelAndKey({ state, send }: { state: PanelState; send: Send }) {
           hint={
             connected && !replacing
               ? '已保存，界面里只显示掩码。要换一把再点更换。'
-              : `${provider.keyHint}。保存时会试连一次，不发送网页，但会有极少量费用。`
+              : `${provider.keyHint}。保存时会试连一次，不发送网页，但可能产生少量费用。`
           }
         >
           <div className="key-field">
@@ -1083,7 +1083,7 @@ function About() {
   const version = browser.runtime.getManifest().version;
   return (
     <Section title="关于">
-      <p className="hint">知伴（webknow-ai）{version}。</p>
+      <p className="hint">知伴（webknow-ai）{version}：在当前网页旁，帮你看懂文章、发现问题，并通过双向对话检验理解。</p>
       <p className="hint">
         使用说明见{' '}
         <a href="https://github.com/wasteball/webknow-ai#readme" target="_blank" rel="noreferrer">

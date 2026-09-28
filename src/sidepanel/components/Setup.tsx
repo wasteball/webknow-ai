@@ -14,7 +14,7 @@ export function Setup({ onOpenSettings }: { onOpenSettings: () => void }) {
         <li>你来提问，或者反过来让它问你</li>
         <li>需要的话再开联网搜索</li>
       </ul>
-      <p className="hint">这些都能在设置里看到，也能关掉。设置里还可以打开 ima 官网，扫码查看知识库。</p>
+      <p className="hint">先在设置里选 DeepSeek 或智谱并填写 API Key。提示词和联网搜索可以稍后按需调整。</p>
       <div className="composer-actions">
         <button type="button" onClick={onOpenSettings}>
           去设置里填钥匙

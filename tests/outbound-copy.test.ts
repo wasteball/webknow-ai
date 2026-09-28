@@ -11,13 +11,15 @@ describe('外发告知文案跟着当前供应商走', () => {
     expect(outboundFeeLine('智谱')).toBe('费用从你自己的智谱账号里扣。');
     expect(outboundRetentionLine('智谱')).toContain('智谱');
     expect(outboundRetentionLine('智谱')).not.toContain('DeepSeek');
-    expect(outboundConfirmedHint('智谱（Zhipu）')).toContain('智谱（Zhipu）');
-    expect(outboundConfirmedHint('智谱（Zhipu）')).not.toContain('DeepSeek');
+    expect(outboundConfirmedHint('智谱（Zhipu）', false)).toContain('智谱（Zhipu）');
+    expect(outboundConfirmedHint('智谱（Zhipu）', false)).not.toContain('DeepSeek');
+    expect(outboundConfirmedHint('智谱（Zhipu）', false)).not.toContain('图片');
   });
 
   it('DeepSeek 路径仍然说清接收方', () => {
     expect(outboundFeeLine('DeepSeek')).toContain('DeepSeek');
     expect(outboundRetentionLine('DeepSeek')).toContain('DeepSeek');
-    expect(outboundConfirmedHint('DeepSeek（深度求索）')).toContain('DeepSeek（深度求索）');
+    expect(outboundConfirmedHint('DeepSeek（深度求索）', true)).toContain('DeepSeek（深度求索）');
+    expect(outboundConfirmedHint('DeepSeek（深度求索）', true)).toContain('可读取的内容图片');
   });
 });

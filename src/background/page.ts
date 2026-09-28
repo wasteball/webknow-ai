@@ -21,7 +21,7 @@ export async function ensureInjected(tabId: number): Promise<void> {
       ? error
       : appError(
           'PERMISSION_MISSING',
-          '读不了这一页。请点一下工具栏上的知伴图标——我们只在你打开产品时读当前这一页，不会一直盯着网页。',
+          '读不了这一页。请在当前页再点一次工具栏上的知伴图标，然后点侧栏阅读入口。我们不会一直盯着网页。',
           false,
         );
   }
@@ -39,7 +39,7 @@ async function send(tabId: number, request: ContentRequest): Promise<ContentRepl
       ok: false,
       error: appError(
         'STALE_PAGE',
-        '这一页已经变了或者关掉了。再点一下工具栏上的知伴图标。',
+        '这一页已经变了或者关掉了。请在当前页再点工具栏上的知伴图标，然后点侧栏阅读入口。',
         true,
       ),
     };

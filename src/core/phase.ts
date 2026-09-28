@@ -10,11 +10,15 @@ export function derivePhase(input: {
   permission: 'granted' | 'missing' | 'unknown';
   sessionState: SessionState | null;
   unsupportedReason: string | null;
+  outboundConfirmed: boolean;
 }): Phase {
   if (!input.hasKey) return 'UNCONFIGURED';
   if (input.unsupportedReason) return 'UNSUPPORTED';
 
   const session = input.sessionState;
+  if (!input.outboundConfirmed && session && ['ANALYZING', 'READY', 'LEARNING', 'ERROR'].includes(session)) {
+    return 'READY_TO_START';
+  }
   if (!session) {
     return input.permission === 'granted' ? 'READY_TO_START' : 'PERMISSION_REQUIRED';
   }

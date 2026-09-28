@@ -12,9 +12,9 @@ import { sameDocument } from '../core/page-drift';
 import { prepareQuote } from '../core/quote';
 import { createSession, emptySession, markStale } from '../core/session';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
-import { listModels, testConnection } from './model';
+import { assertOutboundConfirmation, listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
-import { abortRun, handleIntent, type RunnerHooks } from './runner';
+import { abortAllRuns, abortRun, handleIntent, type RunnerHooks } from './runner';
 import {
   OUTBOUND_NOTICE_VERSION,
   applySettings,
@@ -26,6 +26,7 @@ import {
   dropSession,
   getPending,
   getSession,
+  hasOutboundConfirmation,
   putSession,
   readApiKey,
   readConfig,
@@ -95,8 +96,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     },
   };
   // 换供应商 = 换接收方：旧确认只对原来那家有效，换个名字就要重新确认一次。
-  const outboundConfirmed =
-    config.outbound?.version === OUTBOUND_NOTICE_VERSION && config.outbound?.receiver === provider.receiver;
+  const outboundConfirmed = hasOutboundConfirmation(config);
 
   if (tabId === null) {
     return {
@@ -104,7 +104,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       pageUrl: null,
       pageTitle: '',
       permission: 'unknown',
-      phase: derivePhase({ hasKey, permission: 'unknown', sessionState: null, unsupportedReason: null }),
+      phase: derivePhase({ hasKey, permission: 'unknown', sessionState: null, unsupportedReason: null, outboundConfirmed }),
       sessionState: null,
       hasKey,
       settings,
@@ -123,7 +123,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
 
   const session = await getSession(tabId);
   const pending = await getPending(tabId);
-  const url = await urlForTab(tabId, session?.url ?? null, pending?.url ?? null);
+  const url = await urlForTab(tabId, pending?.url ?? null, session?.url ?? null);
   const permission = permissionFor(url);
   // 可可靠识别的“不支持页面”才给 UNSUPPORTED，其余失败仍走 ERROR（FR-003/FR-035）。
   const unsupportedReason =
@@ -145,6 +145,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       permission,
       sessionState: session?.state ?? null,
       unsupportedReason,
+      outboundConfirmed,
     }),
     sessionState: session?.state ?? null,
     hasKey,
@@ -190,12 +191,12 @@ function searchStatus(config: { search?: { providerId?: string; credentials?: Re
 }
 
 /**
- * 页面地址的三个来源：本标签页的会话 → 工具栏点击留下的记录 → 当前标签页查询。
- * 点工具栏打开产品时 activeTab 会把地址交给扩展；不申请常驻站点权限。
+ * 页面地址的三个来源：最近一次工具栏点击 → 本标签页的会话 → 当前标签页查询。
+ * 点工具栏打开产品时 activeTab 会把地址交给扩展；侧栏换页入口也可另申请可选网页权限。
  */
-async function urlForTab(tabId: number, sessionUrl: string | null, pendingUrl: string | null): Promise<string | null> {
-  if (sessionUrl) return sessionUrl;
+async function urlForTab(tabId: number, pendingUrl: string | null, sessionUrl: string | null): Promise<string | null> {
   if (pendingUrl) return pendingUrl;
+  if (sessionUrl) return sessionUrl;
   try {
     const tab = await browser.tabs.get(tabId);
     return tab.url ?? null;
@@ -425,7 +426,8 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         return { ok: true, message: '钥匙删掉了。页面内容和设置都没有动。' };
 
       case 'saveSettings': {
-        await applySettings(command.patch);
+        const providerChanged = await applySettings(command.patch);
+        if (providerChanged) abortAllRuns();
         await pushAllStates();
         return { ok: true, message: '设置已保存。' };
       }
@@ -534,6 +536,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         await writeConfig({
           outbound: { version: OUTBOUND_NOTICE_VERSION, acceptedAt: Date.now(), receiver: await currentReceiver() },
         });
+        await pushAllStates();
         return { ok: true };
 
       default:
@@ -554,6 +557,11 @@ function finish(error: AppError | null): Reply {
  * - 否则先提取正文（这一步之后才有可外发的正文），再生成首屏。
  */
 async function startSession(tabId: number): Promise<Reply> {
+  try {
+    assertOutboundConfirmation(await readConfig());
+  } catch (error) {
+    return { ok: false, error: fromThrown(error) };
+  }
   const existing = await getSession(tabId);
   if (existing && (existing.state === 'READY' || existing.state === 'LEARNING')) {
     await pushState(tabId);
@@ -562,12 +570,12 @@ async function startSession(tabId: number): Promise<Reply> {
 
   try {
     const pending = await getPending(tabId);
-    const knownUrl = await urlForTab(tabId, existing?.url ?? null, pending?.url ?? null);
+    const knownUrl = await urlForTab(tabId, pending?.url ?? null, existing?.url ?? null);
     const expectedOrigin = knownUrl ? originOf(knownUrl) : null;
     if (!expectedOrigin) {
       throw appError(
         'PERMISSION_MISSING',
-        '还不知道你正在看哪个网站。请点一下工具栏上的知伴图标——打开产品时才会读这一页。',
+        '还不知道你正在看哪个网站。请在当前页点工具栏上的知伴图标，再点侧栏阅读入口。',
         false,
       );
     }
@@ -601,6 +609,7 @@ export async function onPageChanged(tabId: number, url: string): Promise<void> {
     return;
   }
   if (session.run) abortRun(tabId);
+  await clearPending(tabId);
   await putSession(markStale(session, url));
   await pushState(tabId);
 }
@@ -615,7 +624,7 @@ export async function onTabNavigating(tabId: number): Promise<void> {
   const session = await getSession(tabId);
   if (!session) return;
   if (session.run) abortRun(tabId);
-  await putSession(markStale(session));
+  await putSession(markStale(session, ''));
   await pushState(tabId);
 }
 
@@ -646,8 +655,8 @@ export async function onTabRemoved(tabId: number): Promise<void> {
 }
 
 /**
- * 工具栏点击 = 打开产品。先同步打开侧栏（必须无 await），
- * 再用这次点击自带的 activeTab 记下当前页；钥匙和外发都齐了就直接读这一页。
+ * 工具栏点击只打开产品。先同步打开侧栏（必须无 await），
+ * 再用这次点击自带的 activeTab 记下当前页；正文由侧栏阅读入口启动。
  */
 export async function onActionClicked(tab: { id?: number; url?: string }): Promise<void> {
   const tabId = tab.id;
@@ -658,14 +667,5 @@ export async function onActionClicked(tab: { id?: number; url?: string }): Promi
   const origin = url ? originOf(url) : null;
   if (url && origin) await setPending(tabId, { url, origin, at: Date.now() });
 
-  const config = await readConfig();
-  const provider = findProvider(config.provider);
-  const hasKey = Boolean(config.apiKeys?.[provider.id]?.trim());
-  const outboundConfirmed =
-    config.outbound?.version === OUTBOUND_NOTICE_VERSION && config.outbound?.receiver === provider.receiver;
-  if (hasKey && outboundConfirmed && origin) {
-    await startSession(tabId);
-    return;
-  }
   await pushState(tabId);
 }

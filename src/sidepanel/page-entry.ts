@@ -4,21 +4,19 @@ export type PageEntryId = 'summary' | 'questions' | 'learn';
 
 /**
  * 工具栏那一次点击的读取权会在导航后失效。
- * 页面已经换了，或根本还不知道地址，或上次就是因为没读到而失败：
- * 这一下要点按钮时向浏览器要「读取打开的网页」。已经允许过就不再弹窗。
- * 刚点过工具栏、地址还在的那一次不用再要。
+ * 页面已经换了但没有可用授权，或上次注入失败：
+ * 这一下要点按钮时向浏览器要「读取打开的网页」。
+ * 刚点过工具栏并取得当前页 activeTab 的那一次不用再要。
  */
 export function needsPageHost(
-  phase: string,
   permission: 'granted' | 'missing' | 'unknown',
   errorCode: string | null,
 ): boolean {
-  if (phase === 'STALE' || permission !== 'granted') return true;
+  if (permission !== 'granted') return true;
   return errorCode === 'PERMISSION_MISSING';
 }
 
 export function pageEntryLabel(id: PageEntryId, outboundConfirmed: boolean): string {
-  if (id === 'summary') return outboundConfirmed ? '总结摘要' : '我确认，总结摘要';
-  if (id === 'questions') return '出几个问题';
-  return '让它问我';
+  const label = id === 'summary' ? '总结摘要' : id === 'questions' ? '出几个问题' : '让它问我';
+  return outboundConfirmed ? label : `我确认，${label}`;
 }
