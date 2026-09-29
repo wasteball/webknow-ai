@@ -84,6 +84,17 @@ describe('发出去的话立刻出现', () => {
 });
 
 describe('对话里的发送和停止', () => {
+  it('空白问题不可发送，写入内容后才启用发送', () => {
+    render(<Reading state={panel()} send={vi.fn(async () => ({ ok: true as const }))} />);
+    const box = screen.getByLabelText('向这篇文章提问');
+    const submit = screen.getByRole('button', { name: '发送' }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(box, { target: { value: '   ' } });
+    expect(submit.disabled).toBe(true);
+    fireEvent.change(box, { target: { value: '这句话是什么意思？' } });
+    expect(submit.disabled).toBe(false);
+  });
+
   it('问 AI 生成时正文只有正在写的字，停止在输入框里，和发送是同一个位置', () => {
     const send = vi.fn(async () => ({ ok: true as const }));
     const { rerender } = render(

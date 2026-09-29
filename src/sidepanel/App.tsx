@@ -3,7 +3,7 @@ import { browser } from 'wxt/browser';
 
 import { findProvider } from '../core/model-providers';
 import type { Command, PanelState, Reply } from '../core/protocol';
-import { activeTabId, createClient, type Client } from './api';
+import { activeTabId, createClient, openSettingsTab, type Client } from './api';
 import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
@@ -138,7 +138,7 @@ export function App() {
     const url = new URL(browser.runtime.getURL('/options.html'));
     if (state?.tabId != null) url.searchParams.set('tab', String(state.tabId));
     if (category) url.hash = category;
-    void browser.tabs.create({ url: url.toString() });
+    void openSettingsTab(url.toString()).catch(() => setNotice('设置页没有打开，请再试一次。'));
   };
 
   /** WAI-ARIA tabs 的键盘约定：左右移动选择并把焦点带过去，Home/End 到头尾。 */
@@ -330,7 +330,7 @@ export function App() {
                 aria-labelledby={tabDomId('qa')}
                 hidden={view !== 'qa'}
               >
-                <Reading state={state} send={send} />
+                <Reading state={state} send={send} onSearchSettings={() => openSettings('search')} />
               </div>
               <div
                 id={panelDomId('learn')}

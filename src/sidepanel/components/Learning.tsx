@@ -4,7 +4,7 @@ import { DEFAULT_LEARN_GOAL, usedLearnGoals } from '../../core/learn-policy';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { LearnEntry, QuizQuestion } from '../../core/session';
 import { shouldSubmitComposer } from '../composer';
-import { Busy, ComposerField, Drafting, SuggestRow, Thinking, VerdictTag } from './bits';
+import { Busy, ComposerField, ComposerTextarea, Drafting, SuggestRow, Thinking, VerdictTag } from './bits';
 import { Icon } from './Icon';
 import { Rich, RichInline } from './Rich';
 
@@ -203,8 +203,8 @@ export function Learning({ state, send }: { state: PanelState; send: Send }) {
               <label className="sr-only" htmlFor="learning-answer">
                 用自己的话回答
               </label>
-              <ComposerField busy={busy} idleLabel="回答" onStop={stop}>
-                <textarea
+              <ComposerField busy={busy} idleLabel="回答" onStop={stop} submitDisabled={!draft.trim()}>
+                <ComposerTextarea
                   id="learning-answer"
                   rows={2}
                   maxLength={1000}

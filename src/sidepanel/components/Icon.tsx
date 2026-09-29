@@ -97,8 +97,7 @@ const PATHS: Record<BaseIconName, ReactNode> = {
   ),
   send: (
     <>
-      <path d="m22 2-7 20-4-9-9-4Z" />
-      <path d="M22 2 11 13" />
+      <path d="m6 10 6-6 6 6M12 4v16" />
     </>
   ),
   stop: <rect x="7" y="7" width="10" height="10" rx="1.5" />,

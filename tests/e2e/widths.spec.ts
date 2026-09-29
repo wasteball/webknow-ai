@@ -238,11 +238,26 @@ async function pushState(panel: Page, tabId: number | null): Promise<void> {
   }, tabId);
 }
 
-test('划词会出现在提问框上面，针对这段再问', async () => {
+test('划词、搜索和发送在同一个输入框内，长问题不会挤走工具', async () => {
   test.setTimeout(120_000);
   const { panel, tabId } = await openPanel(560);
+  await panel.getByLabel('向这篇文章提问').fill('配置搜索后继续发送的问题');
+  const [searchSettings] = await Promise.all([
+    context.waitForEvent('page'),
+    panel.getByRole('button', { name: '联网搜索' }).click(),
+  ]);
+  await expect(searchSettings).toHaveURL(/options\.html.*#search$/);
+  await expect(searchSettings.getByRole('radiogroup', { name: '搜索服务' })).toBeVisible();
+  await expect.poll(() => searchSettings.evaluate(async () =>
+    (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id,
+  )).not.toBe(tabId);
+  await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('配置搜索后继续发送的问题');
+  await searchSettings.close();
+  await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('配置搜索后继续发送的问题');
   await context.serviceWorkers()[0]!.evaluate(
     async ([id]) => {
+      const { config } = await chrome.storage.local.get('config');
+      await chrome.storage.local.set({ config: { ...(config as Record<string, unknown>), search: { providerId: 'duckduckgo' } } });
       const stored = await chrome.storage.session.get(`sess:${id}`);
       const session = stored[`sess:${id}`] as Record<string, unknown>;
       session.quote = {
@@ -256,7 +271,53 @@ test('划词会出现在提问框上面，针对这段再问', async () => {
   await pushState(panel, tabId);
   await expect(panel.getByRole('button', { name: /新方案把平均处理时间/ })).toBeVisible();
   await expect(panel.getByRole('button', { name: '不用这段' })).toBeVisible();
-  await expect(panel.getByPlaceholder(/针对这段/)).toBeVisible();
+  const input = panel.getByPlaceholder(/针对这段/);
+  await expect(input).toBeVisible();
+  const composer = panel.locator('#mode-panel-qa .composer-field');
+  await expect(composer.getByRole('button', { name: /新方案把平均处理时间/ })).toBeVisible();
+  await expect(composer.getByRole('button', { name: '联网搜索' })).toBeVisible();
+
+  for (const width of [360, 560]) {
+    await panel.setViewportSize({ width, height: 640 });
+    await input.fill('');
+    const short = await input.boundingBox();
+    await input.fill('这段话的结论是什么？\n哪些证据支持这个结论？\n样本数量有什么限制？\n是否可以推广到其他城市？');
+    const expanded = await input.boundingBox();
+    expect(expanded!.height).toBeGreaterThan(short!.height);
+    const outer = await composer.boundingBox();
+    for (const button of [composer.getByRole('button', { name: '联网搜索' }), composer.getByRole('button', { name: '发送' })]) {
+      const bounds = await button.boundingBox();
+      expect(bounds!.y).toBeGreaterThanOrEqual(expanded!.y + expanded!.height);
+      expect(bounds!.x).toBeGreaterThan(outer!.x);
+      expect(bounds!.x + bounds!.width).toBeLessThan(outer!.x + outer!.width);
+      expect(bounds!.y + bounds!.height).toBeLessThan(640);
+    }
+    expect(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await panel.screenshot({ path: join(OUTPUT_DIR, `composer-${width}.png`), fullPage: true });
+  }
+  const draft = await input.inputValue();
+  await panel.setViewportSize({ width: 360, height: 360 });
+  const sendBounds = await composer.getByRole('button', { name: '发送' }).boundingBox();
+  expect(sendBounds!.y + sendBounds!.height).toBeLessThan(360);
+  for (const fontSize of ['large', 'normal']) {
+    await context.serviceWorkers()[0]!.evaluate(async (size) => {
+      const { config } = await chrome.storage.local.get('config');
+      await chrome.storage.local.set({ config: { ...(config as Record<string, unknown>), appearance: { fontSize: size } } });
+    }, fontSize);
+    await pushState(panel, tabId);
+    await expect.poll(() => panel.locator('.panel').evaluate((node) => getComputedStyle(node).zoom))
+      .toBe(fontSize === 'large' ? '1.15' : '1');
+    const bounds = await composer.getByRole('button', { name: '发送' }).boundingBox();
+    expect(bounds!.y + bounds!.height).toBeLessThan(360);
+  }
+  await panel.getByRole('tab', { name: 'AI 问', exact: true }).click();
+  await panel.getByRole('tab', { name: '问 AI', exact: true }).click();
+  await expect(input).toHaveValue(draft);
+  await composer.getByRole('button', { name: '联网搜索' }).click();
+  await expect(composer.getByRole('button', { name: '联网搜索' })).toHaveAttribute('aria-pressed', 'true');
+  await composer.getByRole('button', { name: '不用这段' }).click();
+  await expect(panel.getByLabel('向这篇文章提问')).toHaveValue(draft);
+  await expect(composer.locator('.quote-chip')).toHaveCount(0);
   await panel.close();
 });
 
@@ -331,6 +392,23 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
   await expect(_panel.getByText('这项研究里，新方案比原方案快了多少？')).toBeVisible();
   await expect(_panel.getByRole('button', { name: '我不知道' })).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-720.png'), fullPage: true });
+
+  // 同一输入组件也用于回答：短窗、大字体时所有辅助操作仍应可点。
+  await _panel.getByLabel('用自己的话回答').fill('我认为需要关注样本的范围。\n试点只有三个团队。\n还需要考虑工具培训。');
+  await _panel.setViewportSize({ width: 280, height: 360 });
+  for (const fontSize of ['large', 'normal']) {
+    await context.serviceWorkers()[0]!.evaluate(async (size) => {
+      const { config } = await chrome.storage.local.get('config');
+      await chrome.storage.local.set({ config: { ...(config as Record<string, unknown>), appearance: { fontSize: size } } });
+    }, fontSize);
+    await pushState(_panel, tabId);
+    await expect.poll(() => _panel.locator('.panel').evaluate((node) => getComputedStyle(node).zoom))
+      .toBe(fontSize === 'large' ? '1.15' : '1');
+    for (const name of ['回答', '我不知道', '提示', '讲解', '跳过', '结束']) {
+      await expect(_panel.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+    }
+  }
+  await _panel.setViewportSize({ width: 720, height: 920 });
 
   // F4 的核心场景：学习进行中切回伴读，摘要、对话与输入都还在，学习不被打断。
   await _panel.getByRole('tab', { name: /^问 AI$/ }).click();

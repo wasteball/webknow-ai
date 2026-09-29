@@ -538,6 +538,18 @@ body.sidepanel .dock {
   overflow: auto;
 }
 
+/* 文本输入区只收缩内容，工具栏始终可见；选择题仍沿用整区滚动。 */
+body.sidepanel .dock:has(.composer-field) {
+  /* 168px 保住引用操作、至少一行输入和发送；短窗与大字体也可操作。 */
+  max-height: max(70%, 168px);
+  min-height: 0;
+  overflow: visible;
+}
+
+.dock > .composer:has(.composer-field) {
+  min-height: 0;
+}
+
 .msg {
   display: flex;
   margin-bottom: var(--space-5);
@@ -788,25 +800,26 @@ body.sidepanel .dock {
 
 /* 联网搜索：输入区里的按压开关，打开时用强调色，不用长说明抢主按钮。 */
 .search-chip {
-  min-height: 36px;
-  padding: 0 var(--space-3);
+  min-height: 32px;
+  padding: 0 10px;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
   color: var(--ink-2);
-  background: var(--paper);
-  border: 1px solid var(--line);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius-pill);
 }
 
-.search-chip:hover {
+.search-chip:hover:not(:disabled) {
   color: var(--ink);
   background: var(--paper-2);
 }
 
 .search-chip[aria-pressed='true'] {
-  color: var(--paper);
-  background: var(--ink);
-  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--paper-3);
+  border-color: var(--line);
 }
 
 /* 存入知识库（K-ima）：显式动作 + 一句去向说明。 */
@@ -831,25 +844,49 @@ body.sidepanel .dock {
 .quote-chip {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  background: var(--paper-2);
-  border: 1px solid var(--line);
-  border-left: 2px solid var(--ink-3);
-  border-radius: var(--radius-sm);
+  gap: 2px;
+  padding: 6px 10px 10px;
+  background: var(--paper-3);
+  border-radius: 10px;
+}
+
+.quote-chip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .quote-chip-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   font-size: 12px;
   font-weight: 500;
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
 .quote-chip blockquote {
   margin: 0;
-  max-height: 4.65em;
+  max-height: 3.1em;
   overflow: auto;
+}
+
+button.quote-remove {
+  flex: none;
+  width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--ink-2);
+  background: transparent;
+}
+
+button.quote-remove:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--line);
 }
 
 .quote-text {
@@ -865,6 +902,12 @@ body.sidepanel .dock {
   background: transparent;
   border: 0;
   border-radius: 0;
+  overflow-wrap: anywhere;
+}
+
+.quote-text:disabled {
+  opacity: 1;
+  cursor: default;
 }
 
 .quote-text:hover:not(:disabled) {
@@ -897,7 +940,6 @@ body.sidepanel .dock {
   gap: var(--space-2);
   padding: var(--space-3) 0 var(--space-4);
   background: var(--paper);
-  box-shadow: 0 -1px 0 var(--line-soft);
 }
 
 .composer,
@@ -921,32 +963,86 @@ body.sidepanel .dock {
   margin-left: auto;
 }
 
-/* 发送和停止待在输入框里面，是同一个按钮的两种状态。 */
+/* 完整的消息输入区：引用 → 文字 → 工具与发送，共享外框和焦点。 */
 .composer-field {
   display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-  padding: 4px 4px 4px 0;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 8px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
+  border-radius: 20px;
+  background: var(--paper-2);
+  box-shadow: var(--sh-1);
+  transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
 }
 
 .composer-field:focus-within {
-  border-color: var(--ink);
+  border-color: var(--ink-3);
+  box-shadow: 0 0 0 1px var(--line), var(--sh-1);
+}
+
+.composer-context {
+  flex: 0 1 auto;
+  min-height: 34px;
+  margin-bottom: 4px;
+  overflow: auto;
 }
 
 .composer-field textarea,
 .composer-field input {
   border: 0;
   background: transparent;
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 6px;
+  border-radius: 0;
+}
+
+.composer-field textarea {
+  flex: 0 1 auto;
+  min-height: 44px;
+  max-height: min(160px, 22vh);
+  overflow-y: auto;
+}
+
+.composer-field textarea:focus-visible,
+.composer-field input:focus-visible {
+  outline: none;
+}
+
+.composer-toolbar {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.composer-tools {
+  display: flex;
   flex: 1;
-  width: auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
 }
 
 .composer-field .send-btn {
-  margin-left: 0;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  margin: 0;
+  border-radius: 50%;
+}
+
+.composer-field .send-btn:disabled {
+  color: var(--ink-3);
+  background: var(--line);
+  opacity: 1;
 }
 
 input,

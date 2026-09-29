@@ -5,7 +5,7 @@ import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { shouldSubmitComposer } from '../composer';
 import { visibleSuggestions } from '../suggest';
-import { Busy, ComposerField, Drafting, SourceTag, SuggestRow, Thinking } from './bits';
+import { Busy, ComposerField, ComposerTextarea, Drafting, SourceTag, SuggestRow, Thinking } from './bits';
 import { Icon } from './Icon';
 import { Rich } from './Rich';
 
@@ -17,7 +17,7 @@ type Send = (command: Command) => Promise<Reply | undefined>;
  *
  * 回答正文走 <Rich>：模型写的是受控 markdown 子集，这里是它唯一的渲染入口。
  */
-export function Reading({ state, send }: { state: PanelState; send: Send }) {
+export function Reading({ state, send, onSearchSettings }: { state: PanelState; send: Send; onSearchSettings?: () => void }) {
   const [draft, setDraft] = useState('');
   const [searchOn, setSearchOn] = useState(false);
   const [hidingSuggests, setHidingSuggests] = useState(false);
@@ -159,27 +159,6 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
       </div>
 
       <div className="dock">
-        {quote && (
-          <div className="quote-chip">
-            <blockquote>
-              <button
-                type="button"
-                className="quote-text"
-                disabled={!quote.blockId || !tabId}
-                onClick={() => quote.blockId && tabId && void send({ type: 'jump', tabId, blockId: quote.blockId })}
-              >
-                {quote.text}
-              </button>
-            </blockquote>
-            <button
-              type="button"
-              className="quiet"
-              onClick={() => tabId && void send({ type: 'clearQuote', tabId })}
-            >
-              不用这段
-            </button>
-          </div>
-        )}
         <form
           className="composer"
           onSubmit={(event) => {
@@ -190,8 +169,55 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
           <label className="sr-only" htmlFor="question">
             向这篇文章提问
           </label>
-          <ComposerField busy={busy} idleLabel="发送" onStop={stop}>
-            <textarea
+          <ComposerField
+            busy={busy}
+            idleLabel="发送"
+            onStop={stop}
+            submitDisabled={!draft.trim()}
+            context={quote && (
+              <div className="quote-chip">
+                <div className="quote-chip-head">
+                  <span className="quote-chip-label"><Icon name="file" small />引用原文</span>
+                  <button
+                    type="button"
+                    className="quote-remove"
+                    aria-label="不用这段"
+                    title="移除引用"
+                    onClick={() => tabId && void send({ type: 'clearQuote', tabId })}
+                  >
+                    <Icon name="x" small />
+                  </button>
+                </div>
+                <blockquote>
+                  <button
+                    type="button"
+                    className="quote-text"
+                    disabled={!quote.blockId || !tabId}
+                    title={quote.blockId ? '在网页中查看原文' : undefined}
+                    onClick={() => quote.blockId && tabId && void send({ type: 'jump', tabId, blockId: quote.blockId })}
+                  >
+                    {quote.text}
+                  </button>
+                </blockquote>
+              </div>
+            )}
+            tools={(searchEnabled || onSearchSettings) && (
+              <button
+                type="button"
+                className="search-chip"
+                aria-pressed={searchEnabled && searchOn}
+                title={searchEnabled
+                  ? `打开后，只把搜索词发给${state.settings.search.providerName ?? '搜索服务'}，不发这一页正文`
+                  : '先选择一个联网搜索服务'}
+                onClick={() => searchEnabled ? setSearchOn((current) => !current) : onSearchSettings?.()}
+              >
+                <Icon name="globe" small />
+                联网搜索
+                {searchEnabled && searchOn && <Icon name="check" small />}
+              </button>
+            )}
+          >
+            <ComposerTextarea
               id="question"
               value={draft}
               rows={2}
@@ -201,19 +227,6 @@ export function Reading({ state, send }: { state: PanelState; send: Send }) {
               onKeyDown={onComposerKeyDown}
             />
           </ComposerField>
-          {searchEnabled && (
-            <div className="composer-actions">
-              <button
-                type="button"
-                className="search-chip"
-                aria-pressed={searchOn}
-                title={`打开后，只把搜索词发给${state.settings.search.providerName ?? '搜索服务'}，不发这一页正文`}
-                onClick={() => setSearchOn((current) => !current)}
-              >
-                联网搜索
-              </button>
-            </div>
-          )}
         </form>
       </div>
     </>

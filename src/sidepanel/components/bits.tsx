@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode, type TextareaHTMLAttributes } from 'react';
 
 import type { Completeness } from '../../core/blocks';
 import type { AppError } from '../../core/errors';
@@ -209,7 +209,7 @@ export function Drafting({
 }
 
 /**
- * 输入框和右下角的主按钮包在同一条边框里。
+ * 引用、输入和底部工具栏共享一条边框，主按钮固定在工具栏右侧。
  * 空闲时这个按钮提交；这一轮还在写时，它变成停止。
  */
 export function ComposerField({
@@ -218,27 +218,63 @@ export function ComposerField({
   idleLabel,
   idleIcon = 'send',
   onStop,
+  context,
+  tools,
+  submitDisabled = false,
 }: {
   children: ReactNode;
   busy: boolean;
   idleLabel: string;
   idleIcon?: 'send' | 'rotate';
   onStop: () => void;
+  context?: ReactNode;
+  tools?: ReactNode;
+  submitDisabled?: boolean;
 }) {
   return (
     <div className="composer-field">
+      {context && <div className="composer-context">{context}</div>}
       {children}
-      {busy ? (
-        <button type="button" className="send-btn" aria-label="停止" onClick={onStop}>
-          <Icon name="stop" small />
-        </button>
-      ) : (
-        <button type="submit" className="send-btn" aria-label={idleLabel}>
-          <Icon name={idleIcon} small />
-        </button>
-      )}
+      <div className="composer-toolbar">
+        <div className="composer-tools">{tools}</div>
+        {busy ? (
+          <button type="button" className="send-btn" aria-label="停止" title="停止生成" onClick={onStop}>
+            <Icon name="stop" />
+          </button>
+        ) : (
+          <button type="submit" className="send-btn" aria-label={idleLabel} title={idleLabel} disabled={submitDisabled}>
+            <Icon name={idleIcon} />
+          </button>
+        )}
+      </div>
     </div>
   );
+}
+
+/** 随内容和侧栏宽度调整高度；达到 CSS 上限后在文字区内滚动。 */
+export function ComposerTextarea({ value, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const resize = () => {
+    const field = ref.current;
+    if (!field || !field.getClientRects().length) return;
+    field.style.height = 'auto';
+    field.style.height = `${field.scrollHeight}px`;
+  };
+  useLayoutEffect(resize, [value]);
+  useEffect(() => {
+    const field = ref.current;
+    if (!field || typeof ResizeObserver === 'undefined') return;
+    let width = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width !== width) {
+        width = entry.contentRect.width;
+        resize();
+      }
+    });
+    observer.observe(field);
+    return () => observer.disconnect();
+  }, []);
+  return <textarea {...props} ref={ref} value={value} />;
 }
 
 export function Section({ title, children }: { title: string; children: ReactNode }) {
