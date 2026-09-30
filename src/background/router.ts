@@ -154,7 +154,14 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     completeness: session?.completeness ?? null,
     guide: session?.guide ?? null,
     chat: session?.chat ?? [],
-    learning: session?.learning ?? null,
+    sessionId: session?.id ?? null,
+    learning: session?.learning ? {
+      ...session.learning,
+      current: session.learning.current?.kind === 'quiz'
+        ? { ...session.learning.current, answerKey: [] }
+        : session.learning.current,
+    } : null,
+    learningHistory: session?.learningHistory ?? [],
     quote: session?.quote ?? null,
     busy: session?.run
       ? {

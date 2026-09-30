@@ -1,9 +1,14 @@
 import { LEARN_DEFAULT_POLICY, LEARN_VERSION } from './prompts/learn';
-import type { LearningState } from './session';
+import type { LearningHistory, LearningState } from './session';
 
 export type LearningStyle = 'mixed' | 'quiz' | 'open';
 
 export const DEFAULT_LEARN_GOAL = '理解这篇文章的核心内容';
+
+export function archiveLearning(previous: LearningState | null, history: LearningHistory[] = []): LearningHistory[] {
+  if (!previous || previous.status !== 'closed' || !previous.log.length) return history;
+  return [...history, { goal: previous.goal, log: previous.log }];
+}
 
 /** 点过的方向记下来：卡片已经当对话发出去了，再开一轮不能把它变回来。 */
 export function rememberLearnGoal(previous: LearningState | null, goal: string): string[] {

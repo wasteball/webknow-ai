@@ -110,7 +110,7 @@ test.describe('主路径', () => {
     await expect(panel.getByText('这篇文章讲了什么')).toBeHidden();
     await expect(panel.getByText(/读取范围：/)).toBeHidden();
 
-    const start = panel.getByRole('button', { name: '总结摘要' });
+    const start = panel.getByRole('button', { name: '开始阅读' });
     await expect(start).toBeEnabled();
     await start.click();
 
@@ -157,7 +157,7 @@ test.describe('主路径', () => {
     }, tabId);
     await panel.reload();
 
-    const start = panel.getByRole('button', { name: '总结摘要' });
+    const start = panel.getByRole('button', { name: '开始阅读' });
     await expect(start).toBeEnabled({ timeout: 10_000 });
     await start.click();
     // 不再需要工具栏点击：地址由已授权的标签页查询得到。

@@ -91,7 +91,7 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
     await chrome.storage.session.set({ [`pending:${id}`]: { url, origin: org, at: Date.now() } });
   }, [tabId, `${origin}/article.html`, origin] as const);
   await panel.reload();
-  await panel.getByRole('button', { name: '总结摘要' }).click();
+  await panel.getByRole('button', { name: '开始阅读' }).click();
   await expect(panel.getByText('试点缩短了平均配送时间。')).toBeVisible({ timeout: 20_000 });
 
   // 走真实的「开始伴读 → 网页划词 → 点击问这句 → 侧栏引用」路径，不预置 READY 会话。

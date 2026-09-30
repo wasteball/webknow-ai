@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 
 import { App } from '../../src/sidepanel/App';
 import './style.css';
+import '../../src/sidepanel/chat.css';
 
 const container = document.getElementById('root');
 if (!container) throw new Error('侧栏挂载点缺失');

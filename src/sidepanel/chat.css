@@ -1,0 +1,31 @@
+/* 只用于阅读侧栏；整页设置不加载本文件。 */
+body.sidepanel { --ink-3: #6b6b6b; }
+@media (prefers-color-scheme: dark) { body.sidepanel { --ink-3: #a3a3a3; } }
+body.sidepanel .panel:not(.ready-chat) { overflow: auto; }
+body.sidepanel .panel.ready-chat { overflow: hidden; }
+.conversation-top { flex: none; }
+body.sidepanel .context, body.sidepanel .modes { position: static; }
+body.sidepanel .modes { margin: 4px 0 0; }
+.conversation { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; position: relative; }
+.chat-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 16px 0 0; }
+.chat-scroll:focus-visible { outline: 2px solid var(--ink-3); outline-offset: -2px; border-radius: 6px; }
+body.sidepanel .conversation .chat { overflow: visible; flex: none; }
+.chat-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 13px; min-height: 40px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); box-shadow: var(--sh-2); border-radius: 999px; z-index: 2; }
+.learn-divider { display: flex; align-items: center; gap: 12px; margin: 8px 0 22px; font-size: 12px; line-height: 1.6; color: var(--ink-2); }
+.learn-divider::before, .learn-divider::after { content: ''; height: 1px; flex: 1; background: var(--line); }
+.learn-past { padding-bottom: 8px; }
+.quiz-message .quiz-question { margin: 0 0 20px; }
+.quiz-message .quiz-question:last-child { margin-bottom: 0; }
+.composer-selection { margin: 0; padding: 10px 6px; font-size: 14px; color: var(--ink-2); }
+.composer-notice { margin: 0; color: var(--ink-2); font-size: 12px; line-height: 1.5; }
+.composer-tools .quiet { font-size: 12px; padding: 4px 6px; min-height: 36px; }
+.composer-tools:has(.assist-more) { gap: 2px; flex-wrap: wrap; }
+.assist-more { position: relative; font-size: 12px; }
+.assist-more > summary { list-style: none; cursor: pointer; display: flex; align-items: center; min-height: 36px; padding: 4px 6px; color: var(--ink-2); }
+.assist-more > summary::-webkit-details-marker { display: none; }
+.assist-more > summary[aria-disabled='true'] { opacity: .45; cursor: default; }
+.assist-more > summary:focus-visible { outline: 2px solid var(--ink); border-radius: 6px; }
+.assist-menu { position: absolute; bottom: calc(100% + 10px); right: 0; width: 132px; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); box-shadow: var(--sh-2); z-index: 5; }
+.assist-menu .quiet { width: 100%; justify-content: flex-start; font-size: 14px; padding: 8px 10px; }
+body.sidepanel .dock .composer-field textarea { max-height: clamp(52px, 24vh, 180px); }
+@media (prefers-reduced-motion: reduce) { .chat-scroll { scroll-behavior: auto; } }

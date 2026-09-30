@@ -184,9 +184,9 @@ export function Drafting({
   const endRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const node = endRef.current;
-    if (!node?.offsetParent) return;
+    if (!onStop || !node?.offsetParent) return;
     node.scrollIntoView({ block: 'end' });
-  }, [text, reasoning]);
+  }, [text, reasoning, onStop]);
   return (
     <article className="msg ai drafting" ref={endRef}>
       <Thinking text={reasoning} />

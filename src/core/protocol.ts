@@ -6,7 +6,7 @@ import type { ThinkingLevel } from './model-thinking';
 import type { DiagramMode, FontSize, PromptOverrides } from './settings';
 import type { Skill } from './skills';
 import type { Quote } from './quote';
-import type { Bubble, ChatTurn, LearningState, RequestKind, SessionState } from './session';
+import type { Bubble, ChatTurn, LearningHistory, LearningState, RequestKind, SessionState } from './session';
 
 /** 侧栏可见的页面状态（PRD 4.2）。由配置、权限与会话状态共同推导。 */
 export type Phase =
@@ -46,6 +46,7 @@ export type PanelSettings = {
 };
 
 export type PanelState = {
+  sessionId?: string | null;
   tabId: number | null;
   pageUrl: string | null;
   pageTitle: string;
@@ -60,6 +61,7 @@ export type PanelState = {
   guide: { summary: string; bubbles: Bubble[]; reasoning?: string } | null;
   chat: ChatTurn[];
   learning: LearningState | null;
+  learningHistory?: LearningHistory[];
   /** 划在网页上、正准备提问的原文。 */
   quote: Quote | null;
   /** draft 是正在写的读者正文；reasoning 是同一轮的思考过程。引用和后续卡片不在这里。 */

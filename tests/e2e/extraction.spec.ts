@@ -193,7 +193,7 @@ test.describe('提取覆盖面', () => {
       await chrome.storage.session.set({ [`pending:${id}`]: { url, origin: org, at: Date.now() } });
     }, [tabId, `${origin}/wechat.html`, origin] as const);
     await panel.reload();
-    await panel.getByRole('button', { name: '总结摘要' }).click();
+    await panel.getByRole('button', { name: '开始阅读' }).click();
     await expect(panel.getByText('本文说明了试点条件和适用边界。')).toBeVisible({ timeout: 20_000 });
 
     await panel.getByLabel('向这篇文章提问').fill('试点结果适用于哪里？');

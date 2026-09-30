@@ -1,10 +1,8 @@
 import type { PageEntryId } from '../page-entry';
-import { pageEntryLabel } from '../page-entry';
 import { Icon } from './Icon';
 
 /**
- * 还没读这一页时的入口。三个按钮都是同一次明确开始：
- * 总结和问题会一起出来；「让它问我」读完后切到 AI 问。
+ * 还没读这一页时的入口。一个明确的开始操作。摘要出现后再由用户选择提问模式。
  */
 export function PageEntry({
   pageTitle,
@@ -23,7 +21,6 @@ export function PageEntry({
   onPick: (entry: PageEntryId) => void;
   onOpenSettings?: () => void;
 }) {
-  const entries: PageEntryId[] = ['summary', 'questions', 'learn'];
   return (
     <section className="section">
       <div className="page-entry-heading">
@@ -38,20 +35,12 @@ export function PageEntry({
         )}
       </div>
       <p>
-        点一个，我才读这一页。换页不会自动读。
+        点击后，我才读这一页。换页不会自动读。
       </p>
       <div className="composer-actions">
-        {entries.map((entry) => (
-          <button
-            key={entry}
-            type="button"
-            className={entry === 'summary' ? undefined : 'secondary'}
-            disabled={busy}
-            onClick={() => onPick(entry)}
-          >
-            {pageEntryLabel(entry, outboundConfirmed)}
-          </button>
-        ))}
+        <button type="button" disabled={busy} onClick={() => onPick('summary')}>
+          {outboundConfirmed ? '开始阅读' : '我确认，开始阅读'}
+        </button>
       </div>
       {askHost && (
         <p className="hint">

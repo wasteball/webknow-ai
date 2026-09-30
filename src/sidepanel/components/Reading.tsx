@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 
 import type { ChatTurn } from '../../core/session';
 import type { PanelState, Reply } from '../../core/protocol';
@@ -8,6 +8,7 @@ import { visibleSuggestions } from '../suggest';
 import { Busy, ComposerField, ComposerTextarea, Drafting, SourceTag, SuggestRow, Thinking } from './bits';
 import { Icon } from './Icon';
 import { Rich } from './Rich';
+import { Conversation } from './Conversation';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
@@ -17,15 +18,18 @@ type Send = (command: Command) => Promise<Reply | undefined>;
  *
  * 回答正文走 <Rich>：模型写的是受控 markdown 子集，这里是它唯一的渲染入口。
  */
-export function Reading({ state, send, onSearchSettings }: { state: PanelState; send: Send; onSearchSettings?: () => void }) {
+export function Reading({ state, send, onSearchSettings, active = true }: { state: PanelState; send: Send; onSearchSettings?: () => void; active?: boolean }) {
   const [draft, setDraft] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [followRequest, setFollowRequest] = useState(0);
   const [searchOn, setSearchOn] = useState(false);
   const [hidingSuggests, setHidingSuggests] = useState(false);
   const [hiddenAtTurns, setHiddenAtTurns] = useState(0);
   const [pending, setPending] = useState<{ question: string; quoteText: string | null; at: number } | null>(null);
   const tabId = state.tabId;
-  const endRef = useRef<HTMLDivElement>(null);
-  const busy = state.busy?.kind === 'answer';
+  const progress = state.busy?.kind === 'answer' ? state.busy : null;
+  const busy = Boolean(progress) || submitting;
+  const blocked = state.busy !== null && state.busy.kind !== 'answer';
   const searchEnabled = state.settings.search.enabled;
   const diagrams = state.settings.diagrams === 'auto';
   const guide = state.guide;
@@ -43,27 +47,7 @@ export function Reading({ state, send, onSearchSettings }: { state: PanelState; 
   const quote = state.quote;
   const outgoing = pending && pending.at === state.chat.length ? pending : null;
 
-  // 只在对话真的往下走时跟到底部。挂载时不滚：这一栏开头是摘要与话题，
-  // 一进来就被推到最后一轮问答上，等于把最重要的内容藏起来了。
-  // 刚发出去、回答还没回来时也要滚到这句，不能等回答写上才看见自己说的话。
-  const seen = useRef<{ turns: number; busy: boolean; next: number; pending: string } | null>(null);
-  const pendingQuestion = outgoing?.question ?? '';
-  useEffect(() => {
-    const next = row.next.length;
-    if (!seen.current) {
-      seen.current = { turns: state.chat.length, busy, next, pending: pendingQuestion };
-      return;
-    }
-    if (
-      state.chat.length > seen.current.turns ||
-      (busy && !seen.current.busy) ||
-      next > seen.current.next ||
-      (pendingQuestion !== '' && pendingQuestion !== seen.current.pending)
-    ) {
-      endRef.current?.scrollIntoView?.({ block: 'end' });
-    }
-    seen.current = { turns: state.chat.length, busy, next, pending: pendingQuestion };
-  }, [state.chat.length, busy, row.next.length, pendingQuestion]);
+  const updateKey = `${state.chat.length}:${busy}:${progress?.draft.length ?? 0}:${progress?.reasoning.length ?? 0}:${outgoing?.question ?? ''}:${row.next.length}`;
 
   useEffect(() => {
     setHidingSuggests(false);
@@ -77,12 +61,14 @@ export function Reading({ state, send, onSearchSettings }: { state: PanelState; 
     if (tabId) void send({ type: 'stop', tabId });
   };
   const sendQuestion = async (question: string) => {
-    if (!tabId || !question.trim()) return;
+    if (!tabId || !question.trim() || busy || blocked) return;
     const text = question.trim();
     concealSuggests();
     setPending({ question: text, quoteText: quote?.text ?? null, at: state.chat.length });
     setDraft((current) => (current.trim() === text ? '' : current));
-    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && searchOn });
+    setSubmitting(true);
+    setFollowRequest((n) => n + 1);
+    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && searchOn }).finally(() => setSubmitting(false));
     if (reply?.ok) return;
     setPending((current) => (current?.question === text ? null : current));
     setHidingSuggests(false);
@@ -95,14 +81,16 @@ export function Reading({ state, send, onSearchSettings }: { state: PanelState; 
       return;
     }
     event.preventDefault();
-    if (!busy) void ask(draft);
+    if (!busy && !blocked) void ask(draft);
   };
 
   const sendTopic = async (bubbleId: string, question: string) => {
-    if (!tabId) return;
+    if (!tabId || busy || blocked) return;
     concealSuggests();
     setPending({ question, quoteText: null, at: state.chat.length });
-    const reply = await send({ type: 'explore', tabId, bubbleId });
+    setSubmitting(true);
+    setFollowRequest((n) => n + 1);
+    const reply = await send({ type: 'explore', tabId, bubbleId }).finally(() => setSubmitting(false));
     if (reply?.ok) return;
     setPending((current) => (current?.question === question ? null : current));
     setHidingSuggests(false);
@@ -112,7 +100,7 @@ export function Reading({ state, send, onSearchSettings }: { state: PanelState; 
 
   return (
     <>
-      <div className="chat">
+      <Conversation active={active} updateKey={updateKey} followRequest={followRequest}>
         {guide && (
           <article className="msg ai">
             <Thinking text={guide.reasoning ?? ''} />
@@ -121,7 +109,7 @@ export function Reading({ state, send, onSearchSettings }: { state: PanelState; 
               <SuggestRow
                 lead="想接着弄懂哪一点"
                 items={row.openers}
-                disabled={busy}
+                disabled={busy || blocked}
                 onPick={(item) => void sendTopic(item.id, item.question)}
               />
             </div>
@@ -135,7 +123,7 @@ export function Reading({ state, send, onSearchSettings }: { state: PanelState; 
           <SuggestRow
             lead="可以接着问"
             items={row.next}
-            disabled={busy}
+            disabled={busy || blocked}
             onPick={(item) =>
               row.nextFrom === 'opener' ? void sendTopic(item.id, item.question) : void sendFollowUp(item.question)
             }
@@ -155,15 +143,15 @@ export function Reading({ state, send, onSearchSettings }: { state: PanelState; 
           ) : (
             <Busy label="正在回答" chars={state.busy?.chars ?? 0} />
           ))}
-        <div className="chat-end" ref={endRef} />
-      </div>
+      </Conversation>
 
       <div className="dock">
+        {blocked && <p className="composer-notice" role="status">AI 问正在生成，结束后可以继续提问。</p>}
         <form
           className="composer"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!busy) void ask(draft);
+            if (!busy && !blocked) void ask(draft);
           }}
         >
           <label className="sr-only" htmlFor="question">
@@ -173,7 +161,7 @@ export function Reading({ state, send, onSearchSettings }: { state: PanelState; 
             busy={busy}
             idleLabel="发送"
             onStop={stop}
-            submitDisabled={!draft.trim()}
+            submitDisabled={blocked || !draft.trim()}
             context={quote && (
               <div className="quote-chip">
                 <div className="quote-chip-head">

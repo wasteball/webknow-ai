@@ -5,6 +5,7 @@ import { answerMessages } from '../core/prompts/answer';
 import { guideMessages, summaryCharsFor } from '../core/prompts/guide';
 import {
   DEFAULT_LEARN_GOAL,
+  archiveLearning,
   freezeLearnPolicy,
   frozenLearnCall,
   rememberLearnGoal,
@@ -486,7 +487,7 @@ async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): P
     status: 'active',
     log: [],
   };
-  await putSession({ ...session, learning, state: 'LEARNING', error: null, updatedAt: Date.now() });
+  await putSession({ ...session, learning, learningHistory: archiveLearning(session.learning, session.learningHistory), state: 'LEARNING', error: null, updatedAt: Date.now() });
   return runLearnStep(tabId, 'ask', {}, hooks);
 }
 
@@ -528,7 +529,9 @@ async function runAssist(
     }
     await putSession({
       ...session,
-      learning: appendLearn({ ...learning, current: null }, { role: 'skip', text: '已跳过这个问题。' }),
+      learning: learning.current
+        ? appendLearn({ ...learning, current: null }, { role: 'skip', text: '已跳过这个问题。' })
+        : learning,
       updatedAt: Date.now(),
     });
     return runLearnStep(tabId, 'ask', {}, hooks);

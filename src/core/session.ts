@@ -101,6 +101,9 @@ export type LearningState = {
   log: LearnEntry[];
 };
 
+/** 已结束的学习段，只保留读者需要回看的内容。 */
+export type LearningHistory = { goal: string; log: LearnEntry[] };
+
 export type Run = { id: string; kind: RequestKind; startedAt: number };
 
 export type PageSession = {
@@ -118,6 +121,7 @@ export type PageSession = {
   guide: { summary: string; bubbles: Bubble[]; reasoning?: string } | null;
   chat: ChatTurn[];
   learning: LearningState | null;
+  learningHistory?: LearningHistory[];
   /** 划词后还没发出去的原文，写在提问框上面。 */
   quote?: Quote | null;
   /** 在途请求；写回必须与之匹配，否则丢弃迟到结果（FR-024）。 */
@@ -204,6 +208,7 @@ export function markStale(session: PageSession, url?: string): PageSession {
     guide: null,
     chat: [],
     learning: null,
+    learningHistory: [],
     quote: null,
     run: null,
     error: null,

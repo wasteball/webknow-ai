@@ -164,7 +164,7 @@ test('保存的 Key 留在扩展本地存储，且不进入页面会话', async 
 
   // 真实反馈回归：未确认外发时，入口曾经是禁用且不说明原因，
   // 用户点了没反应。现在的合同是：按钮始终可用，并用文案说明这一下会同时记下确认。
-  const startButton = page.getByRole('button', { name: /总结摘要/ });
+  const startButton = page.getByRole('button', { name: /开始阅读/ });
   await expect(startButton).toBeEnabled();
   await expect(startButton).toHaveText(/我确认/);
   await page.close();

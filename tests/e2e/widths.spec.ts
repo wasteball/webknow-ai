@@ -389,6 +389,8 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
     [tabId, LEARNING] as const,
   );
   await pushState(_panel, tabId);
+  await expect(_panel.getByRole('tab', { name: /^问 AI$/ })).toHaveAttribute('aria-selected', 'true');
+  await _panel.getByRole('tab', { name: /^AI 问$/ }).click();
   await expect(_panel.getByText('这项研究里，新方案比原方案快了多少？')).toBeVisible();
   await expect(_panel.getByRole('button', { name: '我不知道' })).toBeVisible();
   await _panel.screenshot({ path: join(OUTPUT_DIR, 'learning-720.png'), fullPage: true });
@@ -404,10 +406,13 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
     await pushState(_panel, tabId);
     await expect.poll(() => _panel.locator('.panel').evaluate((node) => getComputedStyle(node).zoom))
       .toBe(fontSize === 'large' ? '1.15' : '1');
-    for (const name of ['回答', '我不知道', '提示', '讲解', '跳过', '结束']) {
+    for (const name of ['回答', '我不知道', '提示', '讲解']) {
       await expect(_panel.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
     }
   }
+  await _panel.getByText('更多', { exact: true }).click();
+  await expect(_panel.getByRole('button', { name: '结束', exact: true })).toBeInViewport({ ratio: 1 });
+  await _panel.getByText('更多', { exact: true }).click();
   await _panel.setViewportSize({ width: 720, height: 920 });
 
   // F4 的核心场景：学习进行中切回伴读，摘要、对话与输入都还在，学习不被打断。
@@ -451,6 +456,7 @@ test('选择题轮在宽面板下可交互', async () => {
     [quizTabId, QUIZ_CURRENT] as const,
   );
   await pushState(quizPanel, quizTabId);
+  await quizPanel.getByRole('tab', { name: /^AI 问$/ }).click();
   await expect(quizPanel.locator('.quiz-question').first()).toBeVisible();
 
   // 勾选一个选项后提交按钮才可用。
@@ -483,9 +489,10 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
   await nav.getByRole('button', { name: '模型' }).click();
   await expect(nav.getByRole('button', { name: '模型' })).toHaveAttribute('aria-current', 'true');
   await expect(settings.getByRole('heading', { name: '模型' })).toBeVisible();
-  await expect(settings.getByRole('radiogroup', { name: '用哪家' }).getByRole('radio', { name: 'DeepSeek' })).toBeVisible();
-  await expect(settings.getByRole('radiogroup', { name: '用哪家' }).getByRole('radio', { name: '智谱' })).toBeVisible();
+  await expect(settings.getByRole('button', { name: /DeepSeek 使用中/ })).toBeVisible();
+  await expect(settings.getByRole('button', { name: /智谱 未连接/ })).toBeVisible();
   await expect(settings.getByLabel('DeepSeek 的钥匙已保存')).toBeVisible();
+  await settings.locator('.model-advanced summary').click();
   await expect(settings.getByLabel('用哪个模型')).toBeVisible();
   // 提示词：编辑框里直接就是正在生效的那段话——看到的就是生效的，不存在“选了没变化”。
   await nav.getByRole('button', { name: '提示词' }).click();
@@ -576,7 +583,7 @@ test('文章标题与设置始终同排，模式条在下面且不被遮挡', as
   expect(title!.x + title!.width).toBeLessThanOrEqual(gear!.x + 1);
   await panel.screenshot({ path: join(OUTPUT_DIR, 'header-top.png') });
 
-  await panel.locator('#mode-panel-qa .chat').evaluate((node) => {
+  await panel.locator('#mode-panel-qa .chat-scroll').evaluate((node) => {
     node.scrollTop = node.scrollHeight;
   });
   const chip = panel.getByRole('button', { name: '三个团队的试点为什么不能代表其他城市？' });
@@ -634,7 +641,7 @@ test('三种宽度、两个模式下都不出现横向溢出', async () => {
     );
     await pushState(panel, tabId);
     await panel.getByRole('tab', { name: /AI 问/ }).click();
-    await expect(panel.locator('.learn-head').first()).toBeVisible();
+    await expect(panel.locator('#mode-panel-learn .learn-divider').last()).toBeVisible();
     expect(await overflowPx(panel)).toBe(0);
 
     // 长正文与长问题在窄栏里要换行，不能把输入区顶出屏幕。
@@ -713,6 +720,7 @@ test('模型：钥匙保存后掩码显示；没钥匙不给模型选择器', as
   // beforeAll 已经放了 DeepSeek 钥匙：只显示掩码，可以选模型，不再露出原文。
   await expect(settings.getByLabel('DeepSeek 的钥匙已保存')).toBeVisible();
   await expect(settings.getByRole('textbox', { name: 'DeepSeek 的钥匙' })).toHaveCount(0);
+  await settings.locator('.model-advanced summary').click();
   await expect(settings.getByLabel('用哪个模型')).toBeVisible();
   const thinking = settings.getByRole('radiogroup', { name: '思考' });
   await expect(thinking.getByRole('radio', { name: '关' })).toHaveAttribute('aria-checked', 'true');
@@ -728,9 +736,13 @@ test('模型：钥匙保存后掩码显示；没钥匙不给模型选择器', as
     .toBe('high');
 
   // 切到还没配的智谱：出现填钥匙，模型选择器消失。
-  await settings.getByRole('radiogroup', { name: '用哪家' }).getByRole('radio', { name: '智谱' }).click();
+  await settings.getByRole('button', { name: /智谱 未连接/ }).click();
   await expect(settings.getByRole('textbox', { name: '智谱 的钥匙' })).toBeVisible();
-  await expect(settings.getByRole('button', { name: '保存' })).toBeVisible();
+  await expect(settings.getByRole('button', { name: '连接并使用' })).toBeVisible();
+  expect(await context.serviceWorkers()[0]!.evaluate(async () => {
+    const { config } = await chrome.storage.local.get('config');
+    return (config as { provider?: string }).provider ?? 'deepseek';
+  })).toBe('deepseek');
   await expect(settings.getByLabel('用哪个模型')).toHaveCount(0);
 
   // 清掉钥匙：回到 DeepSeek 也是填钥匙这一步。

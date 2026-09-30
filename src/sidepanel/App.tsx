@@ -36,8 +36,7 @@ export function App() {
   const [state, setState] = useState<PanelState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<View>('qa');
-  const learningWasActive = useRef(false);
-  const booted = useRef(false);
+  const seenSession = useRef<string | null>(null);
   const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
@@ -70,16 +69,12 @@ export function App() {
     void clientRef.current?.send({ type: 'attach', tabId });
   }, [tabId]);
 
-  // 学习会话从无到有时自动切到「AI 问」；其余时候尊重用户所在的位置。
-  const learningActive = state?.learning?.status === 'active';
+  // 只在进入另一篇文章时选择初始模式，后台开始/完成不会夺走当前模式。
   useEffect(() => {
-    if (learningActive && !learningWasActive.current) {
-      setView('learn');
-      if (booted.current) document.getElementById(tabDomId('learn'))?.focus();
-    }
-    learningWasActive.current = learningActive;
-    booted.current = true;
-  }, [learningActive]);
+    if (!state?.sessionId || seenSession.current === state.sessionId) return;
+    seenSession.current = state.sessionId;
+    setView(state.learning?.status === 'active' ? 'learn' : 'qa');
+  }, [state?.sessionId]);
 
   const quoteText = state?.quote?.text;
   useEffect(() => {
@@ -170,11 +165,42 @@ export function App() {
   const awaitingNewReceiver = !state?.outboundConfirmed &&
     (state?.sessionState === 'READY' || state?.sessionState === 'LEARNING');
 
+  const holdConversation = readyShell || Boolean(state?.guide &&
+    (state.sessionState === 'READY' || state.sessionState === 'LEARNING'));
+  const conversationKey = state?.sessionId ?? `${state?.tabId}:${state?.pageUrl}`;
+  const modeTabs = readyShell && (
+<div className="modes" role="tablist" aria-label="功能切换" onKeyDown={onModeKeyDown}>
+                {MODES.map((mode) => (
+                  <button
+                    key={mode.id}
+                    id={tabDomId(mode.id)}
+                    type="button"
+                    role="tab"
+                    className="mode"
+                    data-mode={mode.id}
+                    aria-selected={view === mode.id}
+                    aria-controls={panelDomId(mode.id)}
+                    tabIndex={view === mode.id ? 0 : -1}
+                    onClick={() => setView(mode.id)}
+                  >
+                    {mode.label}
+                    {busy?.kind === mode.busyKind && (
+                      <>
+                        <span className="dot" aria-hidden="true" />
+                        <span className="sr-only">正在处理</span>
+                      </>
+                    )}
+                  </button>
+                ))}
+              </div>
+  );
+
   return (
     <div
-      className="panel"
+      className={readyShell ? "panel ready-chat" : "panel"}
       style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
     >
+      <div className="conversation-top">
       {!pageEntryPhase && (
         <div className="context">
           <div className="context-actions">
@@ -197,6 +223,9 @@ export function App() {
           <ScopeLine completeness={state.completeness} />
         </div>
       )}
+
+      {modeTabs}
+      </div>
 
       {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
       {state?.error && <ErrorBanner error={state.error} />}
@@ -296,49 +325,26 @@ export function App() {
             </Section>
           )}
 
-          {readyShell && (
+          {holdConversation && (
             <>
-              <div className="modes" role="tablist" aria-label="功能切换" onKeyDown={onModeKeyDown}>
-                {MODES.map((mode) => (
-                  <button
-                    key={mode.id}
-                    id={tabDomId(mode.id)}
-                    type="button"
-                    role="tab"
-                    className="mode"
-                    data-mode={mode.id}
-                    aria-selected={view === mode.id}
-                    aria-controls={panelDomId(mode.id)}
-                    tabIndex={view === mode.id ? 0 : -1}
-                    onClick={() => setView(mode.id)}
-                  >
-                    {mode.label}
-                    {busy?.kind === mode.busyKind && (
-                      <>
-                        <span className="dot" aria-hidden="true" />
-                        <span className="sr-only">正在处理</span>
-                      </>
-                    )}
-                  </button>
-                ))}
-              </div>
-
               {/* 两个面板都挂载、只藏未选中的那个：切回来时输入草稿还在（ARIA tabs 的标准形态）。 */}
               <div
+                key={`${conversationKey}:qa`}
                 id={panelDomId('qa')}
                 role="tabpanel"
                 aria-labelledby={tabDomId('qa')}
-                hidden={view !== 'qa'}
+                hidden={!readyShell || view !== 'qa'}
               >
-                <Reading state={state} send={send} onSearchSettings={() => openSettings('search')} />
+                <Reading state={state} send={send} active={readyShell && view === 'qa'} onSearchSettings={() => openSettings('search')} />
               </div>
               <div
+                key={`${conversationKey}:learn`}
                 id={panelDomId('learn')}
                 role="tabpanel"
                 aria-labelledby={tabDomId('learn')}
-                hidden={view !== 'learn'}
+                hidden={!readyShell || view !== 'learn'}
               >
-                <Learning state={state} send={send} />
+                <Learning state={state} send={send} active={readyShell && view === 'learn'} />
               </div>
             </>
           )}
