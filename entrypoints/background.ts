@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { fromThrown } from '../src/core/errors';
 import { cleanupDiagrams, cleanupNavigatedDiagram } from '../src/background/diagram-cleanup';
 
 import {
@@ -19,14 +20,18 @@ export default defineBackground(() => {
     registerPanelPort(port);
   });
 
-  browser.runtime.onMessage.addListener((message, sender) => {
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const data = message as { type?: string; url?: string; text?: string } | undefined;
     const tabId = sender.tab?.id;
     if (data?.type === 'pageChanged' && tabId !== undefined) {
       void onPageChanged(tabId, data.url ?? '');
     }
     if (data?.type === 'quoteSelected' && tabId !== undefined && typeof data.text === 'string') {
-      void onQuoteSelected(tabId, data.text);
+      void onQuoteSelected(tabId, data.text).then(
+        (error) => sendResponse(error ? { ok: false, error } : { ok: true }),
+        (error) => sendResponse({ ok: false, error: fromThrown(error) }),
+      );
+      return true;
     }
     return false;
   });

@@ -148,7 +148,7 @@ export function Settings({
       <header className="settings-topbar">
         <p className="settings-brand">
           <BrandMark size={24} />
-          知伴
+          WebKnow AI
         </p>
         <p className="settings-tagline">设置</p>
       </header>
@@ -600,7 +600,7 @@ function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
         打开 ima，扫码查看知识库
         <Icon name="external" small />
       </a>
-      <p className="hint">扫码只登录 ima 官网；若要让知伴访问知识库，还需配置开放接口凭证。</p>
+      <p className="hint">扫码只登录 ima 官网；若要让WebKnow AI访问知识库，还需配置开放接口凭证。</p>
       <p className="hint">开放接口连接用于选择默认知识库；侧栏保存入口仍在联调。</p>
       {current.enabled ? (
         <>
@@ -855,7 +855,7 @@ function About() {
   const version = browser.runtime.getManifest().version;
   return (
     <Section title="关于">
-      <p className="hint">知伴（webknow-ai）{version}：在当前网页旁，帮你看懂文章、发现问题，并通过双向对话检验理解。</p>
+      <p className="hint">WebKnow AI（webknow-ai）{version}：在当前网页旁，帮你看懂文章、发现问题，并通过双向对话检验理解。</p>
       <p className="hint">
         使用说明见{' '}
         <a href="https://github.com/wasteball/webknow-ai#readme" target="_blank" rel="noreferrer">

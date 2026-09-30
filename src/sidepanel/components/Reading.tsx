@@ -44,7 +44,9 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
     askedQuestions: state.chat.map((turn) => turn.question),
   });
 
-  const quote = state.quote;
+  const [consumedQuote, setConsumedQuote] = useState<string | null>(null);
+  const quoteKey = state.quote?.id ?? state.quote?.text ?? null;
+  const quote = quoteKey !== consumedQuote ? state.quote : null;
   const outgoing = pending && pending.at === state.chat.length ? pending : null;
 
   const updateKey = `${state.chat.length}:${busy}:${progress?.draft.length ?? 0}:${progress?.reasoning.length ?? 0}:${outgoing?.question ?? ''}:${row.next.length}`;
@@ -65,11 +67,13 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
     const text = question.trim();
     concealSuggests();
     setPending({ question: text, quoteText: quote?.text ?? null, at: state.chat.length });
+    setConsumedQuote(quoteKey);
     setDraft((current) => (current.trim() === text ? '' : current));
     setSubmitting(true);
     setFollowRequest((n) => n + 1);
-    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && searchOn }).finally(() => setSubmitting(false));
+    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && searchOn, quote: quote?.text ?? null, ...(quote?.id ? { quoteId: quote.id } : {}) }).finally(() => setSubmitting(false));
     if (reply?.ok) return;
+    setConsumedQuote((current) => current === quoteKey ? null : current);
     setPending((current) => (current?.question === text ? null : current));
     setHidingSuggests(false);
     setDraft((current) => (current.trim() ? current : text));
@@ -165,13 +169,19 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
             context={quote && (
               <div className="quote-chip">
                 <div className="quote-chip-head">
-                  <span className="quote-chip-label"><Icon name="file" small />引用原文</span>
+                  <span className="quote-chip-label"><Icon name="file" small />引用内容</span>
                   <button
                     type="button"
                     className="quote-remove"
                     aria-label="不用这段"
                     title="移除引用"
-                    onClick={() => tabId && void send({ type: 'clearQuote', tabId })}
+                    onClick={() => {
+                      if (tabId === null) return;
+                      setConsumedQuote(quoteKey);
+                      void send({ type: 'clearQuote', tabId, quoteId: quote.id }).then((reply) => {
+                        if (!reply?.ok) setConsumedQuote((current) => current === quoteKey ? null : current);
+                      });
+                    }}
                   >
                     <Icon name="x" small />
                   </button>
@@ -181,7 +191,7 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
                     type="button"
                     className="quote-text"
                     disabled={!quote.blockId || !tabId}
-                    title={quote.blockId ? '在网页中查看原文' : undefined}
+                    title={quote.blockId ? '回到页面位置' : undefined}
                     onClick={() => quote.blockId && tabId && void send({ type: 'jump', tabId, blockId: quote.blockId })}
                   >
                     {quote.text}
@@ -247,18 +257,20 @@ function Turn({
           <SourceTag source={turn.source} />
           <Rich text={turn.answer} diagrams={diagrams} />
           {turn.citations.length > 0 && (
-            <p className="citations">
+            <details className="citations">
+              <summary>查看依据</summary>
               {turn.citations.map((citation, index) => (
                 <button
                   key={citation.blockId}
                   type="button"
                   className="link"
+                  aria-label={`回到文中 ${index + 1}`}
                   onClick={() => tabId && void send({ type: 'jump', tabId, blockId: citation.blockId })}
                 >
-                  看看原文{index + 1}
+                  位置 {index + 1}
                 </button>
               ))}
-            </p>
+            </details>
           )}
           {turn.references.length > 0 && (
             <p className="citations">

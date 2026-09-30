@@ -11,7 +11,7 @@ import type { CurrentRound, QuizChoice } from '../session';
  * 产品化改造 F5：出题方式支持选择题测验轮，评分由程序按答案钥匙判定，模型只写分析。
  */
 
-export const LEARN_VERSION = '2026-09-28.1';
+export const LEARN_VERSION = '2026-09-30.1';
 
 /** 五类回答（FR-013）。 */
 export const VERDICTS = ['correct', 'partial', 'misconception', 'unknown', 'objection'] as const;
@@ -31,11 +31,11 @@ export const QuizQuestionSchema = z.object({
   why: z.string().min(1).max(300),
 });
 
-const QuizSpecSchema = z.object({ questions: z.array(QuizQuestionSchema).min(1).max(5) });
+const QuizSpecSchema = z.object({ questions: z.array(QuizQuestionSchema).min(1).max(1) });
 
 export const LearnSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('question'), question: z.string().min(1) }),
-  z.object({ action: z.literal('quiz'), questions: z.array(QuizQuestionSchema).min(1).max(5) }),
+  z.object({ action: z.literal('quiz'), questions: z.array(QuizQuestionSchema).min(1).max(1) }),
   z.object({
     action: z.literal('feedback'),
     verdict: z.enum(VERDICTS),
@@ -91,11 +91,11 @@ export const LEARN_DEFAULT_POLICY = [
 const OPEN_ONLY = '出题方式（程序指定）：本轮只能提出开放问题（action=question），不要返回选择题。';
 const QUIZ_ONLY = [
   '出题方式（程序指定）：优先提出选择题测验（action=quiz）。',
-  '每轮通常出 2 到 4 道；原文只支持一个有价值的考点时只出 1 道，不凑题。题目相互独立；除非题干本身要求“选出所有正确项”，每题只给一个正确答案。',
+  '每次只出 1 道题，等待读者回答后再反馈和继续。除非题干本身要求“选出所有正确项”，每题只给一个正确答案。',
   '选项要彼此区分、长度相近，错误选项要像常见误解而不是明显胡说；不要在题干或选项里泄露哪个是对的。',
 ].join('\n');
 const MIXED =
-  '出题方式（程序指定）：你可以根据内容选择开放问题（action=question）或选择题测验（action=quiz）：概念辨析、边界判断适合选择题；需要读者自己组织语言表达的内容适合开放问题。选择题通常每轮 2 到 4 道，原文考点不足时只出 1 道，不凑数；除非题干要求多选，每题只给一个正确答案。';
+  '出题方式（程序指定）：你可以根据内容选择开放问题（action=question）或选择题测验（action=quiz）：概念辨析、边界判断适合选择题；需要读者自己组织语言表达的内容适合开放问题。选择题也每次只出 1 道，等待读者回答后再反馈和继续；除非题干要求多选，每题只给一个正确答案。';
 
 export function styleDirective(style: 'mixed' | 'quiz' | 'open'): string {
   if (style === 'quiz') return QUIZ_ONLY;
@@ -107,9 +107,10 @@ const LEARN_CONTRACT = [
   'AI 问的内容范围：question、nextQuestion、选择题、提示、讲解、评析、小结与 nextDirections 全部围绕当前原文；目标、旧策略或历史回答要求新情境、类比、迁移或拓展时，也只能使用原文已有的概念与案例。',
   '选择题的题干、正确答案和 why 必须有明确的原文依据。错误选项可改写原文关系或条件来表达可核对的误解，但不得编造原文外的专有名词、实体、数字或背景；这些选项只是待判断的说法，不能在讲解或小结中当成事实。',
   '判定与解释只依据原文和本轮实际作答，不添加外部评分标准。若发现先前题目超出原文，承认该题无法据原文检验，不把责任归于读者；已有程序判分不能改写，评析中应说明该题不作为理解能力的证据。后续换成有依据的问题，找不到就用 nextQuestion=null、nextQuiz=null 或空的 nextDirections，不强行继续。',
+  '一次只问一个主要问题，无论开放问题或选择题都等待读者回答后再继续，不输出题目清单。',
   '按 mode 返回对应 JSON：',
   '- mode=ask：{"action":"question","question":"..."}（开放问题；question 里只能有一个问号，且只能问一件事）',
-  '- mode=ask 也可以出选择题测验：{"action":"quiz","questions":[{"id":"q1","text":"...","choices":[{"id":"A","label":"..."}],"answer":["A"],"why":"..."}]}（1 到 5 道；每题 2 到 4 个选项；answer 是正确选项的 id，多选题才多于一个；why 是一句话理由；answer 与 why 绝不能出现在题干或选项文字里）',
+  '- mode=ask 也可以出选择题测验：{"action":"quiz","questions":[{"id":"q1","text":"...","choices":[{"id":"A","label":"..."}],"answer":["A"],"why":"..."}]}（只允许 1 道；每题 2 到 4 个选项；answer 是正确选项的 id，多选题才多于一个；why 是一句话理由；answer 与 why 绝不能出现在题干或选项文字里）',
   '- mode=respond 且当前是开放问题：{"action":"feedback","verdict":"correct|partial|misconception|unknown|objection","feedback":"...","nextQuestion":"..."|null}',
   '- mode=respond 且当前是选择题轮：{"action":"graded","analysis":"...","notes":[{"questionId":"...","note":"..."}],"nextQuestion":null,"nextQuiz":{"questions":[...]}|null}（analysis 给整轮评析：总体表现、错在哪、下一步补什么；notes 对每题给一句话判定；客观对错由程序按答案钥匙判定，你的评析必须与它一致，不得改判；nextQuiz 里的题目结构与 quiz 完全一致，每题都必须含 answer 与 why）',
   '- mode=hint：{"action":"hint","hint":"...","question":"..."}（只给提示，不给出答案）',

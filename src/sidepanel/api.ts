@@ -17,25 +17,33 @@ export type Client = {
 export function createClient(handlers: {
   onState: (state: PanelState) => void;
   onProgress: (chars: number, draft: string, reasoning: string) => void;
+  onQuote?: (event: Extract<Event, { type: 'quote' }>) => void;
 }): Client {
   let port: ReturnType<typeof browser.runtime.connect> | null = null;
   let nextId = 1;
   let disposed = false;
+  let attachment: Extract<Command, { type: 'attach' }> | null = null;
   const pending = new Map<number, (reply: Reply) => void>();
 
   const connect = () => {
     if (disposed) return;
-    port = browser.runtime.connect({ name: 'webknow' });
-    port.onMessage.addListener((raw) => {
+    const current = browser.runtime.connect({ name: 'webknow' });
+    port = current;
+    current.onMessage.addListener((raw) => {
+      if (disposed || port !== current) return;
       const event = raw as Event;
-      if (event.type === 'state') handlers.onState(event.state);
+      if (event.type === 'state') {
+        if (!attachment || event.state.tabId === attachment.tabId) handlers.onState(event.state);
+      }
       else if (event.type === 'progress') handlers.onProgress(event.chars, event.draft, event.reasoning);
+      else if (event.type === 'quote' && event.tabId === attachment?.tabId) handlers.onQuote?.(event);
       else if (event.type === 'reply') {
         pending.get(event.id)?.(event.reply);
         pending.delete(event.id);
       }
     });
-    port.onDisconnect.addListener(() => {
+    current.onDisconnect.addListener(() => {
+      if (port !== current) return;
       port = null;
       for (const resolve of pending.values()) {
         resolve({
@@ -46,12 +54,15 @@ export function createClient(handlers: {
       pending.clear();
       if (!disposed) setTimeout(connect, 250);
     });
+    // Reconnect restores only the subscription, never a possibly billable command.
+    if (attachment) current.postMessage({ id: nextId++, command: attachment });
   };
 
   connect();
 
   return {
     send(command) {
+      if (command.type === 'attach') attachment = command;
       if (!port) {
         return Promise.resolve({
           ok: false,

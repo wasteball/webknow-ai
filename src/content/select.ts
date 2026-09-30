@@ -1,5 +1,5 @@
 /**
- * 划词提问：用户划完一段，旁边出现「问这句」。
+ * 划词提问：用户划完一段，旁边出现「引用提问」。
  * 只在开始伴读（watch）之后听选取，不扫描页面、不把划词自动外发。
  *
  * 点按钮必须在 mousedown 里发出：真实顺序是 pointerdown → mousedown → pointerup → mouseup → click。
@@ -44,16 +44,33 @@ function ask(text: string): void {
   if (now < until) return;
   // 按下和松开不在同一次调用里。松开后的一小段里不要按选区把按钮再建出来。
   (globalThis as typeof globalThis & { [SKIP_KEY]?: number })[SKIP_KEY] = now + 400;
-  hide();
-  void browser.runtime.sendMessage({ type: 'quoteSelected', text: clipQuote(text) }).catch(() => {
-    // 后台暂时不可达时忽略：用户再点一次即可。
-  });
+  const host = document.getElementById(HOST_ID);
+  if (!host || host.dataset.pending === 'true') return;
+  const button = host.shadowRoot?.querySelector('button');
+  if (!button) return;
+  host.dataset.pending = 'true';
+  button.disabled = true;
+  button.textContent = '正在引用…';
+  const retry = (message: string) => {
+    host.dataset.pending = 'false';
+    button.disabled = false;
+    button.textContent = '重试引用';
+    button.title = message;
+    (globalThis as typeof globalThis & { [SKIP_KEY]?: number })[SKIP_KEY] = 0;
+  };
+  void browser.runtime.sendMessage({ type: 'quoteSelected', text: clipQuote(text) }).then(
+    (reply: { ok?: boolean; error?: { message?: string } } | undefined) => {
+      if (!reply?.ok) { retry(reply?.error?.message ?? '引用没有加入，请再试一次。'); return; }
+      if (document.getElementById(HOST_ID) === host) hide();
+    },
+    () => retry('连接暂时不可用，请重试引用。'),
+  );
 }
 
 function place(host: HTMLElement, rect: DOMRect): void {
   // 微信自己的菜单贴在选区上方。按钮放在选区下面，点得到。
   const below = rect.bottom + 8;
-  const top = below + 36 <= window.innerHeight ? below : Math.max(8, rect.top - 44);
+  const top = below + 44 <= window.innerHeight ? below : Math.max(8, rect.top - 52);
   const left = Math.min(window.innerWidth - 88, Math.max(8, rect.left));
   host.style.top = `${top}px`;
   host.style.left = `${left}px`;
@@ -112,14 +129,16 @@ function show(range: Range, text: string): void {
         background: #b42318;
         border: 0;
         border-radius: 999px;
-        min-height: 36px;
+        min-height: 44px;
         padding: 0 12px;
         cursor: pointer;
         box-shadow: 0 6px 20px rgba(28, 24, 20, .18);
       }
       button:hover { background: #8e1a12; }
+      button:disabled { cursor: wait; opacity: .7; }
+      button:focus-visible { outline: 2px solid #b42318; outline-offset: 3px; }
     </style>
-    <button type="button">问这句</button>
+    <button type="button">引用提问</button>
   `;
   const button = root.querySelector('button');
   const activate = (event: Event) => {

@@ -126,7 +126,7 @@ test.describe('主路径', () => {
     // 有真 Key 时必须走完整条链路。
     await expect(panel.getByText('等你在浏览器里允许读取这个网站')).toBeHidden({ timeout: 20_000 }).catch(() => {});
     await expect(panel.locator('.chip').first()).toBeVisible({ timeout: 60_000 });
-    await expect(panel.getByText(/读取范围：读到了 \d+ 段文字/)).toBeVisible();
+    await expect(panel.getByText(/读取范围：.*当前加载/)).toBeVisible();
     const bubbles = panel.locator('.chip');
     await expect(bubbles.first()).toBeVisible();
     expect(await bubbles.count()).toBeGreaterThan(0);

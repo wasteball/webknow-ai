@@ -4,12 +4,25 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { Learning } from '../src/sidepanel/components/Learning';
 import { Reading } from '../src/sidepanel/components/Reading';
+import { DEFAULT_LEARN_GOAL } from '../src/core/learn-policy';
 import { panel } from './helpers/panel';
 
 const question = { id: 'q1', text: '文章里的适用范围是什么？', multi: false,
   choices: [{ id: 'A', label: '仅有三个团队' }, { id: 'B', label: '所有城市' }] };
 
 describe('学习也是对话流', () => {
+  it('文章依据默认收起，展开后仍可回跳核对', () => {
+    const send = vi.fn(async () => ({ ok: true as const }));
+    render(<Reading state={panel({ chat: [{ id: 't1', question: '为什么？', answer: '因为样本有限。', source: 'original',
+      citations: [{ blockId: 'b_1' }], references: [], unanswered: [], at: 1 }] })} send={send} />);
+    const toggle = screen.queryByText('查看依据');
+    expect(toggle).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '看看原文1' })).toBeNull();
+    fireEvent.click(toggle!);
+    fireEvent.click(screen.getByRole('button', { name: '回到文中 1' }));
+    expect(send).toHaveBeenCalledWith({ type: 'jump', tabId: 7, blockId: 'b_1' });
+  });
+
   it('等待首问时，禁用的回答按钮变成可用的停止按钮', () => {
     const send = vi.fn(async () => ({ ok: true as const }));
     const state = panel({ learning: { goal: '核心', promptVersion: '1', used: 0,
@@ -49,11 +62,65 @@ describe('学习也是对话流', () => {
     expect(document.querySelector('.dock')?.querySelector('fieldset')).toBeNull();
   });
 
-  it('未开始的方向在 AI 消息里，输入保持为聊天框', () => {
-    render(<Learning state={panel()} send={vi.fn(async () => ({ ok: true as const }))} />);
-    const direction = screen.getByRole('button', { name: '这篇文章的核心内容' });
-    expect(document.querySelector('.chat')?.contains(direction)).toBe(true);
-    expect(screen.getByLabelText('自己写一个方向').tagName).toBe('TEXTAREA');
+  it('首次进入由 AI 先问，隐藏或切换回来不重复开场', async () => {
+    const send = vi.fn(async () => ({ ok: true as const }));
+    const state = panel();
+    const { rerender } = render(<Learning state={state} send={send} active={false} />);
+    expect(send).not.toHaveBeenCalled();
+    rerender(<Learning state={state} send={send} active />);
+    expect(send).toHaveBeenCalledWith({ type: 'learnStart', tabId: 7, goal: DEFAULT_LEARN_GOAL });
+    expect(screen.queryByRole('button', { name: '这篇文章的核心内容' })).toBeNull();
+    expect(document.querySelector('.bubble.user')).toBeNull();
+    await act(async () => {});
+    rerender(<Learning state={state} send={send} active={false} />);
+    rerender(<Learning state={state} send={send} active />);
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it('另一模式生成结束后才开始首问，失败不循环重发', async () => {
+    const send = vi.fn(async () => ({ ok: false as const, error: { code: 'INTERNAL' as const, message: '失败', retryable: true } }));
+    const state = panel();
+    const { rerender } = render(<Learning state={{ ...state, busy: { kind: 'answer', chars: 0, draft: '', reasoning: '' } }} send={send} />);
+    expect(send).not.toHaveBeenCalled();
+    rerender(<Learning state={state} send={send} />);
+    await act(async () => {});
+    expect(send).toHaveBeenCalledOnce();
+    rerender(<Learning state={state} send={send} active={false} />);
+    rerender(<Learning state={state} send={send} active />);
+    expect(send).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '重新提问' }));
+    expect(send).toHaveBeenCalledTimes(2);
+    await act(async () => {});
+  });
+
+  it('单选和多选作答提交后立即作为用户消息出现', async () => {
+    let finish!: (value: { ok: true }) => void;
+    const send = vi.fn(() => new Promise<{ ok: true }>((resolve) => { finish = resolve; }));
+    const multi = { ...question, multi: true };
+    const state = panel({ learning: { goal: '核心', promptVersion: '1', used: 1, status: 'active',
+      current: { kind: 'quiz', questions: [multi], answerKey: [] },
+      log: [{ role: 'quiz', text: multi.text, quiz: [multi], at: 1 }] } });
+    render(<Learning state={state} send={send} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: '仅有三个团队' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '所有城市' }));
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    expect(document.querySelector('.bubble.user')?.textContent).toContain('仅有三个团队、所有城市');
+    expect(send).toHaveBeenCalledWith({ type: 'learnAnswer', tabId: 7, text: '（选择题作答）', choices: [{ questionId: 'q1', choiceIds: ['A', 'B'] }] });
+    await act(async () => finish({ ok: true }));
+  });
+
+  it('即使下一题文字相同，上一题的选择也不能自动带入', () => {
+    const learning = { goal: '核心', promptVersion: '1', used: 1, status: 'active' as const,
+      current: { kind: 'quiz' as const, questions: [question], answerKey: [] },
+      log: [{ role: 'quiz' as const, text: question.text, quiz: [question], at: 1 }] };
+    const send = vi.fn(async () => ({ ok: true as const }));
+    const { rerender } = render(<Learning state={panel({ learning })} send={send} />);
+    const radio = screen.getByRole('radio', { name: '仅有三个团队' }) as HTMLInputElement;
+    fireEvent.click(radio);
+    expect(radio.checked).toBe(true);
+    rerender(<Learning state={panel({ learning: { ...learning, used: 2, log: [...learning.log,
+      { role: 'quiz', text: question.text, quiz: [question], at: 2 }] } })} send={send} />);
+    expect((screen.getByRole('radio', { name: '仅有三个团队' }) as HTMLInputElement).checked).toBe(false);
   });
 
   it('作答后立即看见自己的消息，并保留生成期间新写的内容', async () => {

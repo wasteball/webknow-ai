@@ -497,8 +497,18 @@ export function extractDocument(): BlocksPayload {
   }
   if (usedFallback) warnings.push('这一页不太像完整文章，按页面上的文字块读取。');
 
+  const textBlocks = blocks.filter((block) => block.role !== 'table-cell' && block.role !== 'image');
+  const bodyBlocks = textBlocks.filter((block) => block.role !== 'heading');
+  const rangeBlocks = bodyBlocks.length ? bodyBlocks : textBlocks;
+  const first = rangeBlocks[0];
+  const last = rangeBlocks.at(-1);
   const completeness: Completeness = {
-    scope: 'readability-article',
+    scope: usedFallback ? 'page-text' : 'readability-article',
+    textRange: first && last ? {
+      characters: textBlocks.reduce((sum, block) => sum + block.content.replace(/\s/g, '').length, 0),
+      first: { blockId: first.id, text: first.content.slice(0, 100), jumpable: Boolean(first.anchor.sessionAnchorId) },
+      last: { blockId: last.id, text: last.content.slice(-100), jumpable: Boolean(last.anchor.sessionAnchorId) },
+    } : undefined,
     text: coverage(
       textCaptured < textFound ? 'partial' : textFound === 0 && textCaptured === 0 ? 'not-present' : 'parsed',
       textFound,

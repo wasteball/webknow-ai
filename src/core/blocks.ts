@@ -42,7 +42,12 @@ export type CoverageStatus = 'parsed' | 'partial' | 'not-present' | 'unavailable
 export type Coverage = { status: CoverageStatus; found: number; captured: number };
 
 export type Completeness = {
-  scope: 'readability-article';
+  scope: 'readability-article' | 'page-text';
+  textRange?: {
+    characters: number;
+    first: { blockId: string; text: string; jumpable?: boolean };
+    last: { blockId: string; text: string; jumpable?: boolean };
+  };
   text: Coverage;
   tables: Coverage;
   images: Coverage;
@@ -119,33 +124,30 @@ export function quoteFrom(blocks: EvidenceBlock[], blockId: string): string | un
  * 未解析的图片、表格与无法定位的块必须出现在这里，也不得被摘要声称覆盖。
  */
 export function describeCompleteness(completeness: Completeness): string {
-  const parts: string[] = [`已读取正文块：${completeness.text.captured} 个`];
-  if (completeness.tables.status === 'partial') {
-    parts.push(`表格：${completeness.tables.captured}/${completeness.tables.found} 个单元格可用`);
-  } else if (completeness.tables.status === 'parsed') {
-    parts.push(`表格单元格：${completeness.tables.captured} 个`);
+  const text = completeness.text;
+  const body = completeness.scope === 'page-text'
+    ? '按当前加载的页面文字读取，未确认完整文章'
+    : text.status === 'partial' || completeness.truncated
+      ? '只读取到当前加载的部分正文'
+      : text.captured > 0 ? '已读取当前加载的正文' : '尚未读取到可用正文';
+  const characters = completeness.textRange?.characters;
+  const parts = [body + (characters ? `（约 ${characters} 字）` : '')];
+  if (completeness.tables.found > 0) {
+    parts.push(completeness.tables.status === 'parsed' ? '表格文字已读取' : '表格只读取到部分文字');
   }
-  if (completeness.images.found > 0) {
-    const { found, captured } = completeness.images;
-    if (captured > 0) {
-      parts.push(`图片：已读 ${captured}/${found} 张，内容是模型转述，可能有误，不得当成作者原文`);
-      if (found > captured) parts.push(`其余 ${found - captured} 张图片未读，不得推测`);
-    } else {
-      parts.push(`图片：${found} 张未解析，其内容未纳入判断`);
-    }
+  const { found, captured } = completeness.images;
+  if (found > 0) {
+    if (captured > 0) parts.push(`图片已转述 ${captured}/${found} 张（模型转述，可能有误，并非作者原话）`);
+    if (found > captured) parts.push(`${found - captured} 张图片未读`);
   }
-  if (completeness.frames.found > completeness.frames.captured) {
-    parts.push(
-      `内嵌页面：${completeness.frames.found - completeness.frames.captured} 个跨来源框架未读取`,
-    );
+  const framesUnread = completeness.frames.found - completeness.frames.captured;
+  if (framesUnread > 0) parts.push(`${framesUnread} 个跨来源内嵌页面未读取`);
+  if (completeness.excludedBlocks > 0) parts.push('部分内容已读取，但无法回到页面位置');
+  if (completeness.truncated) parts.push('本次没有覆盖全文');
+  for (const warning of new Set(completeness.warnings)) {
+    if (warning === '有的图片没读到。' && found > captured) continue;
+    if (completeness.scope === 'page-text' && warning.startsWith('这一页不太像完整文章')) continue;
+    parts.push(warning.replace('当前这家读不了图。', '当前模型不支持读图。'));
   }
-  if (completeness.excludedBlocks > 0) {
-    parts.push(`${completeness.excludedBlocks} 处正文读到了，但没法点回原文`);
-  }
-  if (completeness.truncated) {
-    parts.push('本次只处理了部分正文，未覆盖全文');
-  }
-  // 未展开的内容必须让模型也知道，否则它会当成全文来概括。
-  parts.push(...completeness.warnings);
   return parts.join('；');
 }

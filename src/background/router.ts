@@ -14,7 +14,7 @@ import { createSession, emptySession, markStale } from '../core/session';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
 import { assertOutboundConfirmation, listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
-import { abortAllRuns, abortRun, handleIntent, type RunnerHooks } from './runner';
+import { abortAllRuns, abortRun, handleIntent, recoverInterruptedRun, type RunnerHooks } from './runner';
 import { clearDiagramViews } from './diagram-cleanup';
 import {
   OUTBOUND_NOTICE_VERSION,
@@ -48,6 +48,7 @@ import {
 type PanelPort = { raw: { postMessage: (message: Event) => void }; tabId: number | null };
 
 const ports = new Set<PanelPort>();
+const stateBuilds = new Map<number | null, number>();
 
 /**
  * 正在写的读者正文。它不进会话：半截结果不能当完整回答留下。
@@ -122,7 +123,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     };
   }
 
-  const session = await getSession(tabId);
+  const session = await recoverInterruptedRun(tabId);
   const pending = await getPending(tabId);
   const url = await urlForTab(tabId, pending?.url ?? null, session?.url ?? null);
   const permission = permissionFor(url);
@@ -234,14 +235,15 @@ async function saveQuote(tabId: number, text: string): Promise<AppError | null> 
     return appError('INTERNAL', '划的这段太短了，再多选几个字。', false);
   }
   await putSession({ ...session, quote, updatedAt: Date.now() });
+  broadcast(tabId, { type: 'quote', tabId, sessionId: session.id, quote });
   await pushState(tabId);
   return null;
 }
 
-/** 内容脚本在用户点「问这句」时上报。先开侧栏（赶在手势消失前），再写入划词。 */
-export async function onQuoteSelected(tabId: number, text: string): Promise<void> {
+/** 内容脚本在用户点「引用提问」时上报。先开侧栏（赶在手势消失前），再写入划词。 */
+export async function onQuoteSelected(tabId: number, text: string): Promise<AppError | null> {
   try {
-    await browser.sidePanel.open({ tabId });
+    void browser.sidePanel.open({ tabId }).catch(() => {});
   } catch {
     // 侧栏已经开着，或这一次没赶上用户手势：划词仍会写进状态，打开侧栏就能接着问。
   }
@@ -253,6 +255,7 @@ export async function onQuoteSelected(tabId: number, text: string): Promise<void
       await pushState(tabId);
     }
   }
+  return error;
 }
 
 const hooks: RunnerHooks = {
@@ -269,7 +272,10 @@ const hooks: RunnerHooks = {
 };
 
 async function pushState(tabId: number | null): Promise<void> {
-  broadcast(tabId, { type: 'state', state: await buildPanelState(tabId) });
+  const revision = (stateBuilds.get(tabId) ?? 0) + 1;
+  stateBuilds.set(tabId, revision);
+  const state = await buildPanelState(tabId);
+  if (stateBuilds.get(tabId) === revision) broadcast(tabId, { type: 'state', state });
 }
 
 function broadcast(tabId: number | null, event: Event): void {
@@ -322,7 +328,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         // 面板刚连上（或切换了标签页）：必须立刻推一次完整状态，否则界面只能停在“正在连接后台”。
         // 同一标签页可能有多个端口（重开侧栏、诊断连接），attach 后统一广播，保证各端口状态一致。
         if (port) {
-          broadcast(port.tabId, { type: 'state', state: await buildPanelState(port.tabId) });
+          await pushState(port.tabId);
         }
         return { ok: true };
       }
@@ -339,7 +345,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         // 逐题联网开关由界面决定：这里必须原样透传，否则开关是死的（F3）。
         return finish(
           await handleIntent(
-            { kind: 'ask', tabId: command.tabId, question: command.question, search: command.search },
+            { kind: 'ask', tabId: command.tabId, question: command.question, search: command.search, quote: command.quote, quoteId: command.quoteId },
             hooks,
           ),
         );
@@ -349,7 +355,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
 
       case 'clearQuote': {
         const session = await getSession(command.tabId);
-        if (session) {
+        if (session && (command.quoteId === undefined || session.quote?.id === command.quoteId)) {
           await putSession({ ...session, quote: null, updatedAt: Date.now() });
           await pushState(command.tabId);
         }
@@ -363,7 +369,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
           return { ok: false, error: appError('STALE_PAGE', '这个话题过期了（页面内容变了），重新开始伴读吧。', true) };
         }
         return finish(
-          await handleIntent({ kind: 'ask', tabId: command.tabId, question: bubble.question }, hooks),
+          await handleIntent({ kind: 'ask', tabId: command.tabId, question: bubble.question, quote: null }, hooks),
         );
       }
 
@@ -585,7 +591,7 @@ async function startSession(tabId: number): Promise<Reply> {
     if (!expectedOrigin) {
       throw appError(
         'PERMISSION_MISSING',
-        '还不知道你正在看哪个网站。请在当前页点工具栏上的知伴图标，再点侧栏阅读入口。',
+        '还不知道你正在看哪个网站。请在当前页点工具栏上的WebKnow AI图标，再点侧栏阅读入口。',
         false,
       );
     }
@@ -660,6 +666,7 @@ export async function onTabSettled(tabId: number): Promise<void> {
 
 /** 标签页关闭：清除该标签页的会话数据（FR-030）。 */
 export async function onTabRemoved(tabId: number): Promise<void> {
+  stateBuilds.delete(tabId);
   await dropSession(tabId);
   await clearPending(tabId);
 }

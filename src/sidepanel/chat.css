@@ -3,6 +3,7 @@ body.sidepanel { --ink-3: #6b6b6b; }
 @media (prefers-color-scheme: dark) { body.sidepanel { --ink-3: #a3a3a3; } }
 body.sidepanel .panel:not(.ready-chat) { overflow: auto; }
 body.sidepanel .panel.ready-chat { overflow: hidden; }
+.panel-header { flex: none; }
 .conversation-top { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
 body.sidepanel .ready-chat .conversation-top .context { flex: 0 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; }
 body.sidepanel .ready-chat .modes { flex: none; }
@@ -15,7 +16,7 @@ body.sidepanel .modes { margin: 4px 0 0; }
 .chat-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 16px 0 0; }
 .chat-scroll:focus-visible { outline: 2px solid var(--ink-3); outline-offset: -2px; border-radius: 6px; }
 body.sidepanel .conversation .chat { overflow: visible; flex: none; }
-.chat-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 13px; min-height: 40px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); box-shadow: var(--sh-2); border-radius: 999px; z-index: 2; }
+.chat-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; font-size: 13px; min-width: 44px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); box-shadow: var(--sh-2); border-radius: 999px; z-index: 2; }
 .learn-divider { display: flex; align-items: center; gap: 12px; margin: 8px 0 22px; font-size: 12px; line-height: 1.6; color: var(--ink-2); }
 .learn-divider::before, .learn-divider::after { content: ''; height: 1px; flex: 1; background: var(--line); }
 .learn-past { padding-bottom: 8px; }
@@ -36,3 +37,10 @@ button.quiet.diagram-open { width: auto; min-height: 36px; gap: 6px; padding: 4p
 .assist-menu .quiet { width: 100%; justify-content: flex-start; font-size: 14px; padding: 8px 10px; }
 body.sidepanel .dock .composer-field textarea { max-height: clamp(52px, 24vh, 180px); }
 @media (prefers-reduced-motion: reduce) { .chat-scroll { scroll-behavior: auto; } }
+
+.latest-arrow { transform: rotate(180deg); }
+.scope-details { font-size: 12px; line-height: 1.6; color: var(--ink-2); margin-top: 4px; }
+.scope-details summary, .citations summary { cursor: pointer; }
+.scope-details p { margin: 6px 0 0; }
+.scope-details .link { font-size: inherit; line-height: inherit; text-align: left; }
+.citations summary { margin-bottom: 4px; }

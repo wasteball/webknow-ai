@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { chromium, expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 /**
- * 划词提问的真实浏览器验证：在网页上真的划一段、真的点「问这句」，
+ * 划词提问的真实浏览器验证：在网页上真的划一段、真的点「引用提问」，
  * 然后看后台会话里有没有这段引用。
  *
  * 这条用例存在的理由：这个功能在 jsdom 里一直是绿的，真实 Chrome 里却点了没反应。
@@ -66,7 +66,7 @@ test.describe('划词提问', () => {
     server?.close();
   });
 
-  test('划一段再点问这句，后台会话里出现这段引用', async () => {
+  test('划一段再点引用提问，后台会话里出现这段引用', async () => {
     const worker = context.serviceWorkers()[0];
     if (!worker) throw new Error('缺少 service worker');
     const manifestPermissions = await worker.evaluate(() => chrome.runtime.getManifest().host_permissions ?? []);

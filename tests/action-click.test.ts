@@ -50,7 +50,7 @@ vi.mock('../src/background/store', () => ({
 
 vi.mock('../src/background/ima', () => ({ hasImaCredentials: vi.fn(async () => false) }));
 vi.mock('../src/background/page', () => ({ extractPage: mocks.extractPage }));
-vi.mock('../src/background/runner', () => ({ handleIntent: vi.fn(), abortRun: vi.fn() }));
+vi.mock('../src/background/runner', () => ({ handleIntent: vi.fn(), abortRun: vi.fn(), recoverInterruptedRun: mocks.getSession }));
 
 import { buildPanelState, onActionClicked } from '../src/background/router';
 

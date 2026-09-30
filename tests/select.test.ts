@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const sendMessage = vi.fn(() => Promise.resolve());
+const sendMessage = vi.fn(async () => ({ ok: true }));
 
 vi.stubGlobal('browser', { runtime: { sendMessage } });
 
@@ -53,16 +53,16 @@ describe('划词提问按钮', () => {
     document.getElementById('wka-quote-ask')?.remove();
   });
 
-  it('划完一段会出现问这句', () => {
+  it('划完一段会出现引用提问', () => {
     selectParagraph();
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    expect(quoteButton()?.textContent).toBe('问这句');
+    expect(quoteButton()?.textContent).toBe('引用提问');
     const host = document.getElementById('wka-quote-ask');
     // 选区底边在 64，按钮贴在下面，不和页面自己的菜单抢同一行。
     expect(host?.style.top).toBe('72px');
   });
 
-  it('点问这句在 mousedown 就发出划词；随后的 mouseup 不能把这次点击吃掉', () => {
+  it('点引用提问在 mousedown 就发出划词；随后的 mouseup 不能把这次点击吃掉', () => {
     selectParagraph();
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     const button = quoteButton();
@@ -88,11 +88,11 @@ describe('划词提问按钮', () => {
     });
   });
 
-  it('超过八百字仍然给出问这句，发出去的是裁过的原文', () => {
+  it('超过八百字仍然给出引用提问，发出去的是裁过的原文', () => {
     document.body.innerHTML = `<p>${'甲'.repeat(900)}</p>`;
     selectParagraph();
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    expect(quoteButton()?.textContent).toBe('问这句');
+    expect(quoteButton()?.textContent).toBe('引用提问');
     quoteButton()?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
     expect(sendMessage).toHaveBeenCalledWith({
       type: 'quoteSelected',
@@ -104,24 +104,33 @@ describe('划词提问按钮', () => {
     selectParagraph();
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     window.dispatchEvent(new Event('scroll'));
-    expect(quoteButton()?.textContent).toBe('问这句');
+    expect(quoteButton()?.textContent).toBe('引用提问');
+  });
+
+  it('保存失败时保留可重试的引用按钮，而不是静默消失', async () => {
+    sendMessage.mockRejectedValueOnce(new Error('断开'));
+    selectParagraph();
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    quoteButton()?.click();
+    await vi.waitFor(() => expect(quoteButton()?.textContent).toBe('重试引用'));
+    expect(quoteButton()?.disabled).toBe(false);
   });
 
   it('给正文加上可选中样式，压过页面的禁止选择', () => {
     expect(document.getElementById('wka-quote-select')?.textContent).toContain('user-select:text');
   });
 
-  it('页面在松开前清掉选区，仍然用刚才划到的原文给出问这句', () => {
+  it('页面在松开前清掉选区，仍然用刚才划到的原文给出引用提问', () => {
     window.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
     selectParagraph();
     document.dispatchEvent(new Event('selectionchange'));
     window.getSelection()?.removeAllRanges();
     window.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }));
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    expect(quoteButton()?.textContent).toBe('问这句');
+    expect(quoteButton()?.textContent).toBe('引用提问');
   });
 
-  it('页面在文档捕获阶段拦住按下，问这句仍然发得出去', () => {
+  it('页面在文档捕获阶段拦住按下，引用提问仍然发得出去', () => {
     selectParagraph();
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     document.addEventListener('mousedown', (event) => event.stopPropagation(), true);
@@ -177,6 +186,6 @@ describe('划词提问按钮', () => {
     paragraph.addEventListener('mouseup', () => window.getSelection()?.removeAllRanges());
     selectParagraph();
     paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    expect(quoteButton()?.textContent).toBe('问这句');
+    expect(quoteButton()?.textContent).toBe('引用提问');
   });
 });

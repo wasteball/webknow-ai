@@ -141,6 +141,8 @@ const BLOCKS = [
 
 const COMPLETENESS = {
   scope: 'readability-article',
+  textRange: { characters: BLOCKS.reduce((sum, block) => sum + block.content.length, 0),
+    first: { blockId: 'blk_2', text: BLOCKS[1]!.content }, last: { blockId: 'blk_3', text: BLOCKS[2]!.content } },
   text: { status: 'parsed', found: 3, captured: 3 },
   tables: { status: 'not-present', found: 0, captured: 0 },
   images: { status: 'not-present', found: 0, captured: 0 },
@@ -161,6 +163,8 @@ const FIXTURE_SESSION = {
   completeness: COMPLETENESS,
   guide: { summary: SUMMARY, bubbles: BUBBLES },
   chat: CHAT,
+  // Layout-only tab switching must not start an unmocked model request.
+  learning: { goal: '理解这篇文章的核心内容', promptVersion: '1', used: 0, status: 'closed', current: null, log: [] },
 };
 
 let context: BrowserContext;
@@ -194,7 +198,7 @@ test.afterAll(async () => {
  * 写入会话后通过临时端口发 attach 命令，让后台把最新状态推给侧栏（确定性触发，
  * 不依赖标签页切换事件的时序）。会话 url 指向 127.0.0.1，e2e 构建对该来源静态授予权限。
  */
-async function openPanel(width: number): Promise<{ panel: Page; tabId: number | null }> {
+async function openPanel(width: number): Promise<{ panel: Page; tabId: number | null; article: Page }> {
   const panel = await context.newPage();
   await panel.setViewportSize({ width, height: 920 });
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
@@ -211,14 +215,14 @@ async function openPanel(width: number): Promise<{ panel: Page; tabId: number | 
   await context.serviceWorkers()[0]!.evaluate(
     async ([id, session]) => {
       await chrome.storage.session.set({
-        [`sess:${id}`]: { ...session, tabId: id, learning: null, updatedAt: Date.now() },
+        [`sess:${id}`]: { ...session, tabId: id, updatedAt: Date.now() },
       });
     },
     [tabId, FIXTURE_SESSION] as const,
   );
 
   await pushState(panel, tabId);
-  return { panel, tabId };
+  return { panel, tabId, article };
 }
 
 /** 通过临时端口发 attach：后台先把完整状态推给侧栏的常驻端口，再回复本端口。 */
@@ -343,7 +347,7 @@ test('报错时设置与文章标题同排，错误提示不被齿轮遮挡', as
 });
 
 test('长读取范围与错误提示在短窗和大字下不遮住发送或停止', async () => {
-  const { panel, tabId } = await openPanel(360);
+  const { panel, tabId, article } = await openPanel(360);
   await panel.setViewportSize({ width: 360, height: 360 });
   const worker = context.serviceWorkers()[0]!;
   await worker.evaluate(async (id) => {
@@ -377,17 +381,42 @@ test('长读取范围与错误提示在短窗和大字下不遮住发送或停�
       expect(await submit.evaluate((button, point) => button.contains(document.elementFromPoint(point.x, point.y)), center)).toBe(true);
     }
   }
+  // A stored run without a live controller now correctly recovers as interrupted.
+  // Use a real, paused request rather than a synthetic orphan to test the Stop control.
+  const url = 'http://127.0.0.1/layout-readable.html';
+  await context.route(url, (route) => route.fulfill({ contentType: 'text/html', body: '<article><h1>试点范围</h1><p>本研究观察三个配送团队四周，新方案平均处理时间为八十分钟，原方案为一百分钟。样本只有三个经过培训的团队，不能直接推广到其他城市。</p></article>' }));
+  await article.goto(url);
+  await article.bringToFront();
   await worker.evaluate(async (id) => {
+    await chrome.scripting.executeScript({ target: { tabId: id! }, files: ['/content-scripts/content.js'] });
+    const reply = await chrome.tabs.sendMessage(id!, { type: 'extract' }) as { ok: boolean; data: Record<string, unknown> };
+    if (!reply.ok) throw new Error('读取布局夹具失败');
     const stored = await chrome.storage.session.get(`sess:${id}`);
-    await chrome.storage.session.set({ [`sess:${id}`]: { ...(stored[`sess:${id}`] as Record<string, unknown>), run: { id: 'r_stop', kind: 'learn', startedAt: Date.now() } } });
+    await chrome.storage.session.set({ [`sess:${id}`]: { ...(stored[`sess:${id}`] as Record<string, unknown>),
+      ...reply.data, state: 'READY', run: null, error: null, learning: null, imagesAttached: true,
+      guide: { summary: '试点的样本有限。', bubbles: [] } } });
   }, tabId);
+  let release!: () => void;
+  let requested = false;
+  const paused = new Promise<void>((resolve) => { release = resolve; });
+  await context.route('https://api.deepseek.com/chat/completions', async (route) => {
+    requested = true;
+    await paused;
+    await route.fulfill({ status: 200, contentType: 'text/event-stream', body: 'data: [DONE]\n\n' }).catch(() => {});
+  });
   await pushState(panel, tabId);
+  // The selected AI 问 mode starts its first real request as soon as the readable fixture is ready.
+  await expect.poll(() => requested).toBe(true);
   const stop = panel.getByRole('button', { name: '停止', exact: true });
   await expect(stop).toBeEnabled();
   const stopBox = await stop.boundingBox();
   expect(stopBox!.y + stopBox!.height).toBeLessThanOrEqual(360);
-  // 本条预置 busy 只验证布局与点击可达；真实中止请求由 conversation.spec 覆盖。
-  await stop.click({ trial: true });
+  await stop.click();
+  release();
+  await expect(stop).toBeHidden();
+  await context.unroute('https://api.deepseek.com/chat/completions');
+  await context.unroute(url);
+  await article.close();
   await panel.close();
   await worker.evaluate(async () => {
     const { config } = await chrome.storage.local.get('config');

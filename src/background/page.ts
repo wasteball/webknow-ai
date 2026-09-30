@@ -21,7 +21,7 @@ export async function ensureInjected(tabId: number): Promise<void> {
       ? error
       : appError(
           'PERMISSION_MISSING',
-          '读不了这一页。请在当前页再点一次工具栏上的知伴图标，然后点侧栏阅读入口。我们不会一直盯着网页。',
+          '读不了这一页。请在当前页再点一次工具栏上的WebKnow AI图标，然后点侧栏阅读入口。我们不会一直盯着网页。',
           false,
         );
   }
@@ -39,7 +39,7 @@ async function send(tabId: number, request: ContentRequest): Promise<ContentRepl
       ok: false,
       error: appError(
         'STALE_PAGE',
-        '这一页已经变了或者关掉了。请在当前页再点工具栏上的知伴图标，然后点侧栏阅读入口。',
+        '这一页已经变了或者关掉了。请在当前页再点工具栏上的WebKnow AI图标，然后点侧栏阅读入口。',
         true,
       ),
     };
@@ -55,7 +55,7 @@ function unwrap<T>(reply: ContentReply): T {
  * 提取正文；这一步之后才第一次产生可以外发的正文（FR-006）。
  * 只在用户点了入口，或在同一页发出问题、而正文已经改过时调用。换页本身不读。
  */
-/** 页面主世界放开选区。插不进去时内容脚本仍会显示「问这句」。 */
+/** 页面主世界放开选区。插不进去时内容脚本仍会显示「引用提问」。 */
 async function allowPageSelection(tabId: number): Promise<void> {
   try {
     await browser.scripting.executeScript({

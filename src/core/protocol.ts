@@ -77,9 +77,9 @@ export type Command =
   | { type: 'attach'; tabId: number | null }
   | { type: 'start'; tabId: number }
   | { type: 'stop'; tabId: number }
-  | { type: 'ask'; tabId: number; question: string; search?: boolean }
+  | { type: 'ask'; tabId: number; question: string; search?: boolean; quote?: string | null; quoteId?: string }
   | { type: 'setQuote'; tabId: number; text: string }
-  | { type: 'clearQuote'; tabId: number }
+  | { type: 'clearQuote'; tabId: number; quoteId?: string }
   | { type: 'explore'; tabId: number; bubbleId: string }
   | { type: 'learnStart'; tabId: number; goal: string }
   | { type: 'learnAnswer'; tabId: number; text: string; choices?: { questionId: string; choiceIds: string[] }[] }
@@ -111,6 +111,7 @@ export type Reply =
 export type Event =
   | { type: 'state'; state: PanelState }
   | { type: 'progress'; chars: number; draft: string; reasoning: string }
+  | { type: 'quote'; tabId: number; sessionId: string; quote: Quote }
   | { type: 'reply'; id: number; reply: Reply };
 
 export type PortRequest = { id: number; command: Command };

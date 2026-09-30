@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode, type TextareaHTMLAttributes } from 'react';
 
-import type { Completeness } from '../../core/blocks';
+import { describeCompleteness, type Completeness } from '../../core/blocks';
 import type { AppError } from '../../core/errors';
 import type { AnswerSource, Verdict } from '../../core/session';
 import { Icon } from './Icon';
@@ -73,40 +73,21 @@ export function VerdictTag({ verdict }: { verdict: Verdict }) {
 }
 
 /** 读取范围：未解析与缺失范围始终可见（FR-007/FR-018）。 */
-export function ScopeLine({ completeness }: { completeness: Completeness | null }) {
+export function ScopeLine({ completeness, onJump }: {
+  completeness: Completeness | null;
+  onJump?: (blockId: string) => void;
+}) {
   if (!completeness) return null;
-  const parts = [`读到了 ${completeness.text.captured} 段文字`];
-  if (completeness.text.status === 'partial') parts.push('正文只读到一部分');
-  if (completeness.tables.found > 0) {
-    parts.push(
-      completeness.tables.status === 'parsed'
-        ? `表格 ${completeness.tables.captured} 格`
-        : `表格只读到 ${completeness.tables.captured}/${completeness.tables.found} 格`,
-    );
-  }
-  if (completeness.images.found > 0) {
-    const { found, captured } = completeness.images;
-    if (captured > 0) {
-      parts.push(`读了 ${captured} 张图（模型转述，可能有误）`);
-      if (found > captured) parts.push(`还有 ${found - captured} 张没读`);
-    } else if (completeness.warnings.some((warning) => warning.includes('读不了图') || warning.includes('没读到'))) {
-      parts.push(`${found} 张图片没读`);
-    } else {
-      parts.push(`${found} 张图片还没读`);
-    }
-  }
-  const framesUnread = completeness.frames.found - completeness.frames.captured;
-  if (framesUnread > 0) parts.push(`${framesUnread} 个内嵌页面没读`);
-  if (completeness.excludedBlocks > 0) parts.push(`${completeness.excludedBlocks} 处读到了，但没法点回原文`);
-  if (completeness.truncated) parts.push('没有读完整篇');
-  // 未展开的内容、无法定位的块等，都在这里如实告诉用户。
-  parts.push(...completeness.warnings);
-  return (
-    <p className="scope">
-      <Icon name="file" small />
-      读取范围：{parts.join('；')}
-    </p>
-  );
+  const range = completeness.textRange;
+  return <div className="scope-block">
+    <p className="scope"><Icon name="file" small />读取范围：{describeCompleteness(completeness)}</p>
+    {range && <details className="scope-details">
+      <summary>核对读取范围</summary>
+      <p>仅包括当前已加载、被提取的内容。起止位置供核对，不代表尚未加载的部分也已读取。</p>
+      <p>开头：{range.first.jumpable === false ? <span>{range.first.text}（无法定位）</span> : <button type="button" className="link" aria-label="回到正文开头" disabled={!onJump} onClick={() => onJump?.(range.first.blockId)}>{range.first.text}</button>}</p>
+      <p>结尾：{range.last.jumpable === false ? <span>{range.last.text}（无法定位）</span> : <button type="button" className="link" aria-label="回到正文结尾" disabled={!onJump} onClick={() => onJump?.(range.last.blockId)}>{range.last.text}</button>}</p>
+    </details>}
+  </div>;
 }
 
 export function ErrorBanner({ error, onDismiss }: { error: AppError; onDismiss?: () => void }) {

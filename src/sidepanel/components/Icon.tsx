@@ -22,7 +22,7 @@ export function BrandMark({ size = 28 }: { size?: number }) {
     >
       <rect width="32" height="32" rx="8" fill="currentColor" />
       <path
-        fill="#fff"
+        fill="var(--paper, #fff)"
         d="M11.2 5.2h9.6v16.4L16 18.2l-4.8 3.4V5.2Z"
       />
     </svg>

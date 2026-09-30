@@ -1,9 +1,9 @@
 {
   "name": "webknow-ai",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "type": "module",
-  "description": "知伴：在公开网页旁帮助读者看懂文章、发现问题，并通过双向对话检验理解",
+  "description": "WebKnow AI：在公开网页旁提供摘要、连续问答和 AI 主动提问的网页伴随式 AI",
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",

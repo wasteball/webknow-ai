@@ -86,7 +86,7 @@ test('知识库先提供 IMA 官网扫码查看入口，并说明扩展连接所
     'href',
     'https://ima.qq.com/',
   );
-  await expect(page.getByText('扫码只登录 ima 官网；若要让知伴访问知识库，还需配置开放接口凭证。')).toBeVisible();
+  await expect(page.getByText('扫码只登录 ima 官网；若要让WebKnow AI访问知识库，还需配置开放接口凭证。')).toBeVisible();
   await page.close();
 });
 

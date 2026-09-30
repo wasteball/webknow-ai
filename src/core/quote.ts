@@ -7,6 +7,8 @@ export const QUOTE_MIN_CHARS = 4;
 export const QUOTE_MAX_CHARS = 500;
 
 export type Quote = {
+  /** Identifies the selection, including a later selection of the same words. */
+  id?: string;
   text: string;
   blockId: string | null;
 };
@@ -50,5 +52,5 @@ export function prepareQuote(
 ): Quote | null {
   if (!isUsableQuote(text)) return null;
   const clipped = clipQuote(text);
-  return { text: clipped, blockId: blockIdForQuote(blocks, clipped) };
+  return { id: crypto.randomUUID(), text: clipped, blockId: blockIdForQuote(blocks, clipped) };
 }

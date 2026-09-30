@@ -26,15 +26,13 @@ vi.mock('wxt/browser', () => ({
 import { App } from '../src/sidepanel/App';
 
 describe('侧栏顶栏', () => {
-  it('不再额外占一条应用顶栏，设置跟上下文操作放在同一行', () => {
+  it('logo 与设置同排，不显示中文产品名或副标题', () => {
     render(<App />);
-
     expect(screen.queryByRole('heading', { name: '知伴' })).toBeNull();
     expect(screen.queryByText('陪你读这一页')).toBeNull();
-
-    const settings = screen.getByRole('button', { name: '设置' });
-    const header = document.querySelector('.context-actions');
-    expect(header?.contains(settings)).toBe(true);
-    expect(document.querySelector('.panel-header')).toBeNull();
+    const header = document.querySelector('.panel-header');
+    expect(header?.contains(screen.getByRole('button', { name: '设置' }))).toBe(true);
+    expect(header?.contains(screen.getByRole('img', { name: 'WebKnow AI' }))).toBe(true);
+    expect(screen.getAllByRole('button', { name: '设置' })).toHaveLength(1);
   });
 });

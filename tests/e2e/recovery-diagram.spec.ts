@@ -94,7 +94,7 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
   await panel.getByRole('button', { name: '开始阅读' }).click();
   await expect(panel.getByText('试点缩短了平均配送时间。')).toBeVisible({ timeout: 20_000 });
 
-  // 走真实的「开始伴读 → 网页划词 → 点击问这句 → 侧栏引用」路径，不预置 READY 会话。
+  // 走真实的「开始伴读 → 网页划词 → 点击引用提问 → 侧栏引用」路径，不预置 READY 会话。
   const quoteParagraph = page.locator('article p').nth(1);
   const quoteBox = await quoteParagraph.boundingBox();
   expect(quoteBox).toBeTruthy();

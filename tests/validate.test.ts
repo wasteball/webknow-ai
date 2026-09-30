@@ -183,6 +183,13 @@ describe('cleanAnswer', () => {
 });
 
 describe('cleanLearn', () => {
+  it('选择题也是一次一问，拒绝首问或下一轮一次塞入多题', () => {
+    const question = { id: 'q1', text: '范围是什么？', choices: [{ id: 'A', label: '三个团队' }, { id: 'B', label: '所有城市' }], answer: ['A'], why: '文中限定了样本。' };
+    const questions = [question, { ...question, id: 'q2', text: '哪些城市？' }];
+    expect(cleanLearn({ action: 'quiz', questions }, 'ask').ok).toBe(false);
+    expect(cleanLearn({ action: 'graded', analysis: '反馈', notes: [], nextQuestion: null, nextQuiz: { questions } }, 'respond', 'quiz').ok).toBe(false);
+  });
+
   it('返回的动作与请求模式不一致时判为无效', () => {
     expect(cleanLearn({ action: 'summary', summary: 's', nextDirections: [] }, 'ask').ok).toBe(false);
   });

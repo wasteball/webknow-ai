@@ -8,7 +8,7 @@ import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
 import { Busy, Drafting, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
-import { Icon } from './components/Icon';
+import { BrandMark, Icon } from './components/Icon';
 import { outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
 import { needsPageHost, type PageEntryId } from './page-entry';
 import { PageEntry } from './components/PageEntry';
@@ -35,13 +35,25 @@ export function App() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [state, setState] = useState<PanelState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [view, setView] = useState<View>('qa');
-  const seenSession = useRef<string | null>(null);
+  const conversationKey = state?.sessionId ?? `${state?.tabId}:${state?.pageUrl}`;
+  const [selection, setSelection] = useState<{ session: string; view: View } | null>(null);
+  // Resolve a new article synchronously; a mounted hidden mode must not start a paid request.
+  const view = selection?.session === conversationKey ? selection.view
+    : state?.learning?.status === 'active' ? 'learn' : 'qa';
+  const setView = (next: View) => setSelection({ session: conversationKey, view: next });
   const clientRef = useRef<Client | null>(null);
 
   useEffect(() => {
     const client = createClient({
-      onState: setState,
+      onState: (next) => {
+        setState(next);
+        const session = next.sessionId ?? `${next.tabId}:${next.pageUrl}`;
+        setSelection((current) => current?.session === session ? current
+          : { session, view: next.learning?.status === 'active' ? 'learn' : 'qa' });
+      },
+      onQuote: (event) => setState((current) =>
+        current?.tabId === event.tabId && current.sessionId === event.sessionId
+          ? { ...current, quote: event.quote } : current),
       onProgress: (chars, draft, reasoning) => {
         setState((current) =>
           current?.busy ? { ...current, busy: { ...current.busy, chars, draft, reasoning } } : current,
@@ -69,19 +81,12 @@ export function App() {
     void clientRef.current?.send({ type: 'attach', tabId });
   }, [tabId]);
 
-  // 只在进入另一篇文章时选择初始模式，后台开始/完成不会夺走当前模式。
+  const quoteIdentity = state?.quote?.id ?? state?.quote?.text;
   useEffect(() => {
-    if (!state?.sessionId || seenSession.current === state.sessionId) return;
-    seenSession.current = state.sessionId;
-    setView(state.learning?.status === 'active' ? 'learn' : 'qa');
-  }, [state?.sessionId]);
-
-  const quoteText = state?.quote?.text;
-  useEffect(() => {
-    if (!quoteText) return;
+    if (!quoteIdentity) return;
     setView('qa');
     window.setTimeout(() => document.getElementById('question')?.focus(), 0);
-  }, [quoteText]);
+  }, [quoteIdentity]);
 
   const send = useCallback(async (command: Command): Promise<Reply | undefined> => {
     setNotice(null);
@@ -110,7 +115,7 @@ export function App() {
           granted = false;
         }
         if (!granted) {
-          setNotice('没有获得网页读取权限。可以在当前页再点一次工具栏上的知伴图标，随后点侧栏阅读入口，只授权这一页。');
+          setNotice('没有获得网页读取权限。可以在当前页再点一次工具栏上的WebKnow AI图标，随后点侧栏阅读入口，只授权这一页。');
           return;
         }
       }
@@ -167,7 +172,6 @@ export function App() {
 
   const holdConversation = readyShell || Boolean(state?.guide &&
     (state.sessionState === 'READY' || state.sessionState === 'LEARNING'));
-  const conversationKey = state?.sessionId ?? `${state?.tabId}:${state?.pageUrl}`;
   const modeTabs = readyShell && (
 <div className="modes" role="tablist" aria-label="功能切换" onKeyDown={onModeKeyDown}>
                 {MODES.map((mode) => (
@@ -201,28 +205,14 @@ export function App() {
       style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
     >
       <div className="conversation-top">
-      {!pageEntryPhase && (
-        <div className="context" role="region" aria-label="文章信息" tabIndex={0}>
-          <div className="context-actions">
-            {state?.pageTitle ? <p className="page-title">{state.pageTitle}</p> : <span aria-hidden="true" />}
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => openSettings()}
-              aria-label="设置"
-              title="设置"
-            >
-              <Icon name="settings" />
-            </button>
-          </div>
-          <ScopeLine completeness={state?.completeness ?? null} />
-        </div>
-      )}
-      {pageEntryPhase && state?.completeness && (
-        <div className="context" role="region" aria-label="文章信息" tabIndex={0}>
-          <ScopeLine completeness={state.completeness} />
-        </div>
-      )}
+      <header className="context-actions panel-header">
+        <span role="img" aria-label="WebKnow AI"><BrandMark /></span>
+        {!pageEntryPhase && state?.pageTitle && <p className="page-title">{state.pageTitle}</p>}
+        <button type="button" className="icon-btn" onClick={() => openSettings()} aria-label="设置" title="设置"><Icon name="settings" /></button>
+      </header>
+      {state?.completeness && <div className="context" role="region" aria-label="文章信息" tabIndex={0}>
+        <ScopeLine completeness={state.completeness} onJump={(blockId) => state.tabId !== null && void send({ type: 'jump', tabId: state.tabId, blockId })} />
+      </div>}
 
       {modeTabs}
       </div>
@@ -274,7 +264,6 @@ export function App() {
                   busy={busy !== null}
                   askHost={needsPageHost(state.permission, state.error?.code ?? null)}
                   onPick={readPage}
-                  onOpenSettings={() => openSettings()}
                 />
               )}
             </>

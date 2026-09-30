@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import { DEFAULT_LEARN_GOAL, usedLearnGoals } from '../../core/learn-policy';
 import type { Command, PanelState, Reply } from '../../core/protocol';
@@ -15,6 +15,8 @@ type Send = (command: Command) => Promise<Reply | undefined>;
 /** 题目、选项与反馈都是消息；底部只承担输入和当前操作。 */
 export function Learning({ state, send, active = true }: { state: PanelState; send: Send; active?: boolean }) {
   const [draft, setDraft] = useState('');
+  const autoStarted = useRef(false);
+  const [startFailed, setStartFailed] = useState(false);
   const [goal, setGoal] = useState('');
   const [sentGoals, setSentGoals] = useState<Set<string>>(new Set());
   const [picks, setPicks] = useState<Record<string, string[]>>({});
@@ -30,7 +32,8 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
   const diagrams = state.settings.diagrams === 'auto';
   const quiz = current?.kind === 'quiz' ? current.questions : null;
   const inRound = learning?.status === 'active';
-  const signature = current?.kind === 'open' ? current.question : JSON.stringify(quiz ?? []);
+  const closed = learning?.status === 'closed';
+  const signature = `${learning?.used}:${current?.kind === 'open' ? current.question : JSON.stringify(quiz ?? [])}`;
   useEffect(() => { setPicks({}); }, [signature]);
   const selectedCount = quiz?.filter((q) => (picks[q.id] ?? []).length > 0).length ?? 0;
   const allAnswered = quiz !== null && selectedCount === quiz.length;
@@ -51,22 +54,29 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
   const submitQuiz = async () => {
     if (tabId === null || !quiz || !allAnswered || busy || blocked) return;
     const choices = quiz.map((q) => ({ questionId: q.id, choiceIds: picks[q.id] ?? [] }));
+    const text = quiz.map((q) => q.choices.filter((choice) => (picks[q.id] ?? []).includes(choice.id)).map((choice) => choice.label).join('、')).join('\n');
+    setPending({ text, at: learning?.log.length ?? 0 });
     setSubmitting(true);
     setFollowRequest((n) => n + 1);
-    try { await send({ type: 'learnAnswer', tabId, text: '（选择题作答）', choices }); }
-    finally { setSubmitting(false); }
+    try {
+      const reply = await send({ type: 'learnAnswer', tabId, text: '（选择题作答）', choices });
+      if (!reply?.ok) setPending(null);
+    } finally { setSubmitting(false); }
   };
-  const startWith = async (nextGoal: string) => {
+  const startWith = async (nextGoal: string, automatic = false) => {
     if (tabId === null || busy || blocked) return;
+    autoStarted.current = true;
+    setStartFailed(false);
     const sent = nextGoal.trim() || DEFAULT_LEARN_GOAL;
     setSentGoals((goals) => new Set(goals).add(sent));
-    setPendingGoal(sent);
+    setPendingGoal(automatic ? null : sent);
     setGoal('');
     setSubmitting(true);
     setFollowRequest((n) => n + 1);
     try {
       const reply = await send({ type: 'learnStart', tabId, goal: sent });
       if (!reply?.ok) {
+        setStartFailed(true);
         setSentGoals((goals) => { const next = new Set(goals); next.delete(sent); return next; });
         setGoal((value) => value || nextGoal);
       }
@@ -80,6 +90,12 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
         : [choiceId] };
     });
   };
+
+  useEffect(() => {
+    if (!active || learning || autoStarted.current || busy || blocked || tabId === null ||
+        state.phase !== 'READY' || !state.guide || !state.outboundConfirmed) return;
+    void startWith(DEFAULT_LEARN_GOAL, true);
+  }, [active, learning, busy, blocked, tabId, state.phase, state.guide, state.outboundConfirmed]);
 
   const usedGoals = new Set([...usedLearnGoals(learning), ...sentGoals]);
   const starters = [
@@ -98,7 +114,7 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!shouldSubmitComposer({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode })) return;
     event.preventDefault();
-    if (!busy && !blocked) void (inRound ? answer() : startWith(goal));
+    if (!busy && !blocked && (inRound || closed)) void (inRound ? answer() : startWith(goal));
   };
 
   return <>
@@ -113,9 +129,8 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
           quizContent={inRound && quizRecorded && i === lastQuiz ? quizContent : undefined} />)}
         {inRound && quiz && !quizRecorded && <article className="msg ai"><div className="said">{quizContent}</div></article>}
         {inRound && current?.kind === 'open' && !openRecorded && <article className="msg ai"><div className="said"><Rich text={current.question} diagrams={false} /></div></article>}
-      </> : <article className="msg ai"><div className="said"><p>它来问你，你来答。答不上来就说不知道，它会先给提示。</p>
-        <SuggestRow lead="先选要弄懂的那一点" items={starters} disabled={busy || blocked}
-          onPick={(item) => void startWith(item.id === 'core' ? DEFAULT_LEARN_GOAL : item.question)} />
+      </> : <article className="msg ai"><div className="said"><p>我会先问一个问题。你可以用自己的话回答，答不上来也可以要提示或讲解。</p>
+        {startFailed && !busy && <button type="button" className="secondary" disabled={blocked} onClick={() => void startWith(DEFAULT_LEARN_GOAL, true)}>重新提问</button>}
       </div></article>}
       {learning?.status === 'closed' && <SuggestRow lead="换一个点再来一轮" items={nextDirections} disabled={busy || blocked}
         onPick={(item) => void startWith(item.id === 'core' ? DEFAULT_LEARN_GOAL : item.question)} />}
@@ -127,16 +142,16 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
     </Conversation>
     <div className="dock">
       {blocked && <p className="composer-notice" role="status">问 AI 正在回答，结束后可以继续这里的对话。</p>}
-      <form className="composer" onSubmit={(event) => { event.preventDefault(); if (!busy && !blocked) void (quiz && inRound ? submitQuiz() : inRound ? answer() : startWith(goal)); }}>
-        <ComposerField busy={busy} idleLabel={quiz && inRound ? '提交' : inRound ? '回答' : '开始'} onStop={stop}
-          submitDisabled={blocked || (inRound ? quiz ? !allAnswered : !current || !draft.trim() : false)}
+      <form className="composer" onSubmit={(event) => { event.preventDefault(); if (!busy && !blocked && (inRound || closed)) void (quiz && inRound ? submitQuiz() : inRound ? answer() : startWith(goal)); }}>
+        <ComposerField busy={busy} idleLabel={quiz && inRound ? '提交' : closed ? '开始' : '回答'} onStop={stop}
+          submitDisabled={blocked || (!closed && (quiz ? !allAnswered : !current || !draft.trim()))}
           tools={inRound && <Assists tabId={tabId} send={send} resume={!current} only={quiz ? ['explain', 'skip', 'end'] : current ? ['unknown', 'hint', 'explain', 'skip', 'end'] : ['skip', 'end']} disabled={busy || blocked} />}>
           {quiz && inRound ? <p className="composer-selection" role="status">{selectedCount ? `已选 ${selectedCount}/${quiz.length} 题，点击箭头提交` : '在上方选择答案，再点击箭头提交'}</p>
-            : <><label className="sr-only" htmlFor={inRound ? 'learning-answer' : 'learning-goal'}>{inRound ? '用自己的话回答' : '自己写一个方向'}</label>
-              <ComposerTextarea id={inRound ? 'learning-answer' : 'learning-goal'} rows={2} maxLength={inRound ? 1000 : 200}
-                value={inRound ? draft : goal} readOnly={inRound && !current}
-                placeholder={inRound ? current ? '用自己的话说说看…' : '点击继续提问，或在更多里结束对话' : '想从哪一点聊起？'}
-                onChange={(event) => inRound ? setDraft(event.target.value) : setGoal(event.target.value)} onKeyDown={onKeyDown} />
+            : <><label className="sr-only" htmlFor={closed ? 'learning-goal' : 'learning-answer'}>{closed ? '自己写一个方向' : '用自己的话回答'}</label>
+              <ComposerTextarea id={closed ? 'learning-goal' : 'learning-answer'} rows={2} maxLength={closed ? 200 : 1000}
+                value={closed ? goal : draft} readOnly={!closed && !current}
+                placeholder={closed ? '想从哪一点聊起？' : current ? '用自己的话说说看…' : inRound ? '点击继续提问，或在更多里结束对话' : startFailed ? '点击重新提问' : 'AI 正在准备第一个问题…'}
+                onChange={(event) => closed ? setGoal(event.target.value) : setDraft(event.target.value)} onKeyDown={onKeyDown} />
             </>}
         </ComposerField>
       </form>

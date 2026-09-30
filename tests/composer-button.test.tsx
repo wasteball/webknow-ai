@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { PanelState } from '../src/core/protocol';
+import type { PanelState, Reply } from '../src/core/protocol';
 import type { LearningState } from '../src/core/session';
 import { Learning } from '../src/sidepanel/components/Learning';
 import { Reading } from '../src/sidepanel/components/Reading';
@@ -58,6 +58,34 @@ function openLearning(): LearningState {
 }
 
 describe('发出去的话立刻出现', () => {
+  it('sending moves the quote out of the composer immediately, and failure restores it', async () => {
+    let finish!: (reply: Reply) => void;
+    const send = vi.fn(() => new Promise<Reply>((resolve) => { finish = resolve; }));
+    render(<Reading state={panel({ quote: { id: 'q1', text: '选中的内容', blockId: 'b_0' } })} send={send} />);
+    const input = screen.getByLabelText('向这篇文章提问') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: '怎么理解？' } });
+    fireEvent.submit(input.closest('form')!);
+    expect(document.querySelector('.composer .quote-chip')).toBeNull();
+    expect(document.querySelector('.bubble.user')?.textContent).toContain('选中的内容');
+    expect(input.value).toBe('');
+    await act(async () => finish({ ok: false, error: { code: 'INTERNAL', message: '连接断开', retryable: true } }));
+    expect(document.querySelector('.composer .quote-chip')?.textContent).toContain('选中的内容');
+    expect(input.value).toBe('怎么理解？');
+  });
+
+  it('a selection made while generating survives the old reply', async () => {
+    let finish!: (reply: Reply) => void;
+    const send = vi.fn(() => new Promise<Reply>((resolve) => { finish = resolve; }));
+    const state = panel({ quote: { id: 'q1', text: '第一段选中的内容', blockId: 'b_0' } });
+    const { rerender } = render(<Reading state={state} send={send} />);
+    const input = screen.getByLabelText('向这篇文章提问');
+    fireEvent.change(input, { target: { value: '怎么理解？' } });
+    fireEvent.submit(input.closest('form')!);
+    rerender(<Reading state={{ ...state, quote: { id: 'q2', text: '后来选中的内容', blockId: 'b_1' } }} send={send} />);
+    await act(async () => finish({ ok: true }));
+    expect(document.querySelector('.composer .quote-chip')?.textContent).toContain('后来选中的内容');
+  });
+
   it('问 AI 一点发送，问题就出现在对话里，输入框马上空出来，后面打的字不会被回答清掉', async () => {
     let finish: (reply: { ok: true }) => void = () => {};
     const send = vi.fn(
@@ -73,7 +101,7 @@ describe('发出去的话立刻出现', () => {
 
     expect(document.querySelector('.bubble.user')?.textContent).toContain('这句话什么意思');
     expect(box.value).toBe('');
-    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 1, question: '这句话什么意思', search: false });
+    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 1, question: '这句话什么意思', search: false, quote: null });
 
     fireEvent.change(box, { target: { value: '下一句' } });
     await act(async () => {

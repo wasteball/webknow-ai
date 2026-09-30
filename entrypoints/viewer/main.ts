@@ -92,7 +92,7 @@ async function load(): Promise<DiagramRecord | null> {
 
 function mount(data: DiagramRecord): void {
   const { svg, size } = prepareDiagramSvg(data.svg);
-  document.title = `${data.title} · 知伴`;
+  document.title = `${data.title} · WebKnow AI`;
   root.textContent = '';
   const bar = document.createElement('div'); bar.className = 'bar'; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', '图表视图');
   const title = document.createElement('h1'); title.className = 'viewer-title'; title.textContent = data.title; title.title = data.title;

@@ -14,7 +14,7 @@ import {
 import { learnMessages, type LearnMode } from '../core/prompts/learn';
 import { searchWithProvider } from '../core/search/registry';
 import type { SearchResult } from '../core/search/types';
-import type { Quote } from '../core/quote';
+import { prepareQuote, type Quote } from '../core/quote';
 import { effectiveSettings } from '../core/settings';
 import { resolvePolicy } from '../core/skills';
 import {
@@ -54,7 +54,7 @@ import { getSession, putSession, readApiKey, readConfig, readSearchCredentials, 
 
 export type Intent =
   | { kind: 'guide'; tabId: number }
-  | { kind: 'ask'; tabId: number; question: string; search?: boolean }
+  | { kind: 'ask'; tabId: number; question: string; search?: boolean; quote?: string | null; quoteId?: string }
   | { kind: 'learnStart'; tabId: number; goal: string }
   | { kind: 'learnAnswer'; tabId: number; text: string; choices?: LearnChoiceAnswer[] }
   | { kind: 'learnAssist'; tabId: number; assist: 'hint' | 'explain' | 'skip' | 'unknown' }
@@ -75,13 +75,34 @@ type Task = (
 ) => Promise<PageSession | null>;
 
 /** 每个标签页同时只允许一个在途请求（FR-039）。 */
-const controllers = new Map<number, AbortController>();
+const controllers = new Map<number, { runId: string; sessionId: string; controller: AbortController }>();
+const recoveries = new Map<number, Promise<PageSession | null>>();
+
+/** A restarted worker cannot resume a persisted network request. Keep history and permit retry. */
+export function recoverInterruptedRun(tabId: number): Promise<PageSession | null> {
+  const pending = recoveries.get(tabId);
+  if (pending) return pending;
+  const recovery = (async () => {
+    const session = await getSession(tabId);
+    const active = controllers.get(tabId);
+    if (!session?.run || (active?.sessionId === session.id && active.runId === session.run.id)) return session;
+    const next = {
+      ...endRun(session, session.run.id),
+      state: stateAfterFailure(session, session.run.kind),
+      error: appError('INTERNAL', '刚才的生成被中断了。已有对话还在，请重试刚才的操作。', true),
+    };
+    await putSession(next);
+    return next;
+  })();
+  recoveries.set(tabId, recovery);
+  void recovery.finally(() => recoveries.delete(tabId)).catch(() => {});
+  return recovery;
+}
 
 export function abortRun(tabId: number): boolean {
-  const controller = controllers.get(tabId);
-  if (!controller) return false;
-  controller.abort();
-  controllers.delete(tabId);
+  const active = controllers.get(tabId);
+  if (!active) return false;
+  active.controller.abort();
   return true;
 }
 
@@ -95,7 +116,7 @@ export async function handleIntent(intent: Intent, hooks: RunnerHooks): Promise<
     case 'guide':
       return runGuide(intent.tabId, hooks);
     case 'ask':
-      return runAsk(intent.tabId, intent.question, intent.search === true, hooks);
+      return runAsk(intent.tabId, intent.question, intent.search === true, hooks, intent.quote, intent.quoteId);
     case 'learnStart':
       return runLearnStart(intent.tabId, intent.goal, hooks);
     case 'learnAnswer':
@@ -118,10 +139,13 @@ async function withRun(
   } catch (error) {
     return toAppError(error);
   }
-  const session = await getSession(tabId);
+  const session = await recoverInterruptedRun(tabId);
   if (!session) {
     return appError('STALE_PAGE', '当前标签页没有可用的页面会话。请重新开始伴读。', true);
   }
+  const active = controllers.get(tabId);
+  if (active?.sessionId === session.id) return appError('BUSY', '上一步还在进行中。先点停止，再做别的。', true);
+  active?.controller.abort();
   const begun = beginRun(session, kind);
   if (!begun.ok) {
     await putSession({ ...session, error: begun.error, updatedAt: Date.now() });
@@ -130,7 +154,7 @@ async function withRun(
   }
 
   const controller = new AbortController();
-  controllers.set(tabId, controller);
+  controllers.set(tabId, { runId: begun.run.id, sessionId: session.id, controller });
   await putSession(begun.session);
   // 用户触发后立即进入等待态（NFR-001），不等第一个字节。
   hooks.onState(tabId);
@@ -152,9 +176,9 @@ async function withRun(
       });
     }
   } finally {
-    controllers.delete(tabId);
     const fresh = await getSession(tabId);
     if (fresh?.run?.id === begun.run.id) await putSession(endRun(fresh, begun.run.id));
+    if (controllers.get(tabId)?.controller === controller) controllers.delete(tabId);
     hooks.onState(tabId);
   }
   return failure;
@@ -335,6 +359,8 @@ async function runAsk(
   rawQuestion: string,
   searchRequested: boolean,
   hooks: RunnerHooks,
+  rawQuote?: string | null,
+  quoteId?: string,
 ): Promise<AppError | null> {
   const question = rawQuestion.trim().slice(0, LIMITS.maxQuestionChars);
   if (!question) return appError('INTERNAL', '问题为空，未发送任何请求。');
@@ -357,7 +383,9 @@ async function runAsk(
         else searchFailed = true;
       }
 
-      const quote = current.quote ?? null;
+      const prepared = rawQuote === undefined ? current.quote ?? null
+        : rawQuote === null ? null : prepareQuote(rawQuote, current.blocks);
+      const quote = prepared ? { ...prepared, id: rawQuote === undefined ? prepared.id : quoteId ?? prepared.id } : null;
       const watch = watchProgress(
         hooks,
         tabId,
@@ -408,7 +436,8 @@ async function runAsk(
             at: Date.now(),
           },
         ].slice(-LIMITS.maxChatTurns),
-        quote: null,
+        quote: quote && fresh.quote && (fresh.quote.id ?? fresh.quote.text) === (quote.id ?? quote.text)
+          ? null : fresh.quote ?? null,
         state: 'READY',
         error: null,
         updatedAt: Date.now(),

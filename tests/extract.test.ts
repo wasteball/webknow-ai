@@ -58,6 +58,19 @@ describe('extractDocument', () => {
     expect(new Set(payload.blocks.map((block) => block.id)).size).toBe(payload.blocks.length);
   });
 
+  it('读取范围包含真实正文起止，两个位置都可以回跳', () => {
+    const payload = extractDocument();
+    const range = payload.completeness.textRange;
+    expect(range?.characters).toBeGreaterThan(100);
+    expect(range?.first.text).toContain('方案甲');
+    expect(range?.last.text).toContain('网页里的测试数据');
+    for (const point of [range?.first, range?.last]) {
+      const block = payload.blocks.find((item) => item.id === point?.blockId);
+      expect(block).toBeDefined();
+      expect(jumpToAnchor(block!.anchor).outcome).toBe('jumped');
+    }
+  });
+
   it('正文不可提取时明确失败，不返回空结果', () => {
     install('<div><span>短</span></div>', 'https://example.com/empty');
     expect(() => extractDocument()).toThrowError(/文字太少|找不到成篇|读不了/);
