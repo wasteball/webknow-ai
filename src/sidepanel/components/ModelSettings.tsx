@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { browser } from 'wxt/browser';
 
 import { MODEL_PROVIDERS } from '../../core/model-providers';
 import { thinkingChoices } from '../../core/model-thinking';
@@ -17,6 +18,7 @@ export function ModelSettings({ state, send }: { state: PanelState; send: Send }
   const [loadFailed, setLoadFailed] = useState(false);
   const [customMode, setCustomMode] = useState(false);
   const [customModel, setCustomModel] = useState('');
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const provider = MODEL_PROVIDERS.find((item) => item.id === selected)!;
   const active = selected === settings.provider;
   const connected = settings.providerKeys[selected];
@@ -31,6 +33,7 @@ export function ModelSettings({ state, send }: { state: PanelState; send: Send }
     setCustomModel('');
     setModels(null);
     setLoadFailed(false);
+    setConnectionError(null);
     if (!connected || !active) return;
     let alive = true;
     void send({ type: 'listModels', provider: selected }).then((reply) => {
@@ -46,14 +49,33 @@ export function ModelSettings({ state, send }: { state: PanelState; send: Send }
     try { return await send(command); }
     finally { setBusy(false); }
   };
-  const useProvider = () => run({ type: 'saveSettings', patch: { provider: selected } });
+  const authorize = async () => {
+    if (provider.fixedHost) return true;
+    try {
+      if (await browser.permissions.request({ origins: [provider.origin] })) return true;
+    } catch { /* 保留输入，让用户按手势重试。 */ }
+    setConnectionError(`没有获得 ${provider.name} 的访问权限。输入的钥匙仍然保留，可以再点一次重试。`);
+    return false;
+  };
+  const useProvider = async () => {
+    if (disabled) return;
+    setBusy(true); setConnectionError(null);
+    try {
+      if (!await authorize()) return;
+      return await send({ type: 'saveSettings', patch: { provider: selected } });
+    } finally { setBusy(false); }
+  };
   const connect = async () => {
     if (disabled || !key.trim()) return;
-    const result = await run({ type: 'saveKey', provider: selected, key: key.trim() });
-    if (!result?.ok) return;
-    setKey('');
-    setReplacing(false);
-    if (!active) await useProvider();
+    setBusy(true); setConnectionError(null);
+    try {
+      // 必须是点击中的第一个 await，不能在后台请求后补申请权限。
+      if (!await authorize()) return;
+      const result = await send({ type: 'saveKey', provider: selected, key: key.trim() });
+      if (!result?.ok) return;
+      setKey(''); setReplacing(false);
+      if (!active) await send({ type: 'saveSettings', patch: { provider: selected } });
+    } finally { setBusy(false); }
   };
 
   const known = models ?? provider.knownModels;
@@ -111,6 +133,7 @@ export function ModelSettings({ state, send }: { state: PanelState; send: Send }
         <p className="hint model-key-help">还没有钥匙？<a href={provider.keyPage} target="_blank" rel="noreferrer">到 {provider.name} 官网创建</a></p>
         {!active && <p className="hint">只有点击「{connected ? `使用${provider.name}` : '连接并使用'}」才会切换。切换后会再次确认网页内容发给哪家。</p>}
         {state.busy && <p className="hint" role="status">正在生成回答，结束或停止后再更换服务。</p>}
+        {connectionError && <p className="hint" role="status">{connectionError}</p>}
       </section>
       {connected && active && (
         <details className="model-advanced" key={selected}>

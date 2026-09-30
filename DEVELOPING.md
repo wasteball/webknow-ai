@@ -23,11 +23,14 @@ pnpm check          # typecheck + test + build
 
 | 文件 | 覆盖 | 是否需要真实 Key |
 |---|---|---|
-| `tests/deepseek.test.ts` | SSE 跨分片解析、错误映射、截断处理、请求体固定项 | 否 |
+| `tests/model-call.test.ts` | SSE 跨分片解析、错误映射、截断处理、请求体固定项 | 否 |
 | `tests/validate.test.ts` | 引用必须落在本地块、来源降级、模式与动作匹配、教学提示词校验 | 否 |
 | `tests/session.test.ts` | 并发限制、迟到结果丢弃、状态恢复、程序上限 | 否 |
 | `tests/page-drift.test.ts` | 同一页改稿仍写回，换页或对不上页面时说明原因 | 否 |
 | `tests/extract.test.ts` | 正文提取、唯一锚点、原文回跳、歧义不误跳、内容版本 | 否（jsdom） |
+| `tests/model-settings.test.tsx` | 查看配置与使用服务分开、连接失败保留输入、权限拒绝、生成中禁用 | 否（jsdom） |
+| `tests/conversation.test.tsx`、`tests/conversation-scroll.test.tsx`、`tests/learn-history.test.ts` | 题目只出现一次、停止恢复、草稿与回看位置、学习历史隔离 | 否 |
+| `tests/diagram-view.test.ts`、`tests/diagram-window.test.ts` | 视角计算、独立窗口回退、记录清理与来源校验 | 否 |
 | `tests/e2e/*.spec.ts` | 打包扩展在真实 Chromium 里的启动、状态推导、CORS 豁免、主路径首屏 | 主路径需要 |
 
 ```bash
@@ -39,6 +42,7 @@ pnpm test:e2e                           # 先做 e2e 模式构建到 .output/chr
 
 ```bash
 DEEPSEEK_KEY=sk-... pnpm vitest run tests/live.deepseek.test.ts
+ZHIPU_KEY=... pnpm vitest run tests/live.zhipu.test.ts
 ```
 
 它跑的是产品代码本身（`chatJson` + 三个校验器），不是 curl，可作为 A0/A2 的可重复证据。
@@ -52,8 +56,7 @@ DEEPSEEK_KEY=sk-... pnpm vitest run tests/live.deepseek.test.ts
 
 ### e2e 模式构建
 
-`--mode e2e` 会额外静态授予 `http://127.0.0.1/*`：浏览器授权弹窗是无头环境点不到的 UI，
-因此测试用本地回环页替代站点授权。**发布构建不含这条权限**，也不要用 e2e 模式出包。
+`--mode e2e` 会额外静态授予 `http://127.0.0.1/*` 和 `https://open.bigmodel.cn/*`：浏览器授权弹窗是无头环境点不到的 UI，因此测试用本地回环页替代站点授权，并让智谱主路径可被自动化验证。**发布构建不含这两条固定权限**，也不要用 e2e 模式出包。智谱在正式包中仍由连接／使用按钮按手势申请权限。
 
 ## 视觉读图基准
 
@@ -92,13 +95,15 @@ README 的阅读与学习截图使用模拟内容，只展示当前界面。真�
 
 没有 `tabs` 权限，也没有字面量 `<all_urls>`；但可选 host 权限实际覆盖全部 HTTP(S) 网站，不能将它描述为单站点授权。页面地址来自内容脚本上报与一次性工具栏点击，不靠 `tabs` 权限。
 
-## 当前状态（2026-09-29）
+## 当前状态（2026-09-30）
 
 - 当前代码内置 DeepSeek 与智谱官方接口；Key 各自存储，切换供应商会重新确认正文外发。两家都支持摘要、问答和「AI 问」。
+- 模型设置把配置与实际使用分开，连接成功后才切换；具体模型与思考位于当前已连接服务的高级区。实测 `glm-4.6` 默认思考会占满最小连接测试的预算，现默认关闭，并保留「服务默认」选项。
+- 两个模式采用对话流与底部输入区，保留草稿、回看位置和结束后的学习历史。图表预览直接打开独立大画布，支持指针缩放、平移、100%、缩略导航、全屏和返回来源。
 - DeepSeek 会尝试转述一页最多 6 张内容图片，并披露未读范围；智谱不走视觉路径。内容图转述不能算作者原文，也不能作为图片为主页面的完整理解。
 - 逐页阅读入口、正文提取、唯一锚点和 DOM 回跳有确定性测试与打包扩展 Chromium 回归；v0.9.7 修复了微信文章正文范围与回跳范围不一致的问题。
 - 设置页可打开腾讯 ima 官网扫码查看，OpenAPI 列库与保存有源码原型；官网扫码不会授权扩展，侧栏保存尚未开放，也未用真实 ima 账号联调。
-- 仍需桌面 Chrome 人工验证目标站点回跳与授权流程、真实费用、错误注入、可访问性及普通读者价值。阶段门是否通过不能由发布版本号推断。
+- 仍需桌面 Chrome 人工验证最大化窗口、原生权限弹窗与目标站点回跳，以及真实费用、错误注入、可访问性和普通读者价值。无头 Chromium 回归与模型成功输出不能替代这些验收，阶段门是否通过不能由发布版本号推断。
 
 ## 已知限制
 

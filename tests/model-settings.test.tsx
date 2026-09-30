@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('wxt/browser', () => ({ browser: { runtime: { getURL: (p: string) => `chrome-extension://test${p}` } } }));
+const permission = vi.hoisted(() => vi.fn());
+vi.mock('wxt/browser', () => ({ browser: { permissions: { request: permission }, runtime: { getURL: (p: string) => `chrome-extension://test${p}` } } }));
+beforeEach(() => { permission.mockReset(); permission.mockResolvedValue(true); });
 
 import type { Command, Reply } from '../src/core/protocol';
 import { Settings } from '../src/sidepanel/components/Settings';
@@ -17,6 +19,17 @@ function openModel(over = panel(), respond?: (command: Command) => Reply) {
 }
 
 describe('模型配置与实际使用分开', () => {
+  it('智谱必须先获得访问权限，拒绝后保留 Key 且不发送连接请求', async () => {
+    permission.mockResolvedValue(false);
+    const send = openModel();
+    fireEvent.click(screen.getByRole('button', { name: /智谱.*未连接/ }));
+    const input = screen.getByLabelText('智谱 的钥匙') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'test.key' } });
+    fireEvent.click(screen.getByRole('button', { name: '连接并使用' }));
+    await waitFor(() => expect(permission).toHaveBeenCalledWith({ origins: ['https://open.bigmodel.cn/*'] }));
+    expect(send.mock.calls.some(([c]) => c.type === 'saveKey')).toBe(false);
+    expect(input.value).toBe('test.key');
+  });
   it('点另一家只打开它的配置，不切换使用服务', async () => {
     const send = openModel();
     fireEvent.click(screen.getByRole('button', { name: /智谱.*未连接/ }));

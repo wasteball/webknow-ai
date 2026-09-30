@@ -20,6 +20,8 @@ const LABELS: Record<ThinkingLevel, string> = {
 const KNOWN: Record<string, { levels: readonly ThinkingLevel[]; defaultLevel: ThinkingLevel }> = {
   'deepseek-flash': { levels: ['off', 'low', 'high', 'max'], defaultLevel: 'off' },
   'deepseek-v4-pro': { levels: ['off', 'low', 'high', 'max'], defaultLevel: 'off' },
+  // 2026-09-30 真实请求：默认思考会占满 16-token 连接测试，关闭后正常返回 JSON。
+  'glm-4.6': { levels: ['off', 'auto'], defaultLevel: 'off' },
   'glm-5.2': { levels: ['auto', 'off', 'high', 'max'], defaultLevel: 'auto' },
 };
 

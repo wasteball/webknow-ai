@@ -10,6 +10,18 @@ const question = { id: 'q1', text: '文章里的适用范围是什么？', multi
   choices: [{ id: 'A', label: '仅有三个团队' }, { id: 'B', label: '所有城市' }] };
 
 describe('学习也是对话流', () => {
+  it('等待首问时，禁用的回答按钮变成可用的停止按钮', () => {
+    const send = vi.fn(async () => ({ ok: true as const }));
+    const state = panel({ learning: { goal: '核心', promptVersion: '1', used: 0,
+      status: 'active', current: null, log: [] } });
+    const { rerender } = render(<Learning state={state} send={send} />);
+    expect((screen.getByRole('button', { name: '回答' }) as HTMLButtonElement).disabled).toBe(true);
+    rerender(<Learning state={{ ...state, busy: { kind: 'learn', draft: '', reasoning: '', chars: 0 } }} send={send} />);
+    const stop = screen.getByRole('button', { name: '停止' }) as HTMLButtonElement;
+    expect(stop.disabled).toBe(false);
+    fireEvent.click(stop);
+    expect(send).toHaveBeenCalledWith({ type: 'stop', tabId: 7 });
+  });
   it('停止第一问后可以直接继续提问', async () => {
     const send = vi.fn(async () => ({ ok: true as const }));
     render(<Learning state={panel({ learning: { goal: '核心', promptVersion: '1', used: 0,

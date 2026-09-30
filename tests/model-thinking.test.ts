@@ -4,6 +4,10 @@ import { LIMITS } from '../src/core/limits';
 import { rememberThinking, resolveThinking, thinkingChoices, thinkingRequest } from '../src/core/model-thinking';
 
 describe('思考档位', () => {
+  it('glm-4.6 可按需恢复服务默认，但初始关闭', () => {
+    expect(resolveThinking('glm-4.6', undefined)).toBe('off');
+    expect(thinkingChoices('glm-4.6')?.map((choice) => choice.value)).toEqual(['off', 'auto']);
+  });
   it('DeepSeek 两个已知模型默认关，可选关、低、高、极致', () => {
     for (const model of ['deepseek-flash', 'deepseek-v4-pro']) {
       expect(thinkingChoices(model)?.map((choice) => choice.label)).toEqual(['关', '低', '高', '极致']);
@@ -18,7 +22,7 @@ describe('思考档位', () => {
   });
 
   it('智谱 4 系列和手填的名字没有档位', () => {
-    for (const model of ['glm-4.6', 'glm-4.7', 'glm-4.5-air', 'glm-4.5-flash', 'my-custom-model']) {
+    for (const model of ['glm-4.7', 'glm-4.5-air', 'glm-4.5-flash', 'my-custom-model']) {
       expect(thinkingChoices(model)).toBeNull();
       expect(resolveThinking(model, 'high')).toBeNull();
     }
@@ -78,8 +82,9 @@ describe('思考请求体', () => {
     expect(thinkingRequest({ providerId: 'zhipu', modelId: 'glm-5.2', stored: 'max' }).reasoningEffort).toBe('max');
   });
 
-  it('glm-4.6 不写思考字段，存过的档也不打开', () => {
+  it('glm-4.6 默认关闭思考，保证短连接测试不会只生成推理', () => {
     expect(thinkingRequest({ providerId: 'zhipu', modelId: 'glm-4.6', stored: 'max' })).toEqual({
+      thinking: { type: 'disabled' },
       maxTokens: LIMITS.maxOutputTokens,
     });
   });

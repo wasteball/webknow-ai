@@ -86,8 +86,8 @@ const deepseek: ModelProvider = {
  * - 余额不足：**HTTP 429** + code 1113 —— 同样返回 429，DeepSeek 那边表示限流，
  *   只看状态码会把"去充值"说成"等一会儿"。
  *
- * 未写入 thinking 开关：智谱各版本对它的支持不一致，用默认行为，
- * 不塞一个可能 400 的字段。
+ * 2026-09-30 实测 glm-4.6 支持关闭思考；短请求默认关闭，避免推理占满预算。
+ * 其余版本按 model-thinking.ts 的已验证档位处理，不统一塞入未知字段。
  */
 const zhipu: ModelProvider = {
   id: 'zhipu',

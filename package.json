@@ -1,6 +1,6 @@
 {
   "name": "webknow-ai",
-  "version": "0.9.9",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "description": "知伴：在公开网页旁帮助读者看懂文章、发现问题，并通过双向对话检验理解",

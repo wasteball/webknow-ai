@@ -106,7 +106,7 @@ test.describe('主路径', () => {
 
     // 关键合同：点击前不提取、不外发（FR-005）。此时要么等授权，要么等明确启动，
     // 但无论如何都不能已经出现摘要或读取范围。
-    await expect(panel.getByText(/点一个，我才读这一页/)).toBeVisible();
+    await expect(panel.getByText('点击后，我才读这一页。换页不会自动读。')).toBeVisible();
     await expect(panel.getByText('这篇文章讲了什么')).toBeHidden();
     await expect(panel.getByText(/读取范围：/)).toBeHidden();
 
@@ -118,7 +118,7 @@ test.describe('主路径', () => {
     // 因此这里对“停在授权”保持容忍，只要求不静默外发。
     if (!liveKey) {
       await expect(
-        panel.getByText(/等你在浏览器里允许读取这个网站|点一个，我才读这一页|上一步没成功/),
+        panel.getByText(/等你在浏览器里允许读取这个网站|点击后，我才读这一页|上一步没成功/),
       ).toBeVisible({ timeout: 20_000 });
       return;
     }

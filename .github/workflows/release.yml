@@ -80,7 +80,4 @@ jobs:
         with:
           files: .output/*.zip
           generate_release_notes: true
-          body: |
-            知伴是一款公开网页的 AI 阅读伙伴。下载下面的 `webknow-ai-<版本>-chrome.zip`，解压后按仓库首页的安装说明加载。
-
-            **不要使用源码包**（Code → Download ZIP）：源码里没有 `manifest.json`，Chrome 会报“清单文件缺失或不可读取”。
+          body_path: RELEASE_NOTES.md
