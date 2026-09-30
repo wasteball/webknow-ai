@@ -15,6 +15,7 @@ import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './im
 import { assertOutboundConfirmation, listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
 import { abortAllRuns, abortRun, handleIntent, type RunnerHooks } from './runner';
+import { clearDiagramViews } from './diagram-cleanup';
 import {
   OUTBOUND_NOTICE_VERSION,
   applySettings,
@@ -401,11 +402,13 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       }
 
       case 'clearSession':
+        await clearDiagramViews(command.tabId);
         await dropSession(command.tabId);
         await pushState(command.tabId);
         return { ok: true };
 
       case 'clearAllSessions': {
+        await clearDiagramViews();
         const count = await clearAllSessions();
         await pushState(null);
         return { ok: true, message: `已清掉 ${count} 个页面的内容。你的钥匙和设置都没有动。` };

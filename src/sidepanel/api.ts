@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 
 import { appError } from '../core/errors';
 import type { Command, Event, PanelState, Reply } from '../core/protocol';
+import { diagramIdFromUrl, diagramKey, matchesDiagramViewer, parseDiagramRecord } from '../core/diagram-record';
 
 /**
  * 侧栏与后台之间的长连接。
@@ -91,6 +92,18 @@ export async function activeTabId(): Promise<number | null> {
     const ownView = browser.extension.getViews({ type: 'tab', tabId: tab.id })[0] as Window | undefined;
     const visibleUrl = tab.pendingUrl ?? tab.url ?? ownView?.location.href;
     const url = new URL(visibleUrl ?? '');
+    const viewerUrl = browser.runtime.getURL('/viewer.html');
+    const diagramId = diagramIdFromUrl(url.href, viewerUrl);
+    if (diagramId) {
+      const key = diagramKey(diagramId);
+      const stored = await browser.storage.session.get(key);
+      const record = parseDiagramRecord(stored[key]);
+      if (record && matchesDiagramViewer(record, tab, url.href, viewerUrl)) {
+        const source = await browser.tabs.get(record.sourceTabId);
+        if (source.windowId === record.sourceWindowId) return source.id ?? null;
+      }
+      return tab.id;
+    }
     const options = new URL(browser.runtime.getURL('/options.html'));
     const sourceId = Number(url.searchParams.get('tab'));
     if (

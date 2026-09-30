@@ -28,8 +28,13 @@ declare const chrome: {
     };
   };
   tabs: {
-    query(query: Record<string, unknown>): Promise<{ id?: number }[]>;
+    query(query: Record<string, unknown>): Promise<{ id?: number; windowId: number }[]>;
+    getCurrent(): Promise<{ id?: number; windowId: number } | undefined>;
     sendMessage(tabId: number, message: unknown): Promise<unknown>;
+  };
+  windows: {
+    getCurrent(): Promise<{ id?: number; type?: string; state?: string }>;
+    create(options: Record<string, unknown>): Promise<{ id?: number; type?: string; state?: string } | undefined>;
   };
   scripting: {
     executeScript(

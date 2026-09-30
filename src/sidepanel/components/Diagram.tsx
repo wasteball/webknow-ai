@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { browser } from 'wxt/browser';
 
-import { Viewer } from './Viewer';
+import { activeTabId } from '../api';
+import { openDiagram } from '../diagram-window';
 import { Icon } from './Icon';
 
 /**
@@ -8,7 +10,7 @@ import { Icon } from './Icon';
  *
  * 图表源码来自模型输出，属不可信数据：
  * - `securityLevel: 'strict'` 与 `htmlLabels: false` 禁止标签里的 HTML 与脚本；
- * - mermaid 返回的 SVG 字符串只交给 Viewer 内部的受控容器，不进入正文流的 innerHTML 路径之外的地方；
+ * - SVG 仅交给预览和独立查看器的受控容器；
  * - 渲染失败如实显示，不假装成功（与 FR-018 同一条纪律）。
  */
 
@@ -70,7 +72,8 @@ let sequence = 0;
 
 export function Diagram({ source }: { source: string }) {
   const [state, setState] = useState<State>({ phase: 'loading' });
-  const [open, setOpen] = useState(false);
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState(false);
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -111,20 +114,32 @@ export function Diagram({ source }: { source: string }) {
     );
   }
 
+  const show = async () => {
+    if (opening) return;
+    setOpening(true);
+    setOpenError(false);
+    try {
+      const id = await activeTabId();
+      if (id === null) throw new Error('没有来源文章');
+      const sourceTab = await browser.tabs.get(id);
+      await openDiagram({ svg: state.svg, title: sourceTab.title ? `${sourceTab.title} · 图表` : '文章图表', sourceTabId: id, sourceWindowId: sourceTab.windowId });
+    } catch { setOpenError(true); }
+    finally { setOpening(false); }
+  };
+
   return (
     <>
       <figure className="diagram">
-        <button type="button" className="diagram-canvas" onClick={() => setOpen(true)} aria-label="放大看这张图" title="放大看这张图">
+        <button type="button" className="diagram-canvas" disabled={opening} onClick={() => void show()} aria-label="放大看这张图" title="在独立窗口看图">
           <div ref={host} aria-hidden="true" />
         </button>
         <figcaption>
-          <span>图</span>
-          <button type="button" className="quiet diagram-open" onClick={() => setOpen(true)} aria-label="放大看这张图" title="放大看这张图">
-            <Icon name="zoomIn" small />
+          <button type="button" className="quiet diagram-open" disabled={opening} onClick={() => void show()}>
+            <Icon name="external" small />{opening ? '正在打开…' : '打开大图'}
           </button>
         </figcaption>
+        {openError && <p className="hint" role="status">没能打开图表，请再点一次。</p>}
       </figure>
-      {open && <Viewer svg={state.svg} onClose={() => setOpen(false)} />}
     </>
   );
 }

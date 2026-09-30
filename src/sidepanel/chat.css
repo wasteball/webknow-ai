@@ -14,6 +14,8 @@ body.sidepanel .conversation .chat { overflow: visible; flex: none; }
 .learn-divider { display: flex; align-items: center; gap: 12px; margin: 8px 0 22px; font-size: 12px; line-height: 1.6; color: var(--ink-2); }
 .learn-divider::before, .learn-divider::after { content: ''; height: 1px; flex: 1; background: var(--line); }
 .learn-past { padding-bottom: 8px; }
+.diagram-canvas svg { max-height: 240px; }
+button.quiet.diagram-open { width: auto; min-height: 36px; gap: 6px; padding: 4px 8px; }
 .quiz-message .quiz-question { margin: 0 0 20px; }
 .quiz-message .quiz-question:last-child { margin-bottom: 0; }
 .composer-selection { margin: 0; padding: 10px 6px; font-size: 14px; color: var(--ink-2); }

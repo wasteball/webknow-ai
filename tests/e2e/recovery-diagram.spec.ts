@@ -140,185 +140,155 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
   expect(requests[2]).toContain('第二次画个流程图。');
 
   await panel.setViewportSize({ width: 360, height: 720 });
-  await expect(panel.locator('.diagram figcaption button svg')).toBeVisible();
+  await panel.getByLabel('向这篇文章提问').fill('看图回来继续问');
+  const area = panel.locator('#mode-panel-qa .chat-scroll');
+  await area.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  const position = await area.evaluate((node) => node.scrollTop);
+  const opened = context.waitForEvent('page');
   await panel.locator('.diagram-canvas').click();
-  const viewer = panel.getByRole('dialog', { name: '放大看图' });
-  await expect(viewer.locator('.viewer-canvas svg')).toBeVisible();
-  for (const name of ['缩小', '放大', '复位', '全屏看图', '关闭']) {
-    await expect(viewer.getByRole('button', { name }).locator('svg')).toBeVisible();
+  const viewer = await opened;
+  await expect(viewer).toHaveURL(new RegExp(`chrome-extension://${extensionId}/viewer\\.html\\?diagram=`));
+  await expect(viewer.locator('.canvas svg')).toContainText('开始');
+  await expect(panel.getByRole('dialog', { name: '放大看图' })).toHaveCount(0);
+  const window = await viewer.evaluate(() => chrome.windows.getCurrent());
+  expect(window.type).toBe('popup');
+  // Playwright 为新页面设置模拟 viewport 后，无头 Chrome 会回报 normal。
+  // 最大化请求由 diagram-window 单测和真实 windows.create 探针验证。
+  if (!(await viewer.evaluate(() => navigator.userAgent.includes('HeadlessChrome')))) expect(window.state).toBe('maximized');
+  await expectDiagramFits(viewer, '.stage');
+  for (const name of ['缩小', '放大', '适应画布', '100%', '全屏', '返回文章并关闭图表']) {
+    await expect(viewer.getByRole('button', { name, exact: true })).toBeVisible();
   }
-  await expectDiagramFits(panel, '.viewer-stage');
-  const initialScale = await viewer.locator('.viewer-scale').textContent();
-  await expect(viewer.locator('.viewer-scale')).not.toHaveText('100%');
-  await viewer.getByRole('button', { name: '缩小' }).click();
-  expect(Number((await viewer.locator('.viewer-scale').textContent())!.replace('%', ''))).toBeLessThan(Number(initialScale!.replace('%', '')));
-  await expectDiagramFits(panel, '.viewer-stage');
-  await viewer.getByRole('button', { name: '放大' }).click();
-  await viewer.getByRole('button', { name: '放大' }).click();
-  await expect(viewer.locator('.viewer-scale')).not.toHaveText(initialScale!);
-  const stage = viewer.locator('.viewer-stage');
-  const box = await stage.boundingBox();
-  expect(box).toBeTruthy();
-  const beforeDrag = await viewer.locator('.viewer-canvas').evaluate((canvas) => canvas.getBoundingClientRect().x);
-  await panel.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  await panel.mouse.down();
-  await panel.mouse.move(box!.x + box!.width / 2 + 45, box!.y + box!.height / 2 + 30);
-  await panel.mouse.up();
-  await expect.poll(async () => (await viewer.locator('.viewer-canvas').evaluate((canvas) => canvas.getBoundingClientRect().x)) - beforeDrag).toBe(45);
-  await viewer.getByRole('button', { name: '复位' }).click();
-  await expectDiagramFits(panel, '.viewer-stage');
-  await expect(viewer.locator('.viewer-scale')).toHaveText(initialScale!);
-  await viewer.locator('.viewer-canvas').evaluate((canvas, svg) => { canvas.innerHTML = svg; }, TALL_SVG);
-  await viewer.getByRole('button', { name: '复位' }).click();
-  await expectDiagramFits(panel, '.viewer-stage');
-  await panel.setViewportSize({ width: 300, height: 500 });
-  await expectDiagramFits(panel, '.viewer-stage');
-  await viewer.locator('.viewer-stage').click({ position: { x: 100, y: 100 } });
-  await panel.setViewportSize({ width: 280, height: 450 });
-  await expectDiagramFits(panel, '.viewer-stage');
-  await viewer.getByRole('button', { name: '放大' }).click();
-  const zoomedScale = await viewer.locator('.viewer-scale').textContent();
-  await panel.setViewportSize({ width: 270, height: 420 });
-  await expect(viewer.locator('.viewer-scale')).toHaveText(zoomedScale!);
-  await viewer.getByRole('button', { name: '复位' }).click();
-  await expectDiagramFits(panel, '.viewer-stage');
-  await viewer.getByRole('button', { name: '放大' }).click();
-  const sidebarStage = await viewer.locator('.viewer-stage').boundingBox();
-  expect(sidebarStage).toBeTruthy();
-  await panel.mouse.move(sidebarStage!.x + sidebarStage!.width / 2, sidebarStage!.y + sidebarStage!.height / 2);
-  await panel.mouse.down();
-  await panel.mouse.move(sidebarStage!.x + sidebarStage!.width / 2 + 24, sidebarStage!.y + sidebarStage!.height / 2 + 18);
-  await panel.mouse.up();
-  const sidebarViewBeforePopup = await viewer.locator('.viewer-canvas').getAttribute('style');
-  const diagramPagePromise = context.waitForEvent('page');
-  await viewer.getByRole('button', { name: '全屏看图' }).click();
-  const diagramPage = await diagramPagePromise;
-  await expect(diagramPage).toHaveURL(`chrome-extension://${extensionId}/viewer.html`);
-  const windowType = await diagramPage.evaluate(
-    () => new Promise<{ type?: string; state?: string }>((resolve) => {
-      const chromeApi = (globalThis as typeof globalThis & {
-        chrome: { windows: { getCurrent(callback: (current: { type?: string; state?: string }) => void): void } };
-      }).chrome;
-      chromeApi.windows.getCurrent((current) => resolve({ type: current.type, state: current.state }));
-    }),
-  );
-  expect(windowType.type).toBe('popup');
-  await expect(diagramPage.locator('.canvas svg')).toBeVisible({ timeout: 10_000 });
-  await expect(diagramPage.locator('.canvas svg')).toContainText('开始');
-  await expect(diagramPage.locator('.bar')).toBeVisible();
-  await expect.poll(() => diagramPage.locator('.stage').evaluate((stage) =>
-    stage.getBoundingClientRect().width >= document.documentElement.clientWidth - 1)).toBe(true);
-  for (const name of ['缩小', '放大', '复位', '全屏']) {
-    await expect(diagramPage.getByRole('button', { name, exact: true }).locator('svg')).toBeVisible();
-  }
-  await diagramPage.setViewportSize({ width: 360, height: 720 });
-  await expectDiagramFits(diagramPage, '.stage');
-  const tabScale = await diagramPage.locator('.bar span').textContent();
-  await diagramPage.getByRole('button', { name: '放大' }).click();
-  await expect(diagramPage.locator('.bar span')).not.toHaveText(tabScale!);
-  await diagramPage.getByRole('button', { name: '复位' }).click();
-  await expectDiagramFits(diagramPage, '.stage');
-  await expect(diagramPage.locator('.bar span')).toHaveText(tabScale!);
-  expect(await diagramPage.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
-  const fullscreen = diagramPage.getByRole('button', { name: '全屏', exact: true });
-  await expect(fullscreen).toBeVisible();
-  if (await diagramPage.evaluate(() => document.fullscreenEnabled)) {
-    await fullscreen.click();
-    await expect.poll(() => diagramPage.evaluate(() => document.fullscreenElement?.id ?? null)).toBe('root');
-    await expectDiagramFits(diagramPage, '.stage');
-    await diagramPage.getByRole('button', { name: '放大' }).click();
-    await expect(diagramPage.locator('.bar span')).not.toHaveText(tabScale!);
-    const fullStage = diagramPage.locator('.stage');
-    const fullBox = await fullStage.boundingBox();
-    expect(fullBox).toBeTruthy();
-    const beforeFullDrag = await diagramPage.locator('.canvas').evaluate((canvas) => canvas.getBoundingClientRect().x);
-    await diagramPage.mouse.move(fullBox!.x + fullBox!.width / 2, fullBox!.y + fullBox!.height / 2);
-    await diagramPage.mouse.down();
-    await diagramPage.mouse.move(fullBox!.x + fullBox!.width / 2 + 40, fullBox!.y + fullBox!.height / 2 + 25);
-    await diagramPage.mouse.up();
-    await expect.poll(async () => (await diagramPage.locator('.canvas').evaluate((canvas) => canvas.getBoundingClientRect().x)) - beforeFullDrag).toBe(40);
-    await diagramPage.getByRole('button', { name: '复位' }).click();
-    await diagramPage.getByRole('button', { name: '退出全屏' }).click();
-    await expect.poll(() => diagramPage.evaluate(() => document.fullscreenElement)).toBeNull();
-    await expectDiagramFits(diagramPage, '.stage');
-    await diagramPage.getByRole('button', { name: '放大' }).click();
-    await expect(diagramPage.locator('.bar span')).not.toHaveText(tabScale!);
-    await diagramPage.evaluate(() => {
-      document.getElementById('root')!.requestFullscreen = () => Promise.reject(new Error('拒绝全屏'));
-    });
-    await fullscreen.click();
-    await expect(diagramPage.getByRole('status')).toContainText('无法全屏');
-  } else {
-    await fullscreen.click();
-    await expect(diagramPage.getByRole('status')).toContainText('无法全屏');
-  }
-  const popupClosed = diagramPage.waitForEvent('close');
-  await diagramPage.getByRole('button', { name: '关闭图表弹窗' }).click();
-  await popupClosed;
-  await expect(viewer).toBeVisible();
-  await expect(viewer.locator('.viewer-canvas')).toHaveAttribute('style', sidebarViewBeforePopup!);
-  await panel.close();
-  await page.close();
+  expect(await viewer.locator('.stage').evaluate((node) => node.clientWidth)).toBeGreaterThan(360);
+  const count = context.pages().length;
+  await panel.locator('.diagram-canvas').click();
+  expect(context.pages()).toHaveLength(count);
+  await viewer.reload();
+  await expect(viewer.locator('.canvas svg')).toContainText('开始');
+  await viewer.getByRole('button', { name: '100%', exact: true }).click();
+  await expect(viewer.locator('.zoom-label')).toHaveText('100%');
+  const closed = viewer.waitForEvent('close');
+  await viewer.getByRole('button', { name: '返回文章并关闭图表' }).click();
+  await closed;
+  await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('看图回来继续问');
+  expect(await area.evaluate((node) => node.scrollTop)).toBe(position);
+  expect(await worker.evaluate(async () => Object.keys(await chrome.storage.session.get(null)).filter((key) => key.startsWith('diagram:')))).toEqual([]);
+  // 真实调用失败后回退同窗口标签，仍须关联文章并保留草稿。
+  await panel.evaluate(() => {
+    chrome.windows.create = (async () => { throw new Error('popup denied for fallback test'); }) as typeof chrome.windows.create;
+  });
+  const fallbackOpened = context.waitForEvent('page');
+  await panel.locator('.diagram-canvas').click();
+  const fallback = await fallbackOpened;
+  await expect(fallback.locator('.canvas svg')).toContainText('开始');
+  expect((await fallback.evaluate(() => chrome.windows.getCurrent())).type).toBe('normal');
+  await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('看图回来继续问');
+  const fallbackClosed = fallback.waitForEvent('close');
+  await fallback.getByRole('button', { name: '返回文章并关闭图表' }).click();
+  await fallbackClosed;
+  await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('看图回来继续问');
+  await panel.close(); await page.close();
 });
 
-test('宽图在整页查看器打开时适配视口', async () => {
-  const viewer = await context.newPage();
-  await viewer.setViewportSize({ width: 360, height: 720 });
-  await viewer.goto(`chrome-extension://${extensionId}/viewer.html`);
-  await context.serviceWorkers()[0]!.evaluate(async ({ tabId, svg }) => {
-    await chrome.tabs.sendMessage(tabId, { type: 'diagram', svg });
-  }, { tabId: (await viewer.evaluate(() => chrome.tabs.query({ active: true, currentWindow: true })))[0]!.id!, svg: WIDE_SVG });
-  await expect(viewer.locator('.canvas svg')).toBeVisible();
-  await expectDiagramFits(viewer, '.stage');
-  await expect(viewer.locator('.bar span')).not.toHaveText('100%');
-  const fitScale = Number((await viewer.locator('.bar span').textContent())!.replace('%', ''));
-  await viewer.getByRole('button', { name: '缩小' }).click();
-  expect(Number((await viewer.locator('.bar span').textContent())!.replace('%', ''))).toBeLessThan(fitScale);
-  await expectDiagramFits(viewer, '.stage');
-  await viewer.getByRole('button', { name: '放大' }).click();
-  await viewer.getByRole('button', { name: '复位' }).click();
-  await expectDiagramFits(viewer, '.stage');
-  await viewer.setViewportSize({ width: 720, height: 720 });
-  await expectDiagramFits(viewer, '.stage');
-  const fullscreen = viewer.getByRole('button', { name: '全屏' });
-  if (await viewer.evaluate(() => document.fullscreenEnabled)) {
-    await fullscreen.click();
-    await expect.poll(() => viewer.evaluate(() => document.fullscreenElement?.id)).toBe('root');
+/** 大图几何回归直接预置可信会话记录；真实模型→Mermaid 的路径由上一个用例验证。 */
+async function openFixture(svg: string, width = 1000, height = 700) {
+  const worker = context.serviceWorkers()[0]!;
+  const source = await context.newPage(); await source.goto('about:blank'); await source.bringToFront();
+  const sourceTab = await worker.evaluate(async () => (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0]!);
+  const id = crypto.randomUUID();
+  const viewer = await context.newPage(); await viewer.setViewportSize({ width, height });
+  await viewer.goto(`chrome-extension://${extensionId}/viewer.html?diagram=${id}`);
+  const tab = await viewer.evaluate(() => chrome.tabs.getCurrent());
+  await worker.evaluate(async (record) => { await chrome.storage.session.set({ [`diagram:${record.id}`]: record }); },
+    { id, svg, title: '图表示例', sourceTabId: sourceTab.id!, sourceWindowId: sourceTab.windowId, viewerTabId: tab!.id!, viewerWindowId: tab!.windowId, mode: 'tab', createdAt: Date.now() });
+  await viewer.reload(); await expect(viewer.locator('.canvas svg')).toBeVisible();
+  return { viewer, source, id };
+}
+
+for (const [name, svg] of [['宽图', WIDE_SVG], ['高图', TALL_SVG]] as const) {
+  test(`${name}自动适配，手动视角 resize 后保留，导航与键盘可操作`, async () => {
+    const { viewer, source } = await openFixture(svg);
     await expectDiagramFits(viewer, '.stage');
-    await viewer.getByRole('button', { name: '退出全屏' }).click();
-  }
-  await viewer.close();
-});
+    await expect(viewer.locator('.minimap')).toBeHidden();
+    await viewer.setViewportSize({ width: 720, height: 500 });
+    await expectDiagramFits(viewer, '.stage');
+    await viewer.getByRole('button', { name: '100%', exact: true }).click();
+    await expect(viewer.locator('.zoom-label')).toHaveText('100%');
+    await expect(viewer.locator('.minimap')).toBeVisible();
+    const before = await viewer.locator('.canvas').getAttribute('style');
+    await viewer.getByRole('button', { name: '全图导航，点击定位' }).click({ position: { x: 12, y: 35 } });
+    await expect(viewer.locator('.canvas')).not.toHaveAttribute('style', before!);
+    const center = await worldCenter(viewer);
+    await viewer.setViewportSize({ width: 900, height: 650 });
+    await expect(viewer.locator('.zoom-label')).toHaveText('100%');
+    await expect.poll(async () => worldCenter(viewer)).toEqual(center);
+    const stage = viewer.locator('.stage'); const bounds = await stage.boundingBox();
+    const point = { x: bounds!.x + 100, y: bounds!.y + 100 };
+    const nodeBefore = await worldAt(viewer, point);
+    await viewer.mouse.move(point.x, point.y); await viewer.mouse.wheel(0, -150);
+    await expect(viewer.locator('.zoom-label')).not.toHaveText('100%');
+    expect(await worldAt(viewer, point)).toEqual(nodeBefore);
+    const oldPosition = await viewer.locator('.canvas').evaluate((node) => node.getBoundingClientRect().x);
+    await stage.focus(); await viewer.keyboard.press('ArrowRight');
+    expect(await viewer.locator('.canvas').evaluate((node) => node.getBoundingClientRect().x)).toBe(oldPosition - 40);
+    await viewer.keyboard.press('0'); await expectDiagramFits(viewer, '.stage');
+    const automatic = await viewer.locator('.zoom-label').textContent();
+    await viewer.mouse.move(bounds!.x + 100, bounds!.y + 100); await viewer.mouse.down();
+    await viewer.mouse.move(bounds!.x + 145, bounds!.y + 130); await viewer.mouse.up();
+    await expect(viewer.locator('.zoom-label')).toHaveText(automatic!);
+    await viewer.getByRole('button', { name: '适应画布' }).click(); await expectDiagramFits(viewer, '.stage');
+    await viewer.close(); await source.close();
+  });
+}
 
-test('高图在整页查看器适配初始、复位与视口缩小', async () => {
-  const viewer = await context.newPage();
-  await viewer.setViewportSize({ width: 360, height: 640 });
-  await viewer.goto(`chrome-extension://${extensionId}/viewer.html`);
-  await context.serviceWorkers()[0]!.evaluate(async ({ tabId, svg }) => {
-    await chrome.tabs.sendMessage(tabId, { type: 'diagram', svg });
-  }, { tabId: (await viewer.evaluate(() => chrome.tabs.query({ active: true, currentWindow: true })))[0]!.id!, svg: TALL_SVG });
-  await expect(viewer.locator('.canvas svg')).toBeVisible();
-  await expectDiagramFits(viewer, '.stage');
-  await viewer.getByRole('button', { name: '放大' }).click();
-  await viewer.getByRole('button', { name: '复位' }).click();
-  await expectDiagramFits(viewer, '.stage');
-  await viewer.setViewportSize({ width: 300, height: 500 });
-  await expectDiagramFits(viewer, '.stage');
-  await viewer.close();
-});
+async function worldAt(viewer: import('@playwright/test').Page, point: { x: number; y: number }) {
+  return viewer.evaluate(({ x, y }) => {
+    const canvas = document.querySelector('.canvas')!;
+    const box = canvas.getBoundingClientRect();
+    const transform = new DOMMatrix(getComputedStyle(canvas).transform);
+    return { x: Math.round((x - box.left) / transform.a * 100) / 100, y: Math.round((y - box.top) / transform.a * 100) / 100 };
+  }, point);
+}
+async function worldCenter(viewer: import('@playwright/test').Page) {
+  const stage = await viewer.locator('.stage').boundingBox();
+  return worldAt(viewer, { x: stage!.x + stage!.width / 2, y: stage!.y + stage!.height / 2 });
+}
 
-test('窄图在整页查看器居中', async () => {
-  const viewer = await context.newPage();
-  await viewer.setViewportSize({ width: 360, height: 720 });
-  await viewer.goto(`chrome-extension://${extensionId}/viewer.html`);
-  await context.serviceWorkers()[0]!.evaluate(async ({ tabId, svg }) => {
-    await chrome.tabs.sendMessage(tabId, { type: 'diagram', svg });
-  }, { tabId: (await viewer.evaluate(() => chrome.tabs.query({ active: true, currentWindow: true })))[0]!.id!, svg: SMALL_SVG });
-  await expect(viewer.locator('.canvas svg')).toBeVisible();
+test('小图居中，全屏切换保留手动视角，Esc 先退出全屏', async () => {
+  const { viewer, source } = await openFixture(SMALL_SVG);
+  await expect(viewer.locator('.zoom-label')).toHaveText('100%');
   await expect.poll(() => viewer.evaluate(() => {
     const stage = document.querySelector('.stage')!.getBoundingClientRect();
     const svg = document.querySelector('.canvas svg')!.getBoundingClientRect();
     return Math.round((svg.left - stage.left) - (stage.right - svg.right));
   })).toBe(0);
+  await viewer.getByRole('button', { name: '放大', exact: true }).click();
+  const label = await viewer.locator('.zoom-label').textContent();
+  const center = await worldCenter(viewer);
+  if (await viewer.evaluate(() => document.fullscreenEnabled)) {
+    await viewer.getByRole('button', { name: '全屏', exact: true }).click();
+    await expect.poll(() => viewer.evaluate(() => document.fullscreenElement?.id)).toBe('root');
+    await expect(viewer.locator('.zoom-label')).toHaveText(label!);
+    await expect.poll(() => worldCenter(viewer)).toEqual(center);
+    await viewer.keyboard.press('Escape');
+    await expect.poll(() => viewer.evaluate(() => document.fullscreenElement)).toBeNull();
+    await expect(viewer.locator('.canvas svg')).toBeVisible();
+  }
+  await viewer.evaluate(() => { document.getElementById('root')!.requestFullscreen = () => Promise.reject(new Error('denied')); });
+  await viewer.getByRole('button', { name: '全屏', exact: true }).click();
+  await expect(viewer.getByRole('status')).toContainText('无法全屏');
+  const closed = viewer.waitForEvent('close'); await viewer.keyboard.press('Escape'); await closed;
+  await source.close();
+});
+
+test('记录失效与来源关闭有明确恢复行为，已经载入的图继续可看', async () => {
+  const { viewer, source, id } = await openFixture(SMALL_SVG);
+  await source.close();
+  await expect(viewer.getByRole('status')).toContainText('来源文章已关闭');
+  await expect(viewer.locator('.canvas svg')).toBeVisible();
+  expect(await context.serviceWorkers()[0]!.evaluate(async (recordId) => (await chrome.storage.session.get(`diagram:${recordId}`))[`diagram:${recordId}`], id)).toBeUndefined();
+  await viewer.reload();
+  await expect(viewer.getByRole('status')).toContainText('已失效');
+  await expect(viewer.getByRole('button', { name: '关闭图表' })).toBeVisible();
   await viewer.close();
 });

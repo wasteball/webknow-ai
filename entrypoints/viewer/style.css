@@ -1,137 +1,30 @@
-/* 整页图表查看器；图表颜色由 Mermaid SVG 自己提供。 */
-
-:root {
-  color-scheme: light dark;
-  --bg: #ffffff;
-  --fg: #171717;
-  --muted: #8a8a8a;
-  --line: #e8e8e8;
-  --surface: #fafafa;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #131313;
-    --fg: #ededed;
-    --muted: #8a8a8a;
-    --line: #2a2a2a;
-    --surface: #1a1a1a;
-  }
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  height: 100vh;
-  display: flex;
-  background: var(--bg);
-  color: var(--fg);
-  font: 400 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-}
-
-#root {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  background: var(--bg);
-}
-
-#root:fullscreen {
-  width: 100vw;
-  height: 100vh;
-}
-
-.bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--line);
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-}
-
-.bar button {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  color: var(--fg);
-  border-radius: 8px;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-}
-
-.tool-icon {
-  display: block;
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  pointer-events: none;
-}
-
-.zoom-label {
-  min-width: 3.2em;
-  text-align: center;
-}
-
-.bar button:hover {
-  background: var(--surface);
-}
-
-.bar button:focus-visible {
-  outline: 2px solid var(--fg);
-  outline-offset: 2px;
-}
-
-.viewer-status {
-  margin: 0;
-  padding: 0 16px;
-  color: var(--fg);
-}
-
-.viewer-status:empty {
-  display: none;
-}
-
-.stage {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  position: relative;
-  cursor: grab;
-  touch-action: none;
-}
-
-.stage:active {
-  cursor: grabbing;
-}
-
-.canvas {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: max-content;
-  transform-origin: center;
-  will-change: transform;
-}
-
-.canvas svg {
-  max-width: none;
-  height: auto;
-}
+/* 独立画布；图表颜色由本地 Mermaid SVG 提供。 */
+:root { color-scheme: light dark; --bg: #fff; --fg: #171717; --muted: #6b6b6b; --line: #e8e8e8; --surface: #f7f7f7; --accent: #3478dc; }
+@media (prefers-color-scheme: dark) { :root { --bg: #131313; --fg: #ededed; --muted: #aaa; --line: #333; --surface: #202020; --accent: #8cbcff; } }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; height: 100dvh; display: flex; overflow: hidden; background: var(--bg); color: var(--fg); font: 400 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+#root { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--bg); }
+#root:fullscreen { width: 100vw; height: 100vh; }
+.bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: none; padding: 12px 20px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.viewer-title { font-size: 14px; font-weight: 500; margin: 0 auto 0 0; max-width: min(36vw, 480px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 9px; min-width: 40px; height: 40px; padding: 0 10px; font: inherit; cursor: pointer; touch-action: manipulation; }
+button:hover { background: var(--surface); }
+button:focus-visible, .stage:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tool-icon { display: block; width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.zoom-label { min-width: 3.4em; text-align: center; font-size: 13px; color: var(--muted); }
+.viewer-status { margin: 0; padding: 8px 20px; color: var(--fg); background: var(--surface); }
+.viewer-status:empty { display: none; }
+.stage { flex: 1; min-height: 0; overflow: hidden; position: relative; cursor: grab; touch-action: none; background-image: radial-gradient(var(--line) .7px, transparent .7px); background-size: 20px 20px; }
+.stage:active { cursor: grabbing; }
+.canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.canvas > svg { display: block; max-width: none; }
+.viewer-hint { flex: none; margin: 0; padding: 7px 20px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); text-align: center; }
+.minimap { position: absolute; bottom: 16px; right: 16px; display: flex; flex-direction: column; height: auto; padding: 8px; gap: 5px; background: var(--bg); border-radius: 10px; box-shadow: 0 4px 20px #0001; cursor: crosshair; }
+.minimap > span { color: var(--muted); font-size: 11px; align-self: flex-start; }
+.mini-overview { display: block; max-width: min(180px, 32vw); height: auto; }
+.mini-visible { fill: #3478dc18; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.empty-state { margin: auto; padding: 32px; max-width: 480px; }
+.empty-state h1 { font-size: 20px; font-weight: 500; }
+.empty-state p { color: var(--muted); }
+@media (max-width: 720px) { .bar { padding: 8px 12px; gap: 6px; } .viewer-title { max-width: none; flex-basis: 100%; } .text-tool { font-size: 12px; } .minimap { bottom: 10px; right: 10px; } }

@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { cleanupDiagrams } from '../src/background/diagram-cleanup';
 
 import {
   onActionClicked,
@@ -36,7 +37,9 @@ export default defineBackground(() => {
 
   browser.tabs.onRemoved.addListener((tabId) => {
     void onTabRemoved(tabId);
+    void cleanupDiagrams({ tabId });
   });
+  browser.windows.onRemoved.addListener((windowId) => { void cleanupDiagrams({ windowId }); });
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.status === 'loading') void onTabNavigating(tabId);
