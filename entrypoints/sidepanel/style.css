@@ -2097,3 +2097,24 @@ button.quiet.viewer-tool {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 模型服务：只调整模型分类，其他设置沿用原样。 */
+.model-current { display:flex; align-items:center; gap:8px; color:var(--ink-2); font-size:14px; }
+.model-status-dot { width:7px; height:7px; border-radius:50%; background:var(--ink); }
+.model-provider-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:20px 0; }
+.model-provider-card { display:flex; align-items:center; gap:12px; padding:18px; text-align:left; background:var(--paper); color:var(--ink); border:1px solid var(--line); border-radius:14px; min-width:0; }
+.model-provider-card[aria-pressed='true'] { border-color:var(--ink); background:var(--paper-2); box-shadow:inset 0 0 0 1px var(--ink); }
+.model-provider-logo { display:grid; place-items:center; width:38px; height:38px; border-radius:10px; color:white; font-size:20px; font-weight:700; flex:none; }
+.model-provider-copy { display:flex; flex-direction:column; min-width:0; flex:1; }
+.model-provider-copy strong { font-size:16px; }
+.model-provider-copy > span { color:var(--ink-2); font-size:13px; }
+.model-provider-selected { flex:none; }
+.model-connection { border:1px solid var(--line); border-radius:16px; padding:24px; }
+.model-connection-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; }
+.model-connection-heading h3 { margin:0; font-size:18px; }
+.model-key-label { display:block; font-size:14px; margin-bottom:8px; }
+.model-connection input { width:100%; }
+.model-key-help { margin:16px 0 0; }
+.model-advanced { margin-top:20px; }
+.model-advanced > summary { cursor:pointer; padding:12px 0; font-size:14px; color:var(--ink-2); }
+@media(max-width:420px) { .model-provider-card { padding:12px; gap:8px; } .model-connection { padding:16px; } }
