@@ -1,5 +1,5 @@
 import { browser } from 'wxt/browser';
-import { cleanupDiagrams } from '../src/background/diagram-cleanup';
+import { cleanupDiagrams, cleanupNavigatedDiagram } from '../src/background/diagram-cleanup';
 
 import {
   onActionClicked,
@@ -43,7 +43,10 @@ export default defineBackground(() => {
 
   browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.status === 'loading') void onTabNavigating(tabId);
-    if (changeInfo.status === 'complete') void onTabSettled(tabId);
+    if (changeInfo.status === 'complete') {
+      void onTabSettled(tabId);
+      void cleanupNavigatedDiagram(tabId);
+    }
   });
 
   // 安装或更新后清掉旧的会话数据。

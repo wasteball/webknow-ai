@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import { diagramKey, DIAGRAM_PREFIX, parseDiagramRecord, type DiagramDraft, type DiagramRecord } from '../core/diagram-record';
 import { waitForTabReady } from './tab-ready';
+import { isCurrentDiagramViewer } from '../viewer/identity';
 
 const opening = new Map<string, Promise<DiagramRecord>>();
 
@@ -23,10 +24,12 @@ async function open(draft: DiagramDraft): Promise<DiagramRecord> {
     const record = parseDiagramRecord(value);
     if (!record || record.sourceTabId !== draft.sourceTabId || record.svg !== draft.svg || record.viewerTabId === undefined) continue;
     try {
-      const viewer = await browser.tabs.get(record.viewerTabId);
-      if (viewer.windowId !== record.viewerWindowId) continue;
+      if (!await isCurrentDiagramViewer(record)) {
+        await browser.storage.session.remove(key);
+        continue;
+      }
       await browser.tabs.update(record.viewerTabId, { active: true });
-      await browser.windows.update(viewer.windowId, { focused: true });
+      await browser.windows.update(record.viewerWindowId!, { focused: true });
       return record;
     } catch { await browser.storage.session.remove(key); }
   }
@@ -59,7 +62,7 @@ async function open(draft: DiagramDraft): Promise<DiagramRecord> {
     return record;
   } catch (error) {
     await browser.storage.session.remove(key);
-    if (viewerTabId !== undefined) await browser.tabs.remove(viewerTabId).catch(() => {});
+    if (viewerTabId !== undefined && await isCurrentDiagramViewer(record)) await browser.tabs.remove(viewerTabId).catch(() => {});
     throw error;
   }
 }

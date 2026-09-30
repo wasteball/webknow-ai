@@ -342,6 +342,59 @@ test('报错时设置与文章标题同排，错误提示不被齿轮遮挡', as
   await panel.close();
 });
 
+test('长读取范围与错误提示在短窗和大字下不遮住发送或停止', async () => {
+  const { panel, tabId } = await openPanel(360);
+  await panel.setViewportSize({ width: 360, height: 360 });
+  const worker = context.serviceWorkers()[0]!;
+  await worker.evaluate(async (id) => {
+    const stored = await chrome.storage.session.get(`sess:${id}`);
+    await chrome.storage.session.set({ [`sess:${id}`]: {
+      ...(stored[`sess:${id}`] as Record<string, unknown>),
+      error: { code: 'BAD_OUTPUT', message: '这次生成的内容没法用，没有采用。可以再试一次。', retryable: true },
+      completeness: { scope: 'readability-article', text: { status: 'partial', found: 100, captured: 80 },
+        tables: { status: 'partial', found: 12, captured: 4 }, images: { status: 'partial', found: 10, captured: 3 },
+        frames: { status: 'partial', found: 4, captured: 1 }, excludedBlocks: 20, truncated: true,
+        warnings: ['页面上有「展开全文」，可能还有没展开的内容没有读到。', '有的图片没读到。'] },
+    } });
+  }, tabId);
+  for (const fontSize of ['normal', 'large']) {
+    await worker.evaluate(async (size) => {
+      const { config } = await chrome.storage.local.get('config');
+      await chrome.storage.local.set({ config: { ...(config as Record<string, unknown>), appearance: { fontSize: size } } });
+    }, fontSize);
+    await pushState(panel, tabId);
+    await expect(panel.getByRole('alert')).toContainText('没有采用');
+    for (const mode of ['问 AI', 'AI 问']) {
+      await panel.getByRole('tab', { name: mode, exact: true }).click();
+      const input = panel.getByLabel(mode === '问 AI' ? '向这篇文章提问' : '自己写一个方向');
+      await input.fill('再试一次');
+      const submit = panel.getByRole('button', { name: mode === '问 AI' ? '发送' : '开始', exact: true });
+      await expect(submit).toBeEnabled();
+      const box = await submit.boundingBox();
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(360);
+      const center = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
+      expect(await submit.evaluate((button, point) => button.contains(document.elementFromPoint(point.x, point.y)), center)).toBe(true);
+    }
+  }
+  await worker.evaluate(async (id) => {
+    const stored = await chrome.storage.session.get(`sess:${id}`);
+    await chrome.storage.session.set({ [`sess:${id}`]: { ...(stored[`sess:${id}`] as Record<string, unknown>), run: { id: 'r_stop', kind: 'learn', startedAt: Date.now() } } });
+  }, tabId);
+  await pushState(panel, tabId);
+  const stop = panel.getByRole('button', { name: '停止', exact: true });
+  await expect(stop).toBeEnabled();
+  const stopBox = await stop.boundingBox();
+  expect(stopBox!.y + stopBox!.height).toBeLessThanOrEqual(360);
+  // 本条预置 busy 只验证布局与点击可达；真实中止请求由 conversation.spec 覆盖。
+  await stop.click({ trial: true });
+  await panel.close();
+  await worker.evaluate(async () => {
+    const { config } = await chrome.storage.local.get('config');
+    await chrome.storage.local.set({ config: { ...(config as Record<string, unknown>), appearance: { fontSize: 'normal' } } });
+  });
+});
+
 test('READY 视图在三种宽度下排版正确', async () => {
   test.setTimeout(120_000);
   for (const width of WIDTHS) {

@@ -3,12 +3,22 @@ import { diagramIdFromUrl, diagramKey, matchesDiagramViewer, parseDiagramRecord,
 import { DIAGRAM_ICON_PATHS, type DiagramIconName } from '../../src/core/diagram-icons';
 import { fitView, resizeView, visibleDiagramRect, zoomAt, type DiagramView, type Size } from '../../src/core/diagram-view';
 import { cloneDiagramSvg, prepareDiagramSvg } from '../../src/viewer/svg';
+import { DIAGRAM_IDENTITY_MESSAGE } from '../../src/viewer/identity';
 import './style.css';
 
 const root = document.getElementById('root')!;
 const ownUrl = browser.runtime.getURL('/viewer.html');
 let record: DiagramRecord | null = null;
 let currentTabId: number | undefined;
+
+// Chrome 114/115 的 worker 不能枚举扩展文档，由目标查看器确认自身身份。
+browser.runtime.onMessage.addListener((raw, _sender, respond) => {
+  const request = raw as { type?: string; id?: string; tabId?: number } | undefined;
+  if (request?.type !== DIAGRAM_IDENTITY_MESSAGE || request.tabId !== currentTabId ||
+    request.id !== diagramIdFromUrl(location.href, ownUrl)) return false;
+  void browser.tabs.getCurrent().then((tab) => respond({ tab, url: location.href }), () => respond(undefined));
+  return true;
+});
 
 function icon(name: DiagramIconName): SVGSVGElement {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

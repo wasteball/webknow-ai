@@ -4,10 +4,14 @@ const api = vi.hoisted(() => ({
   data: {} as Record<string, unknown>,
   tabs: { get: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() },
   windows: { create: vi.fn(), update: vi.fn(), remove: vi.fn() },
+  contexts: vi.fn(),
+  hasContexts: true,
+  identity: vi.fn(),
 }));
 vi.mock('wxt/browser', () => ({ browser: {
   tabs: api.tabs, windows: api.windows,
-  runtime: { getURL: (path: string) => `chrome-extension://webknow${path}` },
+  runtime: { getURL: (path: string) => `chrome-extension://webknow${path}`,
+    get getContexts() { return api.hasContexts ? api.contexts : undefined; }, sendMessage: api.identity },
   storage: { session: {
     get: async (key: string | null) => key ? { [key]: api.data[key] } : { ...api.data },
     set: async (data: Record<string, unknown>) => { Object.assign(api.data, data); },
@@ -22,11 +26,16 @@ import { matchesDiagramViewer, parseDiagramRecord } from '../src/core/diagram-re
 const draft = { svg: '<svg viewBox="0 0 2400 200"></svg>', title: '研究流程', sourceTabId: 7, sourceWindowId: 1 };
 
 beforeEach(() => {
-  vi.resetAllMocks(); api.data = {};
+  vi.resetAllMocks(); api.data = {}; api.hasContexts = true;
   api.tabs.get.mockImplementation(async (id: number) => ({ id, windowId: id === 7 ? 1 : 2, status: 'complete' }));
   api.windows.create.mockResolvedValue({ id: 2, tabs: [{ id: 20, windowId: 2 }] });
   api.tabs.create.mockResolvedValue({ id: 21, windowId: 1 });
   api.tabs.remove.mockResolvedValue(undefined);
+  api.contexts.mockImplementation(async () => Object.values(api.data).map((value) => {
+    const record = value as { id: string; viewerTabId: number; viewerWindowId: number };
+    return { tabId: record.viewerTabId, windowId: record.viewerWindowId,
+      frameId: 0, documentUrl: `chrome-extension://webknow/viewer.html?diagram=${record.id}` };
+  }));
 });
 
 describe('点图直接打开独立空间', () => {
@@ -54,6 +63,34 @@ describe('点图直接打开独立空间', () => {
     await openDiagram(draft);
     expect(api.windows.create).toHaveBeenCalledTimes(1);
     expect(api.tabs.update).toHaveBeenCalledWith(20, { active: true });
+  });
+  it('查看器导航到其他页面后，重新点图创建新视图，不聚焦那个页面', async () => {
+    await openDiagram(draft);
+    api.contexts.mockResolvedValue([]);
+    api.windows.create.mockResolvedValue({ id: 3, tabs: [{ id: 22, windowId: 3 }] });
+    api.tabs.update.mockClear();
+    await openDiagram(draft);
+    expect(api.windows.create).toHaveBeenCalledTimes(2);
+    expect(api.tabs.update).not.toHaveBeenCalledWith(20, { active: true });
+    expect(Object.values(api.data)).toHaveLength(1);
+    expect(Object.values(api.data)[0]).toMatchObject({ viewerTabId: 22, viewerWindowId: 3 });
+  });
+  it('清除文章时不关闭已导航成其他网页的旧查看器标签', async () => {
+    await openDiagram(draft);
+    api.contexts.mockResolvedValue([]);
+    await clearDiagramViews(7);
+    expect(api.tabs.remove).not.toHaveBeenCalled();
+    expect(api.data).toEqual({});
+  });
+  it('旧浏览器没有上下文枚举时，仍核对查看器回应，拒绝失效页面', async () => {
+    const record = await openDiagram(draft);
+    api.hasContexts = false;
+    api.identity.mockResolvedValue({ tab: { id: 20, windowId: 2 }, url: `chrome-extension://webknow/viewer.html?diagram=${record.id}` });
+    await openDiagram(draft);
+    expect(api.windows.create).toHaveBeenCalledTimes(1);
+    api.identity.mockResolvedValue({ tab: { id: 20, windowId: 2 }, url: 'about:blank' });
+    await clearDiagramViews(7);
+    expect(api.tabs.remove).not.toHaveBeenCalled();
   });
   it('两种打开方式均失败时清掉临时记录，允许用户重试', async () => {
     api.windows.create.mockRejectedValue(new Error('popup denied'));

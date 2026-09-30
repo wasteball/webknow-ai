@@ -3,7 +3,12 @@ body.sidepanel { --ink-3: #6b6b6b; }
 @media (prefers-color-scheme: dark) { body.sidepanel { --ink-3: #a3a3a3; } }
 body.sidepanel .panel:not(.ready-chat) { overflow: auto; }
 body.sidepanel .panel.ready-chat { overflow: hidden; }
-.conversation-top { flex: none; }
+.conversation-top { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
+body.sidepanel .ready-chat .conversation-top .context { flex: 0 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; }
+body.sidepanel .ready-chat .modes { flex: none; }
+body.sidepanel .ready-chat .conversation-notices { flex: 0 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; }
+/* 上方长说明先收缩并可滚动，为短窗口中的输入和工具栏保留空间。 */
+body.sidepanel .ready-chat [role='tabpanel'] { flex: 1 0 168px; }
 body.sidepanel .context, body.sidepanel .modes { position: static; }
 body.sidepanel .modes { margin: 4px 0 0; }
 .conversation { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; position: relative; }

@@ -281,6 +281,59 @@ test('小图居中，全屏切换保留手动视角，Esc 先退出全屏', asyn
   await source.close();
 });
 
+test('查看器导航后绑定失效，清会话不关闭已经用于其他内容的标签', async () => {
+  const { viewer, source, id } = await openFixture(SMALL_SVG);
+  const worker = context.serviceWorkers()[0]!;
+  const record = await worker.evaluate(async (id) => (await chrome.storage.session.get(`diagram:${id}`))[`diagram:${id}`], id);
+  await viewer.goto('about:blank');
+  await expect.poll(() => worker.evaluate(async (id) => Boolean((await chrome.storage.session.get(`diagram:${id}`))[`diagram:${id}`]), id)).toBe(false);
+  // 模拟后台曾错过导航事件：即使遗留绑定仍在，清除也不能误关无关页面。
+  await worker.evaluate(async ([id, record]) => chrome.storage.session.set({ [`diagram:${id}`]: record }), [id, record] as const);
+  const control = await context.newPage();
+  await control.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await control.evaluate(async (record) => {
+    const port = chrome.runtime.connect({ name: 'webknow' });
+    await new Promise<void>((done) => {
+      port.onMessage.addListener((event) => { if (event.type === 'reply') { port.disconnect(); done(); } });
+      port.postMessage({ id: 1, command: { type: 'clearSession', tabId: (record as { sourceTabId: number }).sourceTabId } });
+    });
+  }, record);
+  expect(viewer.isClosed()).toBe(false);
+  expect(viewer.url()).toBe('about:blank');
+  await expect.poll(() => worker.evaluate(async (id) => Boolean((await chrome.storage.session.get(`diagram:${id}`))[`diagram:${id}`]), id)).toBe(false);
+  await control.close(); await viewer.close(); await source.close();
+});
+
+test('没有上下文枚举的旧接口仍能核对并关闭真正的图表', async () => {
+  const { viewer, source, id } = await openFixture(SMALL_SVG);
+  const worker = context.serviceWorkers()[0]!;
+  const record = await worker.evaluate(async (id) => (await chrome.storage.session.get(`diagram:${id}`))[`diagram:${id}`], id);
+  const control = await context.newPage();
+  await control.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await worker.evaluate(() => {
+    const runtime = chrome.runtime as unknown as { getContexts?: unknown; savedContextsForTest?: unknown };
+    runtime.savedContextsForTest = runtime.getContexts;
+    runtime.getContexts = undefined;
+  });
+  try {
+    await control.evaluate(async (record) => {
+      const port = chrome.runtime.connect({ name: 'webknow' });
+      await new Promise<void>((done) => {
+        port.onMessage.addListener((event) => { if (event.type === 'reply') { port.disconnect(); done(); } });
+        port.postMessage({ id: 1, command: { type: 'clearSession', tabId: (record as { sourceTabId: number }).sourceTabId } });
+      });
+    }, record);
+  } finally {
+    await worker.evaluate(() => {
+      const runtime = chrome.runtime as unknown as { getContexts?: unknown; savedContextsForTest?: unknown };
+      runtime.getContexts = runtime.savedContextsForTest;
+      delete runtime.savedContextsForTest;
+    });
+  }
+  await expect.poll(() => viewer.isClosed()).toBe(true);
+  await control.close(); await source.close();
+});
+
 test('记录失效与来源关闭有明确恢复行为，已经载入的图继续可看', async () => {
   const { viewer, source, id } = await openFixture(SMALL_SVG);
   await source.close();

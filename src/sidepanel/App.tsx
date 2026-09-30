@@ -202,7 +202,7 @@ export function App() {
     >
       <div className="conversation-top">
       {!pageEntryPhase && (
-        <div className="context">
+        <div className="context" role="region" aria-label="文章信息" tabIndex={0}>
           <div className="context-actions">
             {state?.pageTitle ? <p className="page-title">{state.pageTitle}</p> : <span aria-hidden="true" />}
             <button
@@ -219,7 +219,7 @@ export function App() {
         </div>
       )}
       {pageEntryPhase && state?.completeness && (
-        <div className="context">
+        <div className="context" role="region" aria-label="文章信息" tabIndex={0}>
           <ScopeLine completeness={state.completeness} />
         </div>
       )}
@@ -227,8 +227,10 @@ export function App() {
       {modeTabs}
       </div>
 
-      {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
-      {state?.error && <ErrorBanner error={state.error} />}
+      {(notice || state?.error) && <div className="conversation-notices" role="region" aria-label="状态提示" tabIndex={0}>
+        {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
+        {state?.error && <ErrorBanner error={state.error} />}
+      </div>}
 
       {!state ? (
         <p className="hint">正在连接后台…</p>
