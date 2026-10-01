@@ -67,6 +67,8 @@ export type AgentSnapshot = {
   identity: RunIdentity; question: string; quote: Quote | null;
   title: string; blocks: EvidenceBlock[]; disclosure: string;
   history: { question: string; answer: string }[];
+  /** User clarification is untrusted intent, never article/external fact evidence. */
+  clarifications?: { question: string; answer: string }[];
   gate: GateResult; settings: AgentSettings;
   policyVersion: string; answerPolicy: string; diagrams: boolean; thinking?: string;
 };

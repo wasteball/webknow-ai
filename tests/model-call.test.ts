@@ -79,6 +79,52 @@ describe('parseJsonLoose', () => {
 });
 
 describe('chatJson', () => {
+  it('assembles action JSON across SSE events and split transport lines', async () => {
+    const first = delta('{"type":"ask_user","question":"哪个');
+    const fetchImpl = sseResponse([first.slice(0, 17), first.slice(17), delta('团队？","reason":"ambiguous_entity"}'), 'data: [DONE]\n\n']);
+    await expect(chatJson({ ...base, fetchImpl })).resolves.toEqual({ type: 'ask_user', question: '哪个团队？', reason: 'ambiguous_entity' });
+  });
+
+  it('rejects length truncation even when preceding action JSON parses', async () => {
+    const fetchImpl = sseResponse([delta('{"type":"ask_user","question":"哪个？","reason":"ambiguous_entity"}'),
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`]);
+    await expect(chatJson({ ...base, fetchImpl })).rejects.toMatchObject({ code: 'BAD_OUTPUT' });
+  });
+
+  it('never interprets reasoning-only action JSON as a completed action', async () => {
+    const fetchImpl = sseResponse([`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: '{"type":"ask_user","question":"哪个？","reason":"ambiguous_entity"}' } }] })}\n\n`]);
+    await expect(chatJson({ ...base, fetchImpl })).rejects.toMatchObject({ code: 'BAD_OUTPUT' });
+  });
+
+  it('rejects pre-aborted calls even if the transport ignores cancellation', async () => {
+    const controller = new AbortController(); controller.abort();
+    const fetchImpl = vi.fn(sseResponse([delta('{"type":"ask_user","question":"哪个？","reason":"ambiguous_entity"}') ]));
+    await expect(chatJson({ ...base, signal: controller.signal, fetchImpl })).rejects.toMatchObject({ code: 'ABORTED' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects completed action JSON when cancellation happens while reading', async () => {
+    const controller = new AbortController();
+    const fetchImpl = (async () => new Response(new ReadableStream({
+      pull(stream) {
+        stream.enqueue(new TextEncoder().encode(delta('{"type":"ask_user","question":"哪个？","reason":"ambiguous_entity"}')));
+        controller.abort(); stream.close();
+      },
+    }))) as typeof fetch;
+    await expect(chatJson({ ...base, signal: controller.signal, fetchImpl })).rejects.toMatchObject({ code: 'ABORTED' });
+  });
+
+  it('does not accept an interrupted stream even after receiving valid JSON', async () => {
+    let pulls = 0;
+    const fetchImpl = (async () => new Response(new ReadableStream({
+      pull(stream) {
+        if (pulls++ === 0) stream.enqueue(new TextEncoder().encode(delta('{"type":"ask_user","question":"哪个？","reason":"ambiguous_entity"}')));
+        else stream.error(new Error('connection dropped'));
+      },
+    }))) as typeof fetch;
+    await expect(chatJson({ ...base, fetchImpl })).rejects.toMatchObject({ code: 'SERVICE' });
+  });
+
   it('拼接流式分片并返回解析后的 JSON', async () => {
     const fetchImpl = sseResponse([
       delta('{"answer":"原'),

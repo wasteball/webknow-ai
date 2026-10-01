@@ -149,6 +149,7 @@ export function parseJsonLoose(text: string): unknown {
  */
 export async function chatJson(options: ChatOptions): Promise<unknown> {
   const { apiKey, provider, messages, signal, onProgress } = options;
+  if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
   const model = options.model?.trim() || provider.defaultModel;
   const request = thinkingRequest({
     providerId: provider.id,
@@ -227,6 +228,8 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
   try {
     for (;;) {
       const { done, value } = await reader.read();
+      if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
+      if (timeout.aborted) throw appError('TIMEOUT', '模型回复超过等待上限。', true);
       if (done) break;
       absorb(sse.push(decoder.decode(value, { stream: true })));
     }
