@@ -50,3 +50,21 @@ describe('clipQuote', () => {
     expect(clipped.length).toBeLessThanOrEqual(501);
   });
 });
+
+describe('article scope contract', () => {
+  const input = { title: '试点', url: 'https://example.com/a', contextJson: '[]', disclosure: '已读取', history: [], question: '请补充文章之外的最新案例' };
+  it('selects an article-only source contract and removes explicit external expansion permission', () => {
+    const messages = answerMessages({ ...input, networkContext: { scope: 'article', gate: {
+      level: 'required', canSearch: false, mustSearch: false, freshness: 'live', reasons: [],
+      time: { nowIso: '2026-10-01T00:00:00Z', localDate: '2026-10-01', timeZone: 'UTC' },
+    } } });
+    expect(messages[0]?.content).toContain('"source":"original|unknown"');
+    expect(messages[0]?.content).not.toContain('才可做相应拓展');
+    expect(messages[0]?.content).not.toContain('"source":"original|supplement|example|extended|unknown"');
+  });
+  it('keeps ordinary explicit external expansion when article scope was not selected', () => {
+    const messages = answerMessages(input);
+    expect(messages[0]?.content).toContain('才可做相应拓展');
+    expect(messages[0]?.content).toContain('"source":"original|supplement|example|extended|unknown"');
+  });
+});

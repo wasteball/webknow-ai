@@ -51,22 +51,37 @@ export async function executeResearch(checkpoint: AgentCheckpoint, signal: Abort
   const searchReceiver = checkpoint.snapshot.searchProviderId;
   if (!searchReceiver) throw appError('STALE_PAGE', '这次研究缺少接收方身份，请重新提问。');
   const assertCurrent = () => assertResearchCurrent(identity, thinking, signal, searchReceiver);
-  const searchBoundary = async (childSignal: AbortSignal) => {
+  // Private preparation values live only in this invocation, never in evidence or run identity.
+  const assertSameCredentials = (prepared: Record<string, string>, current: Record<string, string>) => {
+    if (Object.keys(prepared).length !== Object.keys(current).length ||
+        Object.keys(prepared).some(key => prepared[key] !== current[key])) {
+      throw appError('ABORTED', '搜索服务的配置已变化，请重新提问。');
+    }
+  };
+  const searchBoundary = async (childSignal: AbortSignal, prepared?: Record<string, string>) => {
     await assertCurrent();
     const config = await readConfig();
     if (config.search?.providerId !== searchReceiver) throw appError('STALE_PAGE', '搜索接收方已经变化，请重新提问。');
     const provider = searchReceiver && findSearchProvider(searchReceiver);
     if (!provider) throw appError('SEARCH_FAILED', '还没有配置可用的搜索服务。');
-    const credentials = await readSearchCredentials(provider.id);
+    const credentials = { ...await readSearchCredentials(provider.id) };
+    if (provider.configFields.some(field => field.required && !credentials[field.key]?.trim())) {
+      throw appError('SEARCH_FAILED', '搜索服务的配置已失效，请重新配置。');
+    }
+    if (prepared) assertSameCredentials(prepared, credentials);
     const origins = provider.hosts(credentials);
     if (!origins.length || !await browser.permissions.contains({ origins })) throw appError('PERMISSION_MISSING', '搜索服务的访问权限已失效。');
     await assertCurrent();
+    assertSameCredentials(credentials, await readSearchCredentials(provider.id));
     if (childSignal.aborted) throw appError('ABORTED', '已停止本次研究。');
     return { provider, credentials };
   };
-  const guardedFetch = (childSignal: AbortSignal): typeof fetch => async (input, init) => {
-    await searchBoundary(childSignal);
-    return fetch(input, init);
+  const guardedFetch = (childSignal: AbortSignal, credentials: Record<string, string>): typeof fetch => {
+    const prepared = { ...credentials };
+    return async (input, init) => {
+      await searchBoundary(childSignal, prepared);
+      return fetch(input, init);
+    };
   };
   return runResearch({ checkpoint, signal, resume, deps: {
     assertCurrent, now: Date.now, onEvent,
@@ -77,7 +92,7 @@ export async function executeResearch(checkpoint: AgentCheckpoint, signal: Abort
     search: async (action, childSignal) => {
       const { provider, credentials } = await searchBoundary(childSignal);
       return researchSearch({ providerId: provider.id, config: credentials, action, signal: childSignal,
-        now: () => new Date(), time: checkpoint.snapshot.gate.time, fetchImpl: guardedFetch(childSignal) });
+        now: () => new Date(), time: checkpoint.snapshot.gate.time, fetchImpl: guardedFetch(childSignal, credentials) });
     },
     read: async (ids, focus, ledger, childSignal) => {
       await assertCurrent();
@@ -88,7 +103,7 @@ export async function executeResearch(checkpoint: AgentCheckpoint, signal: Abort
         hasPermission: origin => browser.permissions.contains({ origins: [`${origin}/*`] }),
         providerRead: selected?.capabilities.content && selected.readSources ? async (sources, readSignal) => {
           const { provider, credentials } = await searchBoundary(readSignal);
-          return provider.readSources!({ sources, signal: readSignal, config: credentials, fetchImpl: guardedFetch(readSignal) });
+          return provider.readSources!({ sources, signal: readSignal, config: credentials, fetchImpl: guardedFetch(readSignal, credentials) });
         } : undefined,
       });
     },

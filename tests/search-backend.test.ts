@@ -12,7 +12,7 @@ vi.mock('../src/background/store', () => ({
   getSession: vi.fn(async () => structuredClone(boundary.session)),
   putSession: vi.fn(async (session: PageSession) => { boundary.session = structuredClone(session); }),
   readConfig: vi.fn(async () => structuredClone(boundary.config)),
-  readApiKey: boundary.readKey, readSearchCredentials: vi.fn(async () => ({})),
+  readApiKey: boundary.readKey, readSearchCredentials: vi.fn(async (providerId: string) => ({ ...boundary.config.search?.credentials?.[providerId] })),
   hasOutboundConfirmation: () => boundary.confirmed,
 }));
 vi.mock('../src/background/page', () => ({
@@ -25,6 +25,7 @@ import { handleIntent, abortRun, recoverInterruptedRun } from '../src/background
 import { callResearchModel } from '../src/background/model';
 import { initialCheckpoint } from '../src/core/search/agent-limits';
 import { snapshotFixture } from './helpers/research';
+import { bocha, firecrawl, tavily } from '../src/core/search/providers';
 import { executeResearch } from '../src/background/research';
 const hooks = { onState: vi.fn(), onProgress: vi.fn() };
 function activeCheckpoint() {
@@ -38,13 +39,13 @@ function activeCheckpoint() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  boundary.config = { provider: 'deepseek', search: { providerId: 'firecrawl', agent: { enabled: true } } };
+  boundary.config = { provider: 'deepseek', apiKeys: { deepseek: 'test-secret-key' }, search: { providerId: 'firecrawl', agent: { enabled: true } } };
   boundary.confirmed = true; boundary.identity = { url: 'https://example.org/article', fingerprint: 'fp' };
   boundary.permission.mockReset().mockResolvedValue(true); boundary.readKey.mockReset().mockResolvedValue('test-secret-key');
   boundary.json.mockReset(); boundary.fetch.mockReset(); vi.stubGlobal('fetch', boundary.fetch);
   activeCheckpoint(); boundary.session!.run = null;
 });
-afterEach(async () => { abortRun(7); await recoverInterruptedRun(7); vi.unstubAllGlobals(); });
+afterEach(async () => { abortRun(7); await recoverInterruptedRun(7); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 const search = { type: 'search_web', query: 'release facts', purpose: 'background', freshness: 'any', language: 'zh-CN', domains: [], maxResults: 3 };
 const wait = { type: 'ask_user', reason: 'conflict', question: '你想核对哪个结论？' };
@@ -121,5 +122,64 @@ describe('real backend research adapters', () => {
     boundary.permission.mockImplementation(async () => { boundary.config.provider = 'zhipu'; return true; });
     await expect(callResearchModel({ identity: checkpoint.snapshot.identity, thinking: 'off', messages: [], signal: new AbortController().signal })).rejects.toMatchObject({ code: 'STALE_PAGE' });
     expect(boundary.json).not.toHaveBeenCalled();
+  });
+});
+
+describe('prepared credential revocation at physical egress', () => {
+  it.each([['tavily', ''], ['tavily', 'rotated-search-key'], ['bocha', ''], ['bocha', 'rotated-search-key']] as const)('blocks obsolete %s authentication after preparation changes to %j', async (providerId, replacement) => {
+    const checkpoint = activeCheckpoint();
+    checkpoint.snapshot.searchProviderId = providerId;
+    boundary.config.search = { providerId, agent: { enabled: true }, credentials: { [providerId]: { apiKey: 'obsolete-search-key' } } };
+    const provider = providerId === 'tavily' ? tavily : bocha;
+    const original = provider.search;
+    const spy = vi.spyOn(provider, 'search').mockImplementation(async request => {
+      // The adapter received its private preparation config; stored credentials change before its physical fetch.
+      boundary.config.search!.credentials![providerId] = { apiKey: replacement };
+      return original(request);
+    });
+    boundary.json.mockReset().mockResolvedValueOnce(search)
+      .mockResolvedValueOnce({ sources: [], missing: [], conflicts: [] }).mockResolvedValueOnce(wait);
+    boundary.fetch.mockReset().mockResolvedValue(new Response(JSON.stringify({ results: [], data: { webPages: { value: [] } } })));
+    const outcome = await executeResearch(checkpoint, new AbortController().signal, vi.fn());
+    spy.mockRestore();
+    expect(outcome.kind).toBe('waiting');
+    expect(boundary.fetch).not.toHaveBeenCalled();
+    expect(JSON.stringify(outcome)).not.toContain('obsolete-search-key');
+    expect(JSON.stringify(outcome)).not.toContain('rotated-search-key');
+  });
+  it.each(['tavily', 'bocha'] as const)('allows %s to transmit unchanged current authentication', async providerId => {
+    const checkpoint = activeCheckpoint(); checkpoint.snapshot.searchProviderId = providerId;
+    boundary.config.search = { providerId, agent: { enabled: true }, credentials: { [providerId]: { apiKey: 'current-search-key' } } };
+    boundary.json.mockResolvedValueOnce(search).mockResolvedValueOnce({ sources: [], missing: [], conflicts: [] }).mockResolvedValueOnce(wait);
+    boundary.fetch.mockResolvedValue(new Response(JSON.stringify({ results: [], data: { webPages: { value: [] } } })));
+    expect((await executeResearch(checkpoint, new AbortController().signal, vi.fn())).kind).toBe('waiting');
+    expect(boundary.fetch).toHaveBeenCalledOnce();
+    expect(new Headers(boundary.fetch.mock.calls[0]?.[1]?.headers).get('Authorization')).toBe('Bearer current-search-key');
+  });
+  it.each(['', 'rotated-model-key'])('blocks a model Key changed after preparation to %j', async replacement => {
+    const checkpoint = activeCheckpoint();
+    boundary.readKey.mockImplementationOnce(async () => {
+      boundary.config.apiKeys = { deepseek: replacement };
+      return 'test-secret-key';
+    });
+    await expect(callResearchModel({ identity: checkpoint.snapshot.identity, thinking: 'off', messages: [], signal: new AbortController().signal })).rejects.toBeDefined();
+    expect(boundary.json).not.toHaveBeenCalled();
+  });
+  it.each(['', 'rotated-content-key'])('covers the provider-content fetch guard after preparation changes to %j', async replacement => {
+    const checkpoint = activeCheckpoint();
+    boundary.config.search!.credentials = { firecrawl: { apiKey: 'obsolete-content-key' } };
+    checkpoint.ledger.sources = [{ sourceId: 'sr_r1_1', title: 'release', url: 'https://example.net/release', domain: 'example.net', snippet: 'summary',
+      provider: 'firecrawl', attempts: [], publishedAt: null, retrievedAt: new Date().toISOString(), readStatus: 'not_read', decision: 'candidate', dateStatus: 'date_unknown', warnings: [] }];
+    const original = firecrawl.readSources!;
+    vi.spyOn(firecrawl, 'readSources').mockImplementation(async input => {
+      boundary.config.search!.credentials!.firecrawl = { apiKey: replacement };
+      return original(input);
+    });
+    boundary.json.mockResolvedValueOnce({ type: 'read_sources', sourceIds: ['sr_r1_1'], focus: 'release' }).mockResolvedValueOnce(evidence).mockResolvedValueOnce(wait);
+    boundary.fetch.mockResolvedValue(new Response(JSON.stringify({ data: { markdown: 'release facts' } })));
+    const outcome = await executeResearch(checkpoint, new AbortController().signal, vi.fn());
+    expect(outcome.checkpoint.ledger.sources[0]?.readStatus).toBe('unavailable');
+    expect(boundary.fetch).not.toHaveBeenCalled();
+    expect(JSON.stringify(outcome)).not.toContain('obsolete-content-key');
   });
 });

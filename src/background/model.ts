@@ -149,7 +149,11 @@ export async function callResearchModel(input: {
   if (!apiKey) throw appError('NO_KEY', `还没有配置 ${provider.name} 的钥匙。`, false);
   // Config/page may change while permission or key storage awaits settle.
   await assertPage();
-  assertConfig(await readConfig());
+  const current = await readConfig();
+  assertConfig(current);
+  const currentApiKey = current.apiKeys?.[provider.id]?.trim();
+  if (!currentApiKey) throw appError('NO_KEY', `还没有配置 ${provider.name} 的钥匙。`, false);
+  if (currentApiKey !== apiKey) throw appError('ABORTED', '模型钥匙已变化，请重新提问。');
   if (input.signal.aborted) throw appError('ABORTED', '已停止本次研究。');
   return chatJson({ apiKey, provider, model: input.identity.modelId, thinking: input.thinking,
     messages: input.messages, signal: input.signal });
