@@ -269,6 +269,52 @@ it('does not renew quick/deep deadline on resume and preserves expired waiting q
 });
 
 describe('async boundaries', () => {
+  it.each((['action', 'repair', 'search', 'assessment', 'read', 'answer audit'] as const).flatMap(phase =>
+    (['timeout', 'external abort'] as const).map(cause => ({ phase, cause }))))(
+    'preserves $cause authority for an abort-aware $phase dependency with no subsequent calls', async ({ phase, cause }) => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const cp = checkpointFixture(); cp.deadlineAt = start + 100;
+      const outputs = phase === 'action' ? [] : phase === 'repair' ? [{}] : phase === 'read'
+        ? [search, assessment, { type: 'read_sources', sourceIds: ['sr_r1_1'], focus: 'version' }]
+        : phase === 'answer audit' ? [search, assessment, finish] : [search];
+      const deps = scriptedDependencies(outputs, { search: async () => batch });
+      let entered!: () => void;
+      const reached = new Promise<void>(resolve => { entered = resolve; });
+      let captured: AbortSignal | undefined;
+      let countsOnAbort: number[] | undefined;
+      const counts = () => [deps.callJson, deps.search, deps.read, deps.assertCurrent, deps.onEvent]
+        .map(fn => vi.mocked(fn).mock.calls.length);
+      const pending = (s: AbortSignal) => new Promise<never>((_resolve, reject) => {
+        captured = s;
+        s.addEventListener('abort', () => {
+          countsOnAbort = counts();
+          reject(appError('ABORTED', 'transport cancelled'));
+        }, { once: true });
+        entered();
+      });
+      const scripted = deps.callJson;
+      let jsonCalls = 0;
+      if (phase === 'search') deps.search = (_action, s) => pending(s);
+      else if (phase === 'read') deps.read = (_ids, _focus, _ledger, s) => pending(s);
+      else deps.callJson = (m, s) => jsonCalls++ >= outputs.length ? pending(s) : scripted(m, s);
+      deps.callJson = vi.fn(deps.callJson); deps.search = vi.fn(deps.search); deps.read = vi.fn(deps.read);
+      deps.assertCurrent = vi.fn(deps.assertCurrent); deps.onEvent = vi.fn(deps.onEvent);
+      const settled = run(deps, cp, controller.signal).then(value => ({ value }), error => ({ error }));
+      await reached;
+      if (cause === 'timeout') await vi.advanceTimersByTimeAsync(100);
+      else controller.abort();
+      const result = await settled;
+      if (cause === 'timeout') {
+        expect(controller.signal.aborted).toBe(false);
+        expect(result).toMatchObject({ value: { kind: 'finished', degraded: true,
+          answer: { answer: '这次没有核验成功', source: 'unknown', citations: [], references: [], freshness: 'not_applicable' } } });
+      } else expect(result).toMatchObject({ error: { code: 'ABORTED' } });
+      expect(captured?.aborted).toBe(true);
+      expect(counts()).toEqual(countsOnAbort);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
   const phases = ['action', 'repair', 'search', 'assessment', 'read', 'answer audit', 'clarification', 'assertCurrent'] as const;
   it.each(phases)('aborts %s even when dependency ignores signal and suppresses late writes/events', async phase => {
     vi.useFakeTimers();

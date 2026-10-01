@@ -88,7 +88,8 @@ export async function runResearch(input: {
     const cancelled = new Promise<never>((_resolve, reject) => {
       onAbort = () => { controller.abort(); reject(appError('ABORTED', '已经停止。')); };
       signal.addEventListener('abort', onAbort, { once: true });
-      timer = setTimeout(() => { controller.abort(); reject(appError('TIMEOUT', '研究等待时间已到。')); },
+      // Settle our cause first: abort-aware transports may synchronously reject from their listener.
+      timer = setTimeout(() => { reject(appError('TIMEOUT', '研究等待时间已到。')); controller.abort(); },
         Math.min(timeoutMs, checkpoint.deadlineAt - deps.now()));
     });
     try {
