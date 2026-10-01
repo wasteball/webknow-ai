@@ -5,6 +5,8 @@ import { derivePhase } from '../core/phase';
 import type { Command, Event, PanelState, PortRequest, Reply } from '../core/protocol';
 import { LIMITS } from '../core/limits';
 import { MODEL_PROVIDERS, findProvider } from '../core/model-providers';
+import { effectiveAgentSettings } from '../core/search/agent-policy';
+import { researchSummary } from '../core/search/answer';
 import { effectiveSettings } from '../core/settings';
 import { validateCustomSkill } from '../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS, searchWithProvider } from '../core/search/registry';
@@ -14,7 +16,7 @@ import { createSession, emptySession, markStale } from '../core/session';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
 import { assertOutboundConfirmation, listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
-import { abortAllRuns, abortRun, handleIntent, recoverInterruptedRun, type RunnerHooks } from './runner';
+import { abortAllRuns, abortRun, currentAgentEvent, invalidateResearch, invalidateAllResearch, handleIntent, recoverInterruptedRun, type RunnerHooks } from './runner';
 import { clearDiagramViews } from './diagram-cleanup';
 import {
   OUTBOUND_NOTICE_VERSION,
@@ -165,9 +167,12 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     } : null,
     learningHistory: session?.learningHistory ?? [],
     quote: session?.quote ?? null,
+    researchPending: session?.researchPending,
+    researchDetails: session?.researchCheckpoint ? researchSummary(session.researchCheckpoint) : undefined,
     busy: session?.run
       ? {
           kind: session.run.kind,
+          agent: currentAgentEvent(tabId),
           chars: 0,
           draft: liveDraft.get(tabId) ?? '',
           reasoning: liveReasoning.get(tabId) ?? '',
@@ -180,7 +185,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
 }
 
 /** 联网搜索的界面可见状态（F3）：只有启用状态与名称，凭证不出后台。 */
-function searchStatus(config: { search?: { providerId?: string; credentials?: Record<string, Record<string, string>> } }): {
+function searchStatus(config: import('./store').Config): {
   enabled: boolean;
   providerName: string | null;
   hasCredentials: boolean;
@@ -191,7 +196,7 @@ function searchStatus(config: { search?: { providerId?: string; credentials?: Re
   if (!provider) return { enabled: false, providerName: null, hasCredentials: false };
   const saved = config.search?.credentials?.[providerId] ?? {};
   return {
-    enabled: true,
+    enabled: effectiveAgentSettings(config).enabled,
     providerName: provider.name,
     hasCredentials: provider.configFields.every(
       (field) => !field.required || Boolean(saved[field.key]?.trim()),
@@ -259,6 +264,7 @@ export async function onQuoteSelected(tabId: number, text: string): Promise<AppE
 }
 
 const hooks: RunnerHooks = {
+  onAgent: (tabId, event) => { broadcast(tabId, { type: 'agent', event }); },
   onState: (tabId) => {
     void pushState(tabId);
   },
@@ -327,6 +333,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       case 'attach': {
         // 面板刚连上（或切换了标签页）：必须立刻推一次完整状态，否则界面只能停在“正在连接后台”。
         // 同一标签页可能有多个端口（重开侧栏、诊断连接），attach 后统一广播，保证各端口状态一致。
+        if (command.tabId !== null) await invalidateResearch(command.tabId);
         if (port) {
           await pushState(port.tabId);
         }
@@ -336,19 +343,24 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       case 'start':
         return await startSession(command.tabId);
 
-      case 'stop':
-        return abortRun(command.tabId)
-          ? { ok: true }
-          : { ok: false, error: appError('INTERNAL', '现在没有正在进行的事情。', false) };
+      case 'stop': {
+        if (!abortRun(command.tabId)) return { ok: false, error: appError('INTERNAL', '现在没有正在进行的事情。', false) };
+        await recoverInterruptedRun(command.tabId);
+        await pushState(command.tabId);
+        return { ok: true };
+      }
 
       case 'ask':
         // 逐题联网开关由界面决定：这里必须原样透传，否则开关是死的（F3）。
         return finish(
           await handleIntent(
-            { kind: 'ask', tabId: command.tabId, question: command.question, search: command.search, quote: command.quote, quoteId: command.quoteId },
+            { kind: 'ask', tabId: command.tabId, question: command.question, search: command.search, network: command.network, quote: command.quote, quoteId: command.quoteId },
             hooks,
           ),
         );
+
+      case 'resolveResearch':
+        return finish(await handleIntent({ ...command, kind: 'resolveResearch' }, hooks));
 
       case 'setQuote':
         return finish(await saveQuote(command.tabId, command.text));
@@ -369,7 +381,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
           return { ok: false, error: appError('STALE_PAGE', '这个话题过期了（页面内容变了），重新开始伴读吧。', true) };
         }
         return finish(
-          await handleIntent({ kind: 'ask', tabId: command.tabId, question: bubble.question, quote: null }, hooks),
+          await handleIntent({ kind: 'ask', tabId: command.tabId, question: bubble.question, network: 'article', quote: null }, hooks),
         );
       }
 
@@ -408,12 +420,14 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       }
 
       case 'clearSession':
+        abortRun(command.tabId);
         await clearDiagramViews(command.tabId);
         await dropSession(command.tabId);
         await pushState(command.tabId);
         return { ok: true };
 
       case 'clearAllSessions': {
+        abortAllRuns();
         await clearDiagramViews();
         const count = await clearAllSessions();
         await pushState(null);
@@ -444,6 +458,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       case 'saveSettings': {
         const providerChanged = await applySettings(command.patch);
         if (providerChanged) abortAllRuns();
+        else if (command.patch.model !== undefined || command.patch.thinking !== undefined) await invalidateAllResearch();
         await pushAllStates();
         return { ok: true, message: '设置已保存。' };
       }

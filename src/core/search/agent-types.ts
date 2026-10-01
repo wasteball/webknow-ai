@@ -72,6 +72,8 @@ export type ResearchSummary = {
   conflicts: EvidenceAssessment['conflicts']; freshness: FinishFreshness; degraded: boolean;
 };
 export type AgentSnapshot = {
+  /** Program-owned receiver frozen by the backend; never supplied by a model action. */
+  searchProviderId?: string;
   identity: RunIdentity; question: string; quote: Quote | null;
   title: string; blocks: EvidenceBlock[]; disclosure: string;
   history: { question: string; answer: string }[];

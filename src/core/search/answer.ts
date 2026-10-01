@@ -2,7 +2,7 @@ import { appError } from '../errors';
 import { cleanAnswer, validateArticleCitations } from '../validate';
 import { AGENT_LIMITS } from './agent-limits';
 import { AgentActionSchema } from './agent-schema';
-import type { AgentOutcome, ChatReference, ResearchSummary } from './agent-types';
+import type { AgentCheckpoint, AgentOutcome, ChatReference, FinishFreshness, ResearchSummary } from './agent-types';
 import { assertLedgerRun } from './evidence';
 import { publicSourceUrl } from './source-url';
 
@@ -38,7 +38,15 @@ export function toResearchAnswer(outcome: Extract<AgentOutcome, { kind: 'finishe
     webReferences.map(reference => ({ ...reference, snippet: '' })));
   if (!cleaned.ok) throw cleaned.error;
   // Audit owns claim-scoped freshness. Historical background must not invalidate requested-time support here.
-  const research: ResearchSummary = {
+  const research = researchSummary(outcome.checkpoint, candidate.freshness, outcome.degraded);
+  return { answer: cleaned.value.answer, source: candidate.source, citations: citations.value,
+    references, unanswered: cleaned.value.unanswered, webReferences, research };
+}
+
+/** Explicit allowlist for panel/completed detail; excludes source content and raw audit output. */
+export function researchSummary(checkpoint: AgentCheckpoint, freshness: FinishFreshness = 'not_applicable', degraded = false): ResearchSummary {
+  const { ledger } = checkpoint;
+  return {
     sources: ledger.sources.map(source => ({
       sourceId: source.sourceId, title: source.title, url: source.url, domain: source.domain,
       snippet: source.snippet, provider: source.provider, attempts: [...source.attempts],
@@ -56,8 +64,6 @@ export function toResearchAnswer(outcome: Extract<AgentOutcome, { kind: 'finishe
       sourceIds: [...attempt.sourceIds], retrievedAt: attempt.retrievedAt,
     })),
     conflicts: (ledger.assessment?.conflicts ?? []).map(conflict => ({ sourceIds: [...conflict.sourceIds], description: conflict.description })),
-    freshness: candidate.freshness, degraded: outcome.degraded,
+    freshness, degraded,
   };
-  return { answer: cleaned.value.answer, source: candidate.source, citations: citations.value,
-    references, unanswered: cleaned.value.unanswered, webReferences, research };
 }

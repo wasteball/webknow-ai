@@ -6,7 +6,8 @@ import type { ThinkingLevel } from './model-thinking';
 import type { DiagramMode, FontSize, PromptOverrides } from './settings';
 import type { Skill } from './skills';
 import type { Quote } from './quote';
-import type { Bubble, ChatTurn, LearningHistory, LearningState, RequestKind, SessionState } from './session';
+import type { AgentEvent, NetworkMode, ResearchSummary } from './search/agent-types';
+import type { ResearchPending, Bubble, ChatTurn, LearningHistory, LearningState, RequestKind, SessionState } from './session';
 
 /** 侧栏可见的页面状态（PRD 4.2）。由配置、权限与会话状态共同推导。 */
 export type Phase =
@@ -64,8 +65,11 @@ export type PanelState = {
   learningHistory?: LearningHistory[];
   /** 划在网页上、正准备提问的原文。 */
   quote: Quote | null;
+  /** Only program-generated pending state and content-free research metadata are exposed. */
+  researchPending?: ResearchPending;
+  researchDetails?: ResearchSummary;
   /** draft 是正在写的读者正文；reasoning 是同一轮的思考过程。引用和后续卡片不在这里。 */
-  busy: { kind: RequestKind; chars: number; draft: string; reasoning: string } | null;
+  busy: { agent?: AgentEvent; kind: RequestKind; chars: number; draft: string; reasoning: string } | null;
   error: AppError | null;
   /** 这一轮「AI 问」已经聊了多少个来回。0 表示还没开始。 */
   rounds: number;
@@ -77,7 +81,8 @@ export type Command =
   | { type: 'attach'; tabId: number | null }
   | { type: 'start'; tabId: number }
   | { type: 'stop'; tabId: number }
-  | { type: 'ask'; tabId: number; question: string; search?: boolean; quote?: string | null; quoteId?: string }
+  | { type: 'ask'; tabId: number; question: string; network?: NetworkMode; search?: boolean; quote?: string | null; quoteId?: string }
+  | { type: 'resolveResearch'; tabId: number; sessionId: string; runId: string; mode: 'continue' | 'article' | 'cancel'; text: string }
   | { type: 'setQuote'; tabId: number; text: string }
   | { type: 'clearQuote'; tabId: number; quoteId?: string }
   | { type: 'explore'; tabId: number; bubbleId: string }
@@ -109,6 +114,7 @@ export type Reply =
   | { ok: false; error: AppError };
 
 export type Event =
+  | { type: 'agent'; event: AgentEvent }
   | { type: 'state'; state: PanelState }
   | { type: 'progress'; chars: number; draft: string; reasoning: string }
   | { type: 'quote'; tabId: number; sessionId: string; quote: Quote }

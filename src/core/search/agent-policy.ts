@@ -37,3 +37,8 @@ export function normalizeAgentSettings(patch: unknown): Partial<AgentSettings> {
   }
   return clean;
 }
+
+/** Legacy provider selection never enables the independent global network switch. */
+export function effectiveAgentSettings(config: { search?: { agent?: Partial<AgentSettings> } }): AgentSettings {
+  return { ...DEFAULT_AGENT_SETTINGS, ...normalizeAgentSettings(config.search?.agent) };
+}

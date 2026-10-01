@@ -57,6 +57,7 @@ export type Config = {
   learningStyle?: 'mixed' | 'quiz' | 'open';
   /** 联网搜索（F3）：providerId=null 表示未启用。凭证只存这里，不进界面。 */
   search?: {
+    agent?: Partial<import('../core/search/agent-types').AgentSettings>;
     providerId?: string;
     credentials?: Record<string, Record<string, string>>;
   };

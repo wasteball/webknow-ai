@@ -1,7 +1,7 @@
 import { buildContext, describeCompleteness } from '../core/blocks';
 import { appError, isAppError, type AppError } from '../core/errors';
 import { LIMITS } from '../core/limits';
-import { answerMessages } from '../core/prompts/answer';
+import { ANSWER_DEFAULT_POLICY, answerMessages } from '../core/prompts/answer';
 import { guideMessages, summaryCharsFor } from '../core/prompts/guide';
 import {
   DEFAULT_LEARN_GOAL,
@@ -12,8 +12,13 @@ import {
   unknownAssistMode,
 } from '../core/learn-policy';
 import { learnMessages, type LearnMode } from '../core/prompts/learn';
-import { searchWithProvider } from '../core/search/registry';
-import type { SearchResult } from '../core/search/types';
+import type { AgentCheckpoint, AgentEvent, AgentResume, NetworkMode } from '../core/search/agent-types';
+import { effectiveAgentSettings } from '../core/search/agent-policy';
+import { initialCheckpoint } from '../core/search/agent-limits';
+import { evaluateSearchGate } from '../core/search/gate';
+import { SEARCH_AGENT_VERSION } from '../core/prompts/search-agent';
+import { toResearchAnswer } from '../core/search/answer';
+import { assertResearchCurrent, executeResearch, permissionOrigins, researchModelSelection } from './research';
 import { prepareQuote, type Quote } from '../core/quote';
 import { effectiveSettings } from '../core/settings';
 import { resolvePolicy } from '../core/skills';
@@ -44,7 +49,7 @@ import { cleanAnswer, cleanGuide, cleanLearn, omitBlockIds, type LearnResult } f
 import { applyImageReadings } from '../core/vision';
 import { assertOutboundConfirmation, callModel, currentProvider, readImage } from './model';
 import { captureImage, extractPage, readPageIdentity, toAppError } from './page';
-import { getSession, putSession, readApiKey, readConfig, readSearchCredentials, type Config } from './store';
+import { getSession, putSession, readApiKey, readConfig } from './store';
 
 /**
  * 请求流水线（三类请求共用一条）：
@@ -54,7 +59,8 @@ import { getSession, putSession, readApiKey, readConfig, readSearchCredentials, 
 
 export type Intent =
   | { kind: 'guide'; tabId: number }
-  | { kind: 'ask'; tabId: number; question: string; search?: boolean; quote?: string | null; quoteId?: string }
+  | { kind: 'ask'; tabId: number; question: string; network?: NetworkMode; search?: boolean; quote?: string | null; quoteId?: string }
+  | { kind: 'resolveResearch'; tabId: number; sessionId: string; runId: string; mode: 'continue' | 'article' | 'cancel'; text: string }
   | { kind: 'learnStart'; tabId: number; goal: string }
   | { kind: 'learnAnswer'; tabId: number; text: string; choices?: LearnChoiceAnswer[] }
   | { kind: 'learnAssist'; tabId: number; assist: 'hint' | 'explain' | 'skip' | 'unknown' }
@@ -64,6 +70,7 @@ export type Intent =
 export type LearnChoiceAnswer = { questionId: string; choiceIds: string[] };
 
 export type RunnerHooks = {
+  onAgent?: (tabId: number, event: AgentEvent) => void;
   onState: (tabId: number) => void;
   onProgress: (tabId: number, chars: number, draft: string, reasoning: string) => void;
 };
@@ -75,7 +82,9 @@ type Task = (
 ) => Promise<PageSession | null>;
 
 /** 每个标签页同时只允许一个在途请求（FR-039）。 */
-const controllers = new Map<number, { runId: string; sessionId: string; controller: AbortController }>();
+type ActiveRun = { runId: string; sessionId: string; controller: AbortController; research?: boolean; waiting?: boolean; seq?: number; agent?: AgentEvent };
+const controllers = new Map<number, ActiveRun>();
+export function currentAgentEvent(tabId: number): AgentEvent | undefined { return controllers.get(tabId)?.agent; }
 const recoveries = new Map<number, Promise<PageSession | null>>();
 
 /** A restarted worker cannot resume a persisted network request. Keep history and permit retry. */
@@ -85,11 +94,18 @@ export function recoverInterruptedRun(tabId: number): Promise<PageSession | null
   const recovery = (async () => {
     const session = await getSession(tabId);
     const active = controllers.get(tabId);
-    if (!session?.run || (active?.sessionId === session.id && active.runId === session.run.id)) return session;
+    if (!session?.run) return session;
+    const registered = active?.sessionId === session.id && active.runId === session.run.id;
+    const expired = registered && active.waiting && (session.researchCheckpoint?.deadlineAt ?? Infinity) <= Date.now();
+    if (registered && !(active.research && active.waiting && (active.controller.signal.aborted || expired))) return session;
+    const stopped = registered && active.controller.signal.aborted;
+    if (registered && active.waiting) controllers.delete(tabId);
     const next = {
       ...endRun(session, session.run.id),
+      researchCheckpoint: undefined,
+      researchPending: session.researchPending ? { ...session.researchPending, status: stopped ? 'stopped' as const : 'interrupted' as const } : undefined,
       state: stateAfterFailure(session, session.run.kind),
-      error: appError('INTERNAL', '刚才的生成被中断了。已有对话还在，请重试刚才的操作。', true),
+      error: stopped ? null : appError('INTERNAL', '刚才的生成被中断了。已有对话还在，请重试刚才的操作。', true),
     };
     await putSession(next);
     return next;
@@ -116,7 +132,9 @@ export async function handleIntent(intent: Intent, hooks: RunnerHooks): Promise<
     case 'guide':
       return runGuide(intent.tabId, hooks);
     case 'ask':
-      return runAsk(intent.tabId, intent.question, intent.search === true, hooks, intent.quote, intent.quoteId);
+      return runAsk(intent.tabId, intent.question, intent.network ?? (intent.search === true ? 'force' : intent.search === false ? 'article' : 'auto'), hooks, intent.quote, intent.quoteId);
+    case 'resolveResearch':
+      return resolveResearch(intent, hooks);
     case 'learnStart':
       return runLearnStart(intent.tabId, intent.goal, hooks);
     case 'learnAnswer':
@@ -159,17 +177,24 @@ async function withRun(
   // 用户触发后立即进入等待态（NFR-001），不等第一个字节。
   hooks.onState(tabId);
 
+  return invokeRun(tabId, kind, begun.session, begun.run.id, controller, task, hooks);
+}
+
+async function invokeRun(tabId: number, kind: RequestKind, session: PageSession, runId: string,
+  controller: AbortController, task: Task, hooks: RunnerHooks): Promise<AppError | null> {
   let failure: AppError | null = null;
   try {
-    const next = await task(begun.session, begun.run.id, controller.signal);
+    const next = await task(session, runId, controller.signal);
     if (next) await putSession(next);
   } catch (error) {
     failure = toAppError(error);
     const fresh = await getSession(tabId);
-    if (fresh && acceptsWriteBack(fresh, begun.run.id)) {
+    if (fresh && acceptsWriteBack(fresh, runId)) {
       const stopped = failure.code === 'ABORTED';
       await putSession({
-        ...endRun(fresh, begun.run.id),
+        ...endRun(fresh, runId),
+        researchCheckpoint: undefined,
+        researchPending: fresh.researchPending ? { ...fresh.researchPending, status: stopped ? 'stopped' : 'interrupted' } : undefined,
         state: stopped ? stateAfterStop(fresh, kind) : stateAfterFailure(fresh, kind),
         error: stopped ? null : failure,
         updatedAt: Date.now(),
@@ -177,8 +202,10 @@ async function withRun(
     }
   } finally {
     const fresh = await getSession(tabId);
-    if (fresh?.run?.id === begun.run.id) await putSession(endRun(fresh, begun.run.id));
-    if (controllers.get(tabId)?.controller === controller) controllers.delete(tabId);
+    const active = controllers.get(tabId);
+    const waiting = active?.controller === controller && active.waiting && !controller.signal.aborted && fresh?.run?.id === runId;
+    if (!waiting && fresh?.run?.id === runId) await putSession(endRun(fresh, runId));
+    if (!waiting && active?.controller === controller) controllers.delete(tabId);
     hooks.onState(tabId);
   }
   return failure;
@@ -194,6 +221,11 @@ async function adoptCurrentPage(tabId: number, session: PageSession): Promise<Pa
   if (drift === 'replaced' && live) {
     if (session.run) await dropReplaced(tabId, session.run.id, live.url);
     throw writeBackError(planWriteBack(drift, live));
+  }
+  if (drift === 'same' && live && live.url !== session.url) {
+    const current = { ...session, url: live.url, updatedAt: Date.now() };
+    await putSession(current);
+    return current;
   }
   if (drift !== 'edited') return session;
   const page = await extractPage(tabId);
@@ -357,7 +389,7 @@ async function runGuide(tabId: number, hooks: RunnerHooks): Promise<AppError | n
 async function runAsk(
   tabId: number,
   rawQuestion: string,
-  searchRequested: boolean,
+  network: NetworkMode,
   hooks: RunnerHooks,
   rawQuote?: string | null,
   quoteId?: string,
@@ -370,19 +402,36 @@ async function runAsk(
     tabId,
     'answer',
     async (session, runId, signal) => {
-      const current = await attachImages(tabId, await adoptCurrentPage(tabId, session), signal, hooks);
+      let current = await adoptCurrentPage(tabId, session);
+      const settings = effectiveAgentSettings(config);
+      const preparedQuote = rawQuote === undefined ? current.quote ?? null
+        : rawQuote === null ? null : prepareQuote(rawQuote, current.blocks);
+      const frozenQuote = preparedQuote ? { ...preparedQuote, id: rawQuote === undefined ? preparedQuote.id : quoteId ?? preparedQuote.id } : null;
+      const gate = evaluateSearchGate({ question, pageTitle: current.title, quote: frozenQuote?.text ?? null,
+        mode: network, enabled: settings.enabled, freshness: settings.freshness, now: new Date(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      if (gate.canSearch) {
+        const model = researchModelSelection(config);
+        const checkpoint = initialCheckpoint({
+          identity: { tabId, sessionId: current.id, runId, url: current.url, fingerprint: current.fingerprint,
+            modelProvider: model.modelProvider, modelId: model.modelId }, thinking: model.thinking,
+          searchProviderId: config.search?.providerId, question, title: current.title, blocks: structuredClone(current.blocks), quote: frozenQuote,
+          history: current.chat.slice(-LIMITS.maxHistoryTurns).map(turn => ({ question: turn.question, answer: turn.answer })),
+          disclosure: describeCompleteness(current.completeness), gate, settings,
+          policyVersion: SEARCH_AGENT_VERSION, answerPolicy: resolvePolicy('answer', config) ?? ANSWER_DEFAULT_POLICY,
+          diagrams: effectiveSettings(config).diagrams === 'auto',
+        }, Date.now());
+        const active = controllers.get(tabId)!;
+        active.research = true;
+        active.seq = 0;
+        current = { ...current, researchCheckpoint: checkpoint,
+          researchPending: { runId, question, quote: frozenQuote, status: 'running' } };
+        await putSession(current);
+        return researchStep(current, checkpoint, signal, hooks);
+      }
+      current = await attachImages(tabId, current, signal, hooks);
       const ctx = contextOf(current);
       const diagrams = effectiveSettings(config).diagrams === 'auto';
-
-      // 联网搜索（F3）：失败或无结果时如实降级，只用文章本身回答，不阻断整个请求。
-      let webResults: SearchResult[] = [];
-      let searchFailed = false;
-      if (searchRequested) {
-        const search = await performSearch(config, question, signal);
-        if (search.ok) webResults = search.results;
-        else searchFailed = true;
-      }
-
       const prepared = rawQuote === undefined ? current.quote ?? null
         : rawQuote === null ? null : prepareQuote(rawQuote, current.blocks);
       const quote = prepared ? { ...prepared, id: rawQuote === undefined ? prepared.id : quoteId ?? prepared.id } : null;
@@ -391,7 +440,9 @@ async function runAsk(
         tabId,
         current.blocks.map((block) => block.id),
       );
-      const parsed = await callModel(
+      const missingRequired = gate.level === 'required' && !/文中|本文|文章|原文|作者/.test(question);
+      const unknown = { answer: '当前提供的原文无法确认这一问题。', source: 'unknown', citations: [], unanswered: ['缺少实时核验依据。'], references: [], followUps: [] };
+      const parsed = missingRequired ? unknown : await callModel(
         answerMessages({
           title: current.title,
           url: current.url,
@@ -402,20 +453,20 @@ async function runAsk(
             .map((turn) => ({ question: turn.question, answer: turn.answer })),
           question,
           override: resolvePolicy('answer', config),
-          webResults: webResults.length ? webResults : undefined,
+          networkContext: { gate, scope: 'article' },
           quote,
           diagrams,
         }),
         signal,
         watch.onProgress,
       );
-      const clean = cleanAnswer(parsed, current.blocks, webResults);
+      let clean = cleanAnswer(parsed, current.blocks);
+      if (clean.ok && (clean.value.source !== 'original' && clean.value.source !== 'unknown' ||
+          gate.level === 'required' && !clean.value.citations.length)) clean = cleanAnswer(unknown, current.blocks);
       if (!clean.ok) throw clean.error;
       const unanswered = [...clean.value.unanswered];
-      if (searchFailed || (webResults.length === 0 && searchRequested)) {
-        unanswered.push('联网搜索没有可用的结果，这次只依据文章本身回答。');
-      }
-      const citations = withQuoteCitation(clean.value.citations, current.blocks, quote);
+      unanswered.push('本题未联网核验，只依据当前提供的文章。');
+      const citations = clean.value.source === 'unknown' ? [] : withQuoteCitation(clean.value.citations, current.blocks, quote);
       const asked = new Set([...current.chat.map((turn) => turn.question), question]);
       const followUps = clean.value.followUps.filter((item) => !asked.has(item.question));
       return writeBack(tabId, current, runId, (fresh) => ({
@@ -425,7 +476,7 @@ async function runAsk(
           {
             id: newId('t'),
             question,
-            answer: clean.value.answer,
+            answer: `${clean.value.answer}\n\n本题未联网核验，只依据当前提供的文章。`,
             source: clean.value.source,
             citations,
             unanswered,
@@ -458,27 +509,90 @@ function withQuoteCitation(
   return [{ blockId: quote.blockId }, ...citations];
 }
 
-/** 执行一次联网搜索；只外发搜索词，不发送正文（F3）。 */
-async function performSearch(
-  config: Config,
-  question: string,
-  signal: AbortSignal,
-): Promise<{ ok: true; results: SearchResult[] } | { ok: false }> {
-  const providerId = config.search?.providerId;
-  if (!providerId) return { ok: false };
-  try {
-    const credentials = await readSearchCredentials(providerId);
-    const results = await searchWithProvider({
-      providerId,
-      config: credentials,
-      query: question.slice(0, 200),
-      count: LIMITS.searchResultsCount,
-      signal,
-    });
-    return { ok: true, results };
-  } catch {
-    return { ok: false };
+/** Same-run continuation is consumed before the first asynchronous boundary. */
+async function resolveResearch(intent: Extract<Intent, { kind: 'resolveResearch' }>, hooks: RunnerHooks): Promise<AppError | null> {
+  const active = controllers.get(intent.tabId);
+  if (!active?.research || !active.waiting || active.sessionId !== intent.sessionId || active.runId !== intent.runId) {
+    return appError('STALE_PAGE', '这次澄清已经失效，请重新提问。');
   }
+  active.waiting = false;
+  const session = await getSession(intent.tabId);
+  if (!session || session.id !== intent.sessionId || session.run?.id !== intent.runId || !session.researchCheckpoint) {
+    active.controller.abort();
+    if (controllers.get(intent.tabId) === active) controllers.delete(intent.tabId);
+    return appError('STALE_PAGE', '这次澄清已经失效，请重新提问。');
+  }
+  if (intent.mode === 'cancel') {
+    active.controller.abort();
+    active.waiting = true;
+    await recoverInterruptedRun(intent.tabId); hooks.onState(intent.tabId); return null;
+  }
+  if (!intent.text.trim()) { active.waiting = true; return appError('INTERNAL', '请先回答澄清问题。'); }
+  await putSession({ ...session, researchPending: session.researchPending ? { ...session.researchPending, status: 'running' } : undefined });
+  return invokeRun(intent.tabId, 'answer', session, intent.runId, active.controller,
+    (current, _runId, signal) => researchStep(current, session.researchCheckpoint!, signal, hooks,
+      { mode: intent.mode as AgentResume['mode'], text: intent.text.trim().slice(0, LIMITS.maxQuestionChars) }), hooks);
+}
+
+/** Events and completion use the same frozen identity; no async event can overtake completion. */
+async function researchStep(session: PageSession, checkpoint: AgentCheckpoint, signal: AbortSignal,
+  hooks: RunnerHooks, resume?: AgentResume): Promise<PageSession | null> {
+  const { identity, thinking } = checkpoint.snapshot;
+  const active = controllers.get(identity.tabId)!;
+  let events = Promise.resolve();
+  const outcome = await executeResearch(checkpoint, signal, event => {
+    if (signal.aborted || controllers.get(identity.tabId) !== active ||
+        Object.entries(identity).some(([key, value]) => event.identity[key as keyof typeof identity] !== value) || event.seq <= (active.seq ?? 0)) return;
+    active.seq = event.seq;
+    events = events.then(async () => {
+      await assertResearchCurrent(identity, thinking, signal, checkpoint.snapshot.searchProviderId);
+      if (controllers.get(identity.tabId) !== active) return;
+      active.agent = event; hooks.onAgent?.(identity.tabId, event);
+    });
+    void events.catch(() => {});
+  }, resume);
+  await events;
+  await assertResearchCurrent(identity, thinking, signal, checkpoint.snapshot.searchProviderId);
+  const fresh = await getSession(identity.tabId);
+  if (!fresh || fresh.id !== identity.sessionId || fresh.run?.id !== identity.runId ||
+      fresh.url !== identity.url || fresh.fingerprint !== identity.fingerprint || signal.aborted) return null;
+  if (outcome.kind === 'waiting') {
+    active.waiting = true;
+    return { ...fresh, researchCheckpoint: outcome.checkpoint,
+      researchPending: { runId: identity.runId, question: checkpoint.snapshot.question, quote: checkpoint.snapshot.quote,
+        status: 'waiting', clarification: outcome.question, permissionOrigins: permissionOrigins(outcome.checkpoint) }, error: null };
+  }
+  if (outcome.degraded && outcome.checkpoint.waiting) {
+    return { ...endRun(fresh, identity.runId), researchCheckpoint: undefined,
+      researchPending: { runId: identity.runId, question: checkpoint.snapshot.question, quote: checkpoint.snapshot.quote,
+        status: 'interrupted', clarification: outcome.checkpoint.waiting },
+      error: appError('TIMEOUT', '这次澄清等待已过期，请重新提问。', true) };
+  }
+  const answer = toResearchAnswer(outcome);
+  const quote = checkpoint.snapshot.quote;
+  return { ...fresh, researchCheckpoint: undefined, researchPending: undefined,
+    chat: [...fresh.chat, { id: newId('t'), question: checkpoint.snapshot.question, ...answer,
+      quote: quote ?? undefined, followUps: [], at: Date.now() }].slice(-LIMITS.maxChatTurns),
+    quote: quote && fresh.quote && (fresh.quote.id ?? fresh.quote.text) === (quote.id ?? quote.text) ? null : fresh.quote ?? null,
+    state: 'READY', error: null, updatedAt: Date.now() };
+}
+
+/** A reconnect invalidates Agent work; ordinary QA keeps its existing reconnect behavior. */
+export async function invalidateAllResearch(): Promise<void> {
+  await Promise.all([...controllers].filter(([, active]) => active.research).map(([tabId]) => invalidateResearch(tabId)));
+}
+
+export async function invalidateResearch(tabId: number): Promise<void> {
+  const active = controllers.get(tabId);
+  if (!active?.research) return;
+  active.controller.abort();
+  const fresh = await getSession(tabId);
+  if (fresh?.id === active.sessionId && fresh.run?.id === active.runId) {
+    await putSession({ ...endRun(fresh, active.runId), researchCheckpoint: undefined,
+      researchPending: fresh.researchPending ? { ...fresh.researchPending, status: 'interrupted' } : undefined,
+      error: appError('INTERNAL', '研究已中断，请重新提问。', true) });
+  }
+  if (controllers.get(tabId) === active) controllers.delete(tabId);
 }
 
 type LearnInput = {

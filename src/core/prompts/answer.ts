@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { GateResult } from '../search/agent-types';
 import type { Quote } from '../quote';
 import type { SearchResult } from '../search/types';
 import { DIAGRAM_GUIDANCE, DIAGRAMS_DISABLED, HARNESS_RULES, MARKDOWN_DISCIPLINE, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
@@ -94,6 +95,7 @@ export function answerMessages(input: {
   quote?: Quote | null;
   /** 用户设置「不要图」时为 false：明确要求不用图表。 */
   diagrams?: boolean;
+  networkContext?: { gate: GateResult; scope: 'article' };
 }) {
   const marker = randomBoundary();
   const payload = JSON.stringify({
@@ -108,7 +110,7 @@ export function answerMessages(input: {
   return [
     {
       role: 'system' as const,
-      content: answerSystem(
+      content: (input.networkContext ? '本题仅依据文章；本题没有实时核验。即使问题明确请求外部知识，也不得用模型记忆补齐文章外事实或当前状态。无文章支持则 source=unknown。\n\n' : '') + answerSystem(
         input.override,
         Boolean(input.webResults?.length),
         Boolean(input.quote),

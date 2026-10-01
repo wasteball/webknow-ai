@@ -72,3 +72,12 @@ describe('panel reconnect', () => {
     expect(transport.ports).toHaveLength(2);
   });
 });
+
+it('reconnects after a clarification command without replaying its same-run continuation', async () => {
+  client = createClient({ onState: vi.fn(), onProgress: vi.fn() });
+  const attaching = client.send({ type: 'attach', tabId: 7 }); reply(transport.ports[0]!); await attaching;
+  const resuming = client.send({ type: 'resolveResearch', tabId: 7, sessionId: 's1', runId: 'r1', mode: 'continue', text: '产品 A' });
+  transport.ports[0]!.disconnect(); expect((await resuming).ok).toBe(false);
+  await vi.advanceTimersByTimeAsync(250);
+  expect(transport.ports[1]!.postMessage.mock.calls.map(([message]) => message.command)).toEqual([{ type: 'attach', tabId: 7 }]);
+});

@@ -2,7 +2,7 @@ import type { BlocksPayload, Completeness, EvidenceBlock, PictureRef } from './b
 import type { Quote } from './quote';
 import { appError, type AppError } from './errors';
 import { LIMITS } from './limits';
-import type { ChatReference, ResearchSummary } from './search/agent-types';
+import type { AgentCheckpoint, AskUserAction, ChatReference, ResearchSummary } from './search/agent-types';
 
 /**
  * 页面会话：正文、摘要、气泡、对话与学习状态只在当前浏览会话保留（FR-030）。
@@ -109,6 +109,12 @@ export type LearningHistory = { goal: string; log: LearnEntry[] };
 
 export type Run = { id: string; kind: RequestKind; startedAt: number };
 
+export type ResearchPending = {
+  runId: string; question: string; quote: Quote | null;
+  status: 'running' | 'waiting' | 'stopped' | 'interrupted';
+  clarification?: AskUserAction; permissionOrigins?: string[];
+};
+
 export type PageSession = {
   id: string;
   tabId: number;
@@ -129,6 +135,8 @@ export type PageSession = {
   quote?: Quote | null;
   /** 在途请求；写回必须与之匹配，否则丢弃迟到结果（FR-024）。 */
   run: Run | null;
+  researchCheckpoint?: AgentCheckpoint;
+  researchPending?: ResearchPending;
   error: AppError | null;
   updatedAt: number;
 };
@@ -203,6 +211,8 @@ export function markStale(session: PageSession, url?: string): PageSession {
     url: nextUrl,
     title: samePage ? session.title : '',
     fingerprint: '',
+    researchCheckpoint: undefined,
+    researchPending: session.researchPending ? { ...session.researchPending, status: 'interrupted' } : undefined,
     state: 'STALE',
     blocks: [],
     pictures: undefined,
