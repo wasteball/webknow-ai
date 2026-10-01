@@ -55,7 +55,10 @@ function requestedTime(question: string, today: string): { range?: RequestedRang
       from = `${year}-01-01`;
       if (relative === '去年') to = `${year}-12-31`;
     }
-    return { range: { from, to }, freshness: /今天|今日|today/.test(relative) ? 'day' : 'any' };
+    // Historical periods use exact bounds only; a current rolling filter would discard their earlier days.
+    const freshness: Freshness = /今天|今日|today/.test(relative) ? 'day'
+      : /^(本周|这周)$/.test(relative) ? 'week' : /^(本月|这个月)$/.test(relative) ? 'month' : 'any';
+    return { range: { from, to }, freshness };
   }
   const rolling = question.match(/(?:过去|最近|近)\s*(\d+)\s*(天|周|个月|月)/);
   if (rolling) {
@@ -63,7 +66,10 @@ function requestedTime(question: string, today: string): { range?: RequestedRang
     if (count < 1 || count > 366) return { ambiguous: true };
     const from = /月/.test(rolling[2]!) ? shiftCalendarMonths(today, -count)
       : shiftCalendarDays(today, 1 - count * (rolling[2] === '周' ? 7 : 1));
-    return { range: { from, to: today }, freshness: 'any' };
+    const freshness: Freshness = rolling[2] === '天' && count === 1 ? 'day'
+      : (rolling[2] === '天' && count === 7) || (rolling[2] === '周' && count === 1) ? 'week'
+        : /月/.test(rolling[2]!) && count === 1 ? 'month' : 'any';
+    return { range: { from, to: today }, freshness };
   }
   // Unsupported numeric dates must not silently become a current-time filter.
   if (/\d{4}[-/]\d|\d+\s*月|\d+\s*日|去年|今年|上个|最近\s*[一二三四五六七八九十]/.test(question)) return { ambiguous: true };
@@ -77,12 +83,17 @@ export function evaluateSearchGate(input: {
   const question = input.question.trim();
   const reasons: string[] = [];
   const explicit = /联网|上网|搜索|查证|事实核查|验证.*(?:作者|说法|事实)|(?:作者|说法).*是否(?:属实|真实|正确)|fact.?check|verify|search (?:online|the web)/i.test(question);
-  const articleSubject = /文中|本文|文章|原文|这段|这句话|这篇|划词|作者.*(?:意思|提到|表达)|the article|this (?:passage|paragraph)/i;
+  const articleSubject = /文中|本文|文章|原文|这段|这句话|这篇|划词|作者.*(?:意思|提到|表达|认为|原因)|the article|this (?:passage|paragraph)/i;
   const liveRequest = /今天|今日|现在|最新|当前|实时|最近|today|current|latest|right now/i;
   const separateLiveRequest = question.split(/[,，;；。]/).some((clause) => liveRequest.test(clause) && !articleSubject.test(clause));
+  // Explaining quoted time wording is local; asking if its subject is still valid is a current-state check.
+  const unquoted = question.replace(/“[^”]*”|「[^」]*」|『[^』]*』|"[^"]*"|'[^']*'/g, '');
+  const currentState = /是否(?:仍然|仍|还)(?:有效|适用|生效)|(?:仍然|仍|还)(?:有效|适用|生效)(?:吗|么|？|\?)/.test(unquoted)
+    || (liveRequest.test(unquoted)
+      && /是否(?:仍然|仍|还)?(?:有效|适用|生效|是最新)|是不是(?:最新|有效)|(?:现在|当前|今天|今日).*(?:有效|适用|生效|价格|版本)/.test(unquoted));
   const article = /解释|总结|概括|核对|梳理|翻译|说明|explain|summari[sz]e|translate/i.test(question)
-    && articleSubject.test(question) && !separateLiveRequest;
-  const live = liveRequest.test(question);
+    && articleSubject.test(question) && !separateLiveRequest && !currentState;
+  const live = liveRequest.test(question) || currentState;
   const missingEntity = /(?:那|这)(?:家|个)(?:公司|产品|软件|政策)|^(?:请问|请|查一下|搜索)?\s*(?:今天|现在|最新|当前|最近)?\s*(?:的)?\s*(?:版本|价格|政策|情况|消息)\s*(?:是|有|为|多少|什么|怎样|如何|怎么样|？|\?)/.test(question)
     || /^(?:what(?:'s| is) (?:the )?)?(?:latest version|current price)[?\s]*$/i.test(question);
   let level: GateResult['level'];
@@ -104,9 +115,12 @@ export function evaluateSearchGate(input: {
     if (!(error instanceof RangeError)) throw error;
     level = 'ambiguous'; freshness = 'any'; reasons.push('日期范围在给定时区无效，先澄清。');
   }
-  if (input.mode === 'force') { level = 'required'; reasons.push('用户本轮明确选择必须联网。'); }
+  if (input.mode === 'force') {
+    if (level !== 'ambiguous') level = 'required';
+    reasons.push('用户本轮明确选择必须联网；存在歧义时先澄清，再履行搜索前提。');
+  }
   if (!input.enabled) reasons.push('全局联网关闭，不能执行搜索。');
   if (input.mode === 'article') reasons.push('本轮只依据文章，不执行搜索。');
   const canSearch = input.enabled && input.mode !== 'article' && level !== 'not_needed';
-  return { level, canSearch, mustSearch: canSearch && level === 'required', freshness, time, reasons };
+  return { level, canSearch, mustSearch: canSearch && (level === 'required' || input.mode === 'force'), freshness, time, reasons };
 }

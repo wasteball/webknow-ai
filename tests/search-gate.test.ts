@@ -32,6 +32,15 @@ describe('layered search gate', () => {
       level: 'required', mustSearch: true, freshness: 'day',
     });
   });
+  it.each(['解释文章里的政策现在是否仍然有效？', '解释文章里的版本现在是不是最新？', '核对本文政策今天是否生效？', '解释文章里的政策是否仍然有效？'])('checks the current state of an article subject: %s', (question) => {
+    expect(evaluateSearchGate({ ...input, question })).toMatchObject({ level: 'required', canSearch: true, mustSearch: true });
+  });
+  it('keeps quoted current-state wording as an article explanation', () => {
+    expect(evaluateSearchGate({ ...input, question: '解释文中“现在是否仍然有效”这句话' })).toMatchObject({ level: 'not_needed', canSearch: false });
+  });
+  it('keeps an explanation of the author rationale within the article', () => {
+    expect(evaluateSearchGate({ ...input, question: '解释作者认为政策仍然有效的原因' })).toMatchObject({ level: 'not_needed', canSearch: false });
+  });
   it('keeps explicit today above a looser freshness preference', () => {
     const gate = evaluateSearchGate({ ...input, freshness: 'any' });
     expect(gate.freshness).toBe('day');
@@ -57,6 +66,34 @@ describe('layered search gate', () => {
   });
   it('force requires search even for an article explanation', () => {
     expect(evaluateSearchGate({ ...input, question: '解释本文', mode: 'force' }).level).toBe('required');
+  });
+  it.each(['最新版本是什么？', '查证2023-02-30上海政策'])('force keeps clarification before its search prerequisite: %s', (question) => {
+    const gate = evaluateSearchGate({ ...input, question, mode: 'force' });
+    expect(gate).toMatchObject({ level: 'ambiguous', canSearch: true, mustSearch: true });
+    expect(gate.time.from).toBeUndefined();
+  });
+  it('disabled force preserves ambiguity without authorizing a search', () => {
+    expect(evaluateSearchGate({ ...input, question: '最新版本是什么？', mode: 'force', enabled: false })).toMatchObject({
+      level: 'ambiguous', canSearch: false, mustSearch: false,
+    });
+  });
+  it.each([
+    ['本周上海政策', 'week', '2026-09-27T16:00:00.000Z'],
+    ['本月上海政策', 'month', '2026-09-30T16:00:00.000Z'],
+    ['最近7天上海政策', 'week', '2026-09-25T16:00:00.000Z'],
+    ['最近1周上海政策', 'week', '2026-09-25T16:00:00.000Z'],
+    ['最近1个月上海政策', 'month', '2026-09-01T16:00:00.000Z'],
+  ])('keeps expressible freshness and exact local range: %s', (question, freshness, from) => {
+    expect(evaluateSearchGate({ ...input, question, freshness: 'any' })).toMatchObject({
+      freshness, time: { from, to: '2026-10-02T15:59:59.999Z' },
+    });
+  });
+  it.each([
+    ['上周上海政策', '2026-09-20T16:00:00.000Z', '2026-09-27T15:59:59.999Z'],
+    ['上月上海政策', '2026-08-31T16:00:00.000Z', '2026-09-30T15:59:59.999Z'],
+    ['最近14天上海政策', '2026-09-18T16:00:00.000Z', '2026-10-02T15:59:59.999Z'],
+  ])('preserves a custom or historical interval without a narrower rolling filter: %s', (question, from, to) => {
+    expect(evaluateSearchGate({ ...input, question, freshness: 'week' })).toMatchObject({ freshness: 'any', time: { from, to } });
   });
   it('leaves uncertain ordinary questions ambiguous', () => {
     expect(evaluateSearchGate({ ...input, question: '这是什么意思？' }).level).toBe('ambiguous');

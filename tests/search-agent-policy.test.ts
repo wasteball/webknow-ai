@@ -70,4 +70,15 @@ describe('independent agent prompt', () => {
     checkpoint.snapshot.diagrams = true;
     expect(agentMessages(checkpoint)[0]!.content).toContain(DIAGRAM_GUIDANCE);
   });
+  it('keeps clarification ahead of the forced-search completion prerequisite', () => {
+    const checkpoint = checkpointFixture();
+    checkpoint.snapshot.gate = { ...checkpoint.snapshot.gate, level: 'ambiguous', canSearch: true, mustSearch: true };
+    const messages = agentMessages(checkpoint);
+    expect(messages[0]!.content).toContain('mustSearch 是完成回答前的搜索前提');
+    expect(messages[0]!.content).toContain('不能跳过澄清');
+    expect(messages[0]!.content).toContain('先结合本次文章上下文');
+    expect(messages[0]!.content).toContain('若歧义不影响检索，可以先广泛搜索');
+    expect(messages[0]!.content).toContain('明确的 gate.time 范围优先');
+    expect(JSON.parse(messages[1]!.content.split('\n')[1]!).gate).toMatchObject({ level: 'ambiguous', mustSearch: true });
+  });
 });
