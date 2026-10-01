@@ -63,6 +63,14 @@ export type EvidenceLedger = {
   runId: string; sources: SourceRecord[]; attempts: SearchAttempt[];
   assessment: EvidenceAssessment | null;
 };
+export type ChatReference = {
+  sourceId: string; url: string; title: string; domain: string; publishedAt: string | null;
+  retrievedAt: string; readStatus: SourceRecord['readStatus'];
+};
+export type ResearchSummary = {
+  sources: Omit<SourceRecord, 'content'>[]; attempts: SearchAttempt[];
+  conflicts: EvidenceAssessment['conflicts']; freshness: FinishFreshness; degraded: boolean;
+};
 export type AgentSnapshot = {
   identity: RunIdentity; question: string; quote: Quote | null;
   title: string; blocks: EvidenceBlock[]; disclosure: string;

@@ -124,11 +124,7 @@ export function cleanAnswer(
     return { ok: false, error: badOutput('回答') };
   }
 
-  const known = new Set(knownIds);
-  const citations: Citation[] = [];
-  for (const blockId of new Set(result.data.citations)) {
-    if (known.has(blockId)) citations.push({ blockId });
-  }
+  const citations = articleCitations(result.data.citations, blocks);
 
   const unanswered = result.data.unanswered
     .map((item) => omitBlockIds(item.trim(), knownIds))
@@ -159,6 +155,21 @@ export function cleanAnswer(
   const followUps = takeBubbles(result.data.followUps ?? [], LIMITS.maxBubbles, 'next', knownIds);
 
   return { ok: true, value: { answer, source, citations, unanswered, references, followUps } };
+}
+
+function articleCitations(ids: string[], blocks: EvidenceBlock[]): Citation[] {
+  const known = new Set(blocks.map(block => block.id));
+  return [...new Set(ids)].filter(id => known.has(id)).map(blockId => ({ blockId }));
+}
+
+/** Research must reject an invalid citation before legacy cleaning can discard it. */
+export function validateArticleCitations(ids: string[], blocks: EvidenceBlock[], source: AnswerSource): Clean<Citation[]> {
+  const citations = articleCitations(ids, blocks);
+  if (citations.length !== new Set(ids).size || (source === 'original' &&
+    (!citations.length || citations.some(citation => blocks.find(block => block.id === citation.blockId)!.role === 'image')))) {
+    return { ok: false, error: badOutput('文章引用') };
+  }
+  return { ok: true, value: citations };
 }
 
 export type LearnResult =

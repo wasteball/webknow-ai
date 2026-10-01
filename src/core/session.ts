@@ -2,6 +2,7 @@ import type { BlocksPayload, Completeness, EvidenceBlock, PictureRef } from './b
 import type { Quote } from './quote';
 import { appError, type AppError } from './errors';
 import { LIMITS } from './limits';
+import type { ChatReference, ResearchSummary } from './search/agent-types';
 
 /**
  * 页面会话：正文、摘要、气泡、对话与学习状态只在当前浏览会话保留（FR-030）。
@@ -30,6 +31,8 @@ export type ChatTurn = {
   unanswered: string[];
   /** 用到的网络资料链接（F3）：已由程序校验只能来自注入的搜索结果。 */
   references: string[];
+  webReferences?: ChatReference[];
+  research?: ResearchSummary;
   /** 这一问针对网页上划出的原文。 */
   quote?: Quote;
   /** 答完后顺着这一轮接着问的方向；点一张就发出去，上一排全部收起。 */

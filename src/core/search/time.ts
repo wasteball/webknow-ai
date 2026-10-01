@@ -1,4 +1,5 @@
-import type { Freshness, TimeContext } from './agent-types';
+import type { Freshness, GateResult, SourceRecord, TimeContext } from './agent-types';
+import { sourcePublishedAt } from './source-extract';
 
 const DAY_MS = 86_400_000;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -78,4 +79,22 @@ export function buildTimeContext(now: Date, timeZone: string, freshness: Freshne
   const to = bound(range.to, true);
   if (from > to) throw new RangeError('Reversed time range');
   return { ...context, from: new Date(from).toISOString(), to: new Date(to).toISOString() };
+}
+
+/** Publication age only: retrieval time never establishes publication or current effective state. */
+export function publicationDateStatus(publishedAt: string | null,
+  scope?: Pick<GateResult, 'freshness' | 'time'>): SourceRecord['dateStatus'] {
+  const publication = sourcePublishedAt(publishedAt);
+  if (!publication) return 'date_unknown';
+  if (!scope) return 'not_applicable';
+  const { time, freshness } = scope;
+  const dateOnly = publication.length === 10;
+  if (dateOnly ? publication > time.localDate : Date.parse(publication) > Date.parse(time.nowIso)) return 'date_unknown';
+  const window = time.from || time.to ? time : buildTimeContext(new Date(time.nowIso), time.timeZone, freshness);
+  if (!window.from && !window.to) return 'fresh';
+  const publicationRange = dateOnly
+    ? buildTimeContext(new Date(time.nowIso), time.timeZone, 'any', { from: publication, to: publication }) : null;
+  const start = Date.parse(publicationRange?.from ?? publication);
+  const end = Date.parse(publicationRange?.to ?? publication);
+  return (window.from && end < Date.parse(window.from)) || (window.to && start > Date.parse(window.to)) ? 'stale' : 'fresh';
 }

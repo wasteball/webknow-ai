@@ -7,7 +7,7 @@ import { AGENT_LIMITS } from './agent-limits';
 import { AgentActionSchema } from './agent-schema';
 import type { AgentSnapshot, EvidenceLedger, AgentJsonCall, EvidenceAssessment, FinishAction, AuditResult, SourceRecord } from './agent-types';
 import { extractSourceHtml, sourcePublishedAt } from './source-extract';
-import { buildTimeContext } from './time';
+import { publicationDateStatus } from './time';
 
 const MAX_SOURCES = AGENT_LIMITS.searches * 10;
 const text = (max: number) => z.string().min(1).max(max).refine(value => value.trim().length > 0);
@@ -134,21 +134,10 @@ export async function assessEvidence(input: {
 
 /** Publication precision stays intact. Only declared windows constrain age; live has none. */
 function publicationState(source: SourceRecord, snapshot: AgentSnapshot): 'fresh' | 'stale' | 'date_unknown' {
-  const publication = sourcePublishedAt(source.publishedAt);
-  if (!publication) return 'date_unknown';
-  const time = snapshot.gate.time;
-  const dateOnly = publication.length === 10;
-  if (dateOnly ? publication > time.localDate : Date.parse(publication) > Date.parse(time.nowIso)) return 'date_unknown';
-  if (source.dateStatus === 'date_unknown') return 'date_unknown';
+  const state = publicationDateStatus(source.publishedAt, snapshot.gate);
+  if (state === 'date_unknown' || source.dateStatus === 'date_unknown') return 'date_unknown';
   if (source.dateStatus === 'stale') return 'stale';
-  const window = time.from || time.to ? time
-    : buildTimeContext(new Date(time.nowIso), time.timeZone, snapshot.gate.freshness);
-  if (!window.from && !window.to) return 'fresh';
-  const publicationRange = dateOnly ? buildTimeContext(new Date(time.nowIso), time.timeZone, 'any', { from: publication, to: publication }) : null;
-  const start = Date.parse(publicationRange?.from ?? publication);
-  const end = Date.parse(publicationRange?.to ?? publication);
-  if ((window.from && end < Date.parse(window.from)) || (window.to && start > Date.parse(window.to))) return 'stale';
-  return 'fresh';
+  return state === 'stale' ? 'stale' : 'fresh';
 }
 
 export async function auditAnswer(input: {
