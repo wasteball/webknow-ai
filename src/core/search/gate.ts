@@ -91,8 +91,10 @@ export function evaluateSearchGate(input: {
   const currentState = /是否(?:仍然|仍|还)(?:有效|适用|生效)|(?:仍然|仍|还)(?:有效|适用|生效)(?:吗|么|？|\?)/.test(unquoted)
     || (liveRequest.test(unquoted)
       && /是否(?:仍然|仍|还)?(?:有效|适用|生效|是最新)|是不是(?:最新|有效)|(?:现在|当前|今天|今日).*(?:有效|适用|生效|价格|版本)/.test(unquoted));
+  // Time words in an attributed premise do not turn a request for the author's reasoning into verification.
+  const attributedReasoning = /^(?:请)?(?:解释|说明|梳理|总结)(?:一下)?作者(?:认为|说|称|指出)[^,，;；。?!？！]*(?:的原因|的理由)[。？?]?$/.test(question);
   const article = /解释|总结|概括|核对|梳理|翻译|说明|explain|summari[sz]e|translate/i.test(question)
-    && articleSubject.test(question) && !separateLiveRequest && !currentState;
+    && articleSubject.test(question) && !separateLiveRequest && (!currentState || attributedReasoning);
   const live = liveRequest.test(question) || currentState;
   const missingEntity = /(?:那|这)(?:家|个)(?:公司|产品|软件|政策)|^(?:请问|请|查一下|搜索)?\s*(?:今天|现在|最新|当前|最近)?\s*(?:的)?\s*(?:版本|价格|政策|情况|消息)\s*(?:是|有|为|多少|什么|怎样|如何|怎么样|？|\?)/.test(question)
     || /^(?:what(?:'s| is) (?:the )?)?(?:latest version|current price)[?\s]*$/i.test(question);

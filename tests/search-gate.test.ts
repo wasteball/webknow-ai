@@ -38,8 +38,11 @@ describe('layered search gate', () => {
   it('keeps quoted current-state wording as an article explanation', () => {
     expect(evaluateSearchGate({ ...input, question: '解释文中“现在是否仍然有效”这句话' })).toMatchObject({ level: 'not_needed', canSearch: false });
   });
-  it('keeps an explanation of the author rationale within the article', () => {
-    expect(evaluateSearchGate({ ...input, question: '解释作者认为政策仍然有效的原因' })).toMatchObject({ level: 'not_needed', canSearch: false });
+  it.each(['解释作者认为政策仍然有效的原因', '解释作者认为政策现在仍然有效的原因', '说明作者认为政策今天仍然有效的理由'])('keeps an explanation of the author rationale within the article: %s', (question) => {
+    expect(evaluateSearchGate({ ...input, question })).toMatchObject({ level: 'not_needed', canSearch: false, mustSearch: false });
+  });
+  it.each(['解释作者认为政策现在仍然有效的原因，再判断政策现在是否仍然有效？', '解释作者认为政策现在仍然有效的原因，再查证这一说法'])('keeps the independent verification request after author reasoning: %s', (question) => {
+    expect(evaluateSearchGate({ ...input, question })).toMatchObject({ level: 'required', canSearch: true, mustSearch: true });
   });
   it('keeps explicit today above a looser freshness preference', () => {
     const gate = evaluateSearchGate({ ...input, freshness: 'any' });
