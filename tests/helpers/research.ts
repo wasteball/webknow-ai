@@ -1,5 +1,21 @@
 import { initialCheckpoint } from '../../src/core/search/agent-limits';
-import type { AgentCheckpoint, AgentSnapshot } from '../../src/core/search/agent-types';
+import type { AgentCheckpoint, AgentSnapshot, AgentDependencies } from '../../src/core/search/agent-types';
+import { appError } from '../../src/core/errors';
+
+export function scriptedDependencies(outputs: unknown[], options?: Partial<AgentDependencies>): AgentDependencies {
+  let index = 0;
+  return {
+    callJson: async () => {
+      if (index >= outputs.length) throw appError('BAD_OUTPUT', 'Script exhausted');
+      return outputs[index++];
+    },
+    search: async () => ({ status: 'empty', results: [], provider: 'test', retrievedAt: '2026-10-01T08:00:00.000Z', warnings: [] }),
+    read: async (ids) => ids.map(sourceId => ({ sourceId, text: '', publishedAt: null,
+      retrievedAt: '2026-10-01T08:00:00.000Z', status: 'unavailable', warnings: [] })),
+    assertCurrent: async () => {}, now: () => Date.parse('2026-10-01T08:00:00.000Z'), onEvent: () => {},
+    ...options,
+  };
+}
 
 export function snapshotFixture(overrides?: Partial<AgentSnapshot>): AgentSnapshot {
   return {

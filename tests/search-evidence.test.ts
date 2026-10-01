@@ -32,6 +32,12 @@ describe('meaningful query strategies', () => {
 });
 
 describe('evidence ledger', () => {
+  it('detects lexical duplicates even after orchestrator assigns family strategy keys', () => {
+    const ledger = search();
+    ledger.attempts[0]!.strategyKey = 'insufficient|fact_check|wording';
+    expect(() => recordSearch(ledger, { ...action, query: '试点 配送 最新' }, batch, '')).toThrow();
+    expect(() => recordSearch(ledger, { ...action, query: '配送 试点 覆盖地区' }, batch, '')).not.toThrow();
+  });
   it('allocates above the highest sparse checkpoint index and remains valid for the next mutation', () => {
     const sparse: EvidenceLedger = { ...empty(), sources: [{ ...search().sources[0]!, sourceId: 'sr_r1_2' }] };
     const result = recordSearch(sparse, action, { ...batch, results: [

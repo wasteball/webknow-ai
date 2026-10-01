@@ -44,7 +44,7 @@ export function recordSearch(ledger: EvidenceLedger, action: SearchAction, batch
   if (retryOf !== undefined) {
     if (!previous || previous.id !== retryOf || previous.status !== 'transient' ||
       previous.retryOf !== undefined || previous.queryKey !== key || previous.action.maxResults !== request.maxResults) invalid();
-  } else if (ledger.attempts.some(attempt => attempt.strategyKey === strategy)) invalid();
+  } else if (ledger.attempts.some(attempt => strategyKey(attempt.action) === strategy)) invalid();
   const id = ledger.attempts.length + 1;
   const sources = ledger.sources.map(source => ({ ...source, attempts: [...source.attempts], warnings: [...source.warnings] }));
   let lastSourceIndex = sources.reduce((max, source) => Math.max(max, sourceIndex(source.sourceId, ledger.runId)), 0);
