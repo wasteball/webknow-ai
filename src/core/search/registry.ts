@@ -86,31 +86,39 @@ function isAppError(value: unknown): value is AppError {
 
 const hostname = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
-function validDate(value: string): number | null {
+type PublicationDate = { kind: 'date'; value: string } | { kind: 'instant'; timestamp: number };
+
+function validDate(value: string): PublicationDate | null {
   // Date.parse accepts impossible dates (e.g. February 30); validate the calendar first.
   if (!/^\d{4}-\d{2}-\d{2}(?:T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value)) return null;
   const day = value.slice(0, 10);
   const calendar = new Date(`${day}T00:00:00Z`);
   if (!Number.isFinite(calendar.getTime()) || calendar.toISOString().slice(0, 10) !== day) return null;
+  // UTC above validates calendar components only; it is not a publication instant.
+  if (value.length === 10) return { kind: 'date', value };
   const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isFinite(parsed) ? { kind: 'instant', timestamp: parsed } : null;
 }
 
-function publicationDate(value: string | null | undefined, now: Date, warn: (warning: string) => void): string | null {
+function publicationDate(value: string | null | undefined, now: Date, timeZone: string, warn: (warning: string) => void): string | null {
   if (!value) { warn('publication_date_unknown'); return null; }
   const parsed = validDate(value);
   if (parsed === null) { warn('publication_date_invalid'); warn('publication_date_unknown'); return null; }
-  if (parsed > now.getTime()) { warn('publication_date_future'); warn('publication_date_unknown'); return null; }
-  return new Date(parsed).toISOString();
+  const isFuture = parsed.kind === 'date'
+    ? parsed.value > rangeDate(now.toISOString(), timeZone)
+    : parsed.timestamp > now.getTime();
+  if (isFuture) { warn('publication_date_future'); warn('publication_date_unknown'); return null; }
+  return parsed.kind === 'date' ? parsed.value : new Date(parsed.timestamp).toISOString();
 }
 
 function rangeDate(value: string, timeZone: string): string {
-  if (validDate(value) === null) throw new Error('Invalid search range');
-  if (value.length === 10) return value;
+  const parsed = validDate(value);
+  if (parsed === null) throw new Error('Invalid search range');
+  if (parsed.kind === 'date') return parsed.value;
   // Native date APIs are calendar-day filters: preserve the gate's timezone date,
   // then report loss of exact instant precision rather than silently shifting a day.
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
-    .formatToParts(new Date(value));
+    .formatToParts(new Date(parsed.timestamp));
   const part = (type: string) => parts.find((p) => p.type === type)!.value;
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
@@ -199,7 +207,9 @@ export async function researchSearch(input: {
     if (input.signal.aborted) throw appError('ABORTED', '已经停止。');
     combined.throwIfAborted();
     const results = cleanSearchResults(raw, input.action.maxResults).map((item) => ({
-      ...item, publishedAt: publicationDate(item.publishedAt, retrieved, warn),
+      // Date-only publication precision is retained; absent program TimeContext
+      // explicitly falls back to UTC calendar days, never machine-local timezone.
+      ...item, publishedAt: publicationDate(item.publishedAt, retrieved, input.time?.timeZone ?? 'UTC', warn),
     }));
     return batch(results.length ? 'ok' : 'empty', results);
   } catch (error) {

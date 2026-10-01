@@ -163,7 +163,9 @@ describe('research search provider contract', () => {
   });
 
   it.each([
-    ['2026-09-30', '2026-09-30T00:00:00.000Z', undefined],
+    ['2026-09-30', '2026-09-30', undefined],
+    ['2026-10-01T15:30:00+08:00', '2026-10-01T07:30:00.000Z', undefined],
+    ['2026-10-01T09:00:00Z', null, 'publication_date_future'],
     ['not a date', null, 'publication_date_invalid'],
     ['2026-02-30', null, 'publication_date_invalid'],
     ['2026-09-30T24:00:00Z', null, 'publication_date_invalid'],
@@ -175,6 +177,23 @@ describe('research search provider contract', () => {
     expect(batch.retrievedAt).toBe(now().toISOString());
     if (warning) expect(batch.warnings).toContain(warning);
     if (expected === null) expect(batch.warnings).toContain('publication_date_unknown');
+  });
+
+  it.each([
+    ['2026-10-01', 'Asia/Shanghai', '2026-10-01'],
+    ['2026-10-02', 'Asia/Shanghai', null],
+    ['2026-10-01', undefined, null],
+    ['2026-09-30', undefined, '2026-09-30'],
+  ])('compares date-only %s against local calendar days (%s, UTC fallback)', async (datePublished, timeZone, expected) => {
+    const localNow = () => new Date('2026-10-01T00:30:00+08:00');
+    const batch = await search(jsonFetch({ data: { webPages: { value: [{ name: 'T', url: result.url, summary: 'S', datePublished }] } } }), {
+      providerId: 'bocha', now: localNow,
+      ...(timeZone ? { time: buildTimeContext(localNow(), timeZone, 'any') } : {}),
+    });
+    expect(batch.results[0]?.publishedAt).toBe(expected);
+    expect(batch.retrievedAt).toBe(localNow().toISOString());
+    if (expected === null) expect(batch.warnings).toEqual(expect.arrayContaining(['publication_date_future', 'publication_date_unknown']));
+    else expect(batch.warnings).not.toContain('publication_date_future');
   });
 
   it('makes Bing two-host fallback observable and stops before fallback on cancellation', async () => {
