@@ -1,4 +1,9 @@
 import { SearchProviderFailure, type SearchProvider, type SearchResult } from './types';
+import { AGENT_LIMITS } from './agent-limits';
+import type { SourceRead } from './agent-types';
+import { extractSourceHtml } from './source-extract';
+import { publicSourceUrl } from './source-url';
+import { readBoundedSourceBody, SourceBodyFailure } from './source-reader';
 
 /**
  * 搜索供应商。两类：
@@ -296,6 +301,47 @@ export const firecrawl: SearchProvider = {
   description: '面向 agent 的搜索接口，匿名可用——不用注册、不用填 Key，直接返回结构化结果。',
   configFields: [],
   hosts: () => ['https://api.firecrawl.dev/*'],
+  async readSources(input) {
+    const results: SourceRead[] = [];
+    let remaining = AGENT_LIMITS.totalSourceChars;
+    for (const [index, source] of input.sources.entries()) {
+      input.signal.throwIfAborted();
+      const result: SourceRead = { sourceId: source.sourceId, text: '', publishedAt: null,
+        retrievedAt: new Date().toISOString(), status: 'unavailable', warnings: [] };
+      const url = publicSourceUrl(source.url);
+      if (!url || index >= AGENT_LIMITS.sourceReads || !remaining) {
+        result.warnings = [!url ? 'source_url_blocked' : index >= AGENT_LIMITS.sourceReads ? 'source_page_limit' : 'source_character_limit'];
+        results.push(result); continue;
+      }
+      try {
+        // Only this anonymous content endpoint/markdown format has been live-verified.
+        const response = await (input.fetchImpl ?? fetch)('https://api.firecrawl.dev/v2/scrape', {
+          method: 'POST', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: url.href, formats: ['markdown'] }), signal: input.signal,
+        });
+        input.signal.throwIfAborted();
+        if (!response.ok || response.redirected) {
+          await response.body?.cancel().catch(() => {});
+          throw new SourceBodyFailure('source_provider_unavailable');
+        }
+        const payload: unknown = JSON.parse(await readBoundedSourceBody(response, input.signal));
+        const markdown = pickString(payload, ['data', 'markdown']);
+        if (!markdown?.trim()) throw new SourceBodyFailure('source_provider_unavailable');
+        const clean = extractSourceHtml(markdown, Math.min(AGENT_LIMITS.sourceChars, remaining));
+        result.text = clean.text;
+        result.status = clean.text ? 'read' : 'unavailable';
+        result.warnings = clean.warnings;
+        // Firecrawl metadata has no verified publication contract; never guess from it.
+        remaining -= result.text.length;
+      } catch (error) {
+        input.signal.throwIfAborted();
+        result.warnings = [error instanceof SourceBodyFailure ? error.warning : 'source_provider_unavailable'];
+      }
+      results.push(result);
+    }
+    return results;
+  },
   async search(request) {
     const doFetch = request.fetchImpl ?? fetch;
     const response = await doFetch('https://api.firecrawl.dev/v2/search', {

@@ -77,7 +77,7 @@ describe('search-agent capability samples (offline)', () => {
     // covered separately by search-provider-contract.test.ts.
     expect(/published|freshness|time_range|include_raw_content|scrapeOptions/.test(requestBody)).toBe(false);
     expect(provider.hosts({ baseUrl: 'https://example.com' }).length).toBeGreaterThan(0);
-    expect('readSources' in provider).toBe(false);
+    expect('readSources' in provider).toBe(provider.id === 'firecrawl');
   });
 
   it('canonicalizes encoded IP literals but cannot prove a DNS hostname is public', () => {

@@ -9,7 +9,7 @@
  * 但永远不能被当作“作者原话”（引用只来自本地正文块，见 answer 提示词的固定纪律）。
  */
 
-import type { Freshness, SearchPurpose, TimeContext } from './agent-types';
+import type { Freshness, SearchPurpose, SourceRead, TimeContext } from './agent-types';
 
 export type SearchProviderConfigField = {
   key: string;
@@ -46,6 +46,11 @@ export type SearchProvider = {
   /** Verified field semantics, not guaranteed result completeness. Unverified capabilities stay false. */
   capabilities: { dateFilter: boolean; domainFilter: boolean; publishedAt: boolean; content: boolean };
   search: (request: SearchRequest) => Promise<SearchResult[]>;
+  /** Background wraps this credential-bearing adapter into the credential-free ProviderRead. */
+  readSources?: (input: {
+    sources: { sourceId: string; url: string }[]; signal: AbortSignal;
+    config: Record<string, string>; fetchImpl?: typeof fetch;
+  }) => Promise<SourceRead[]>;
 };
 
 /** Typed classification without inspecting or returning supplier error bodies. */
