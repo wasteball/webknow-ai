@@ -56,3 +56,18 @@ it.each([
 ])('rejects short text-only access challenges', (text, warning) => {
   expect(extractSourceHtml(text, 100)).toEqual({ text: '', publishedAt: null, warnings: [warning] });
 });
+
+it.each([
+  '<form action="/login"><input type="email"><button>Send sign-in link</button></form>',
+  '<form><button>Continue with Google</button></form>',
+  '<form id="sso-login"><button>Continue</button></form>',
+  '<form><input autocomplete="username"><button>Sign in</button></form>',
+])('rejects email/SSO login forms beside plausible article content', form => {
+  expect(extractSourceHtml(`<article><p>Public-looking article excerpt.</p></article>${form}`, 100)).toEqual({
+    text: '', publishedAt: null, warnings: ['source_login_page'],
+  });
+});
+
+it('still removes non-login forms without rejecting article content', () => {
+  expect(extractSourceHtml('<article>Public article.</article><form action="/subscribe"><input type="email"><button>Subscribe</button></form>', 100).text).toBe('Public article.');
+});

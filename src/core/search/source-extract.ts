@@ -31,6 +31,24 @@ function collect(root: Node): string {
     .replace(/[ \t\r\f]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n+/g, '\n').trim();
 }
 
+function loginForm(node: Element): boolean {
+  // Inspect before form pruning: passwordless email-link and SSO gates still require authentication.
+  const indicators = ['action', 'id', 'class', 'name', 'aria-label'].map(name => attr(node, name) ?? '').join(' ');
+  if (/(?:^|[\s/_-])(?:login|log-in|sign-in|signin|sso|oauth|auth|authenticate)(?:$|[\s/?#_-])/i.test(indicators)) return true;
+  const text = children(node).map(collect).join(' ');
+  if (/\b(?:sign[ -]?in|log[ -]?in|sso|magic link)\b|登录|登入|(?:continue|sign in) with (?:google|microsoft|apple|github|facebook)/i.test(text)) return true;
+  const stack = children(node).slice();
+  while (stack.length) {
+    const child = stack.pop()!;
+    if ('tagName' in child && child.tagName === 'input' && (
+      /^(username|current-password)$/i.test(attr(child, 'autocomplete') ?? '') ||
+      /sign[ -]?in|log[ -]?in|登录/i.test(attr(child, 'value') ?? '')
+    )) return true;
+    for (const descendant of children(child)) stack.push(descendant);
+  }
+  return false;
+}
+
 /** Keep date precision; a calendar date is never a fabricated UTC instant. */
 export function sourcePublishedAt(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
@@ -68,6 +86,7 @@ export function extractSourceHtml(html: string, maxChars: number): { text: strin
     let childVisible = visible;
     if ('tagName' in node) {
       const tag = node.tagName;
+      if (tag === 'form' && loginForm(node)) accessWarning = 'source_login_page';
       if (tag === 'input' && attr(node, 'type')?.toLowerCase() === 'password') accessWarning = 'source_login_page';
       if (/\b(?:g-recaptcha|h-captcha|cf-turnstile|captcha)\b/i.test(`${attr(node, 'class') ?? ''} ${attr(node, 'id') ?? ''}`) ||
           (tag === 'title' && /verify (?:that )?you are human|just a moment|验证码|人机验证/i.test(collect(node)))) accessWarning = 'source_captcha_page';

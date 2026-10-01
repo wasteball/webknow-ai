@@ -322,7 +322,7 @@ export const firecrawl: SearchProvider = {
         });
         input.signal.throwIfAborted();
         if (!response.ok || response.redirected) {
-          await response.body?.cancel().catch(() => {});
+          void response.body?.cancel().catch(() => {});
           throw new SourceBodyFailure('source_provider_unavailable');
         }
         const payload: unknown = JSON.parse(await readBoundedSourceBody(response, input.signal));

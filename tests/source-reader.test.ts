@@ -213,3 +213,81 @@ it('Firecrawl truncates and shares the total allowance without fetching further 
   expect(result.slice(0, 4).every(r => r.warnings.includes('source_text_truncated'))).toBe(true);
   expect(fetchImpl).toHaveBeenCalledTimes(4);
 });
+
+async function settledSoon<T>(pending: Promise<T>) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      pending.then(value => ({ kind: 'resolved' as const, value }), error => ({ kind: 'rejected' as const, error })),
+      new Promise<{kind: 'pending'}>(resolve => { timer = setTimeout(() => resolve({ kind: 'pending' }), 100); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+it('aborted body reads settle and release their lock even if underlying cancellation never settles', async () => {
+  const abort = new AbortController();
+  const cancel = vi.fn(() => new Promise<void>(() => {}));
+  const stream = new ReadableStream<Uint8Array>({ cancel });
+  const pending = readSources({ ...options(), signal: abort.signal, fetchImpl: async () => new Response(stream, { headers: { 'Content-Type': 'text/plain' } }) });
+  // Wait until the production reader holds the stream; abort then cancels a pending read.
+  await vi.waitFor(() => expect(stream.locked).toBe(true));
+  abort.abort();
+  expect(await settledSoon(pending)).toMatchObject({ kind: 'rejected', error: { name: 'AbortError' } });
+  expect(cancel).toHaveBeenCalledTimes(1); expect(stream.locked).toBe(false);
+});
+
+it('oversized body reads settle even if cancellation never settles', async () => {
+  const cancel = vi.fn(() => new Promise<void>(() => {}));
+  const stream = new ReadableStream<Uint8Array>({ pull(controller) { controller.enqueue(new Uint8Array(262_144).fill(120)); }, cancel });
+  const result = await settledSoon(readSources({ ...options(), fetchImpl: async () => new Response(stream, { headers: { 'Content-Type': 'text/plain' } }) }));
+  expect(result).toMatchObject({ kind: 'resolved', value: [{ status: 'unavailable', warnings: ['source_body_too_large'] }] });
+  expect(cancel).toHaveBeenCalledTimes(1); expect(stream.locked).toBe(false);
+});
+
+it('aborted body reads settle and release locks when a reader ignores cancel entirely', async () => {
+  const abort = new AbortController();
+  const stream = new ReadableStream<Uint8Array>();
+  const getReader = stream.getReader.bind(stream);
+  const ignoredCancel = vi.fn(() => new Promise<void>(() => {}));
+  // Simulate a hostile/nonconforming reader boundary: cancel neither closes nor settles.
+  vi.spyOn(stream, 'getReader').mockImplementation(() => {
+    const reader = getReader();
+    vi.spyOn(reader, 'cancel').mockImplementation(ignoredCancel);
+    return reader;
+  });
+  const pending = readSources({ ...options(), signal: abort.signal, fetchImpl: async () => new Response(stream, { headers: { 'Content-Type': 'text/plain' } }) });
+  await vi.waitFor(() => expect(stream.locked).toBe(true));
+  abort.abort();
+  expect(await settledSoon(pending)).toMatchObject({ kind: 'rejected', error: { name: 'AbortError' } });
+  expect(ignoredCancel).toHaveBeenCalled(); expect(stream.locked).toBe(false);
+});
+
+it.each(['pending', 'rejected'] as const)('blocked-response reads settle despite %s cancellation', async (mode) => {
+  const cancel = vi.fn(() => mode === 'pending' ? new Promise<void>(() => {}) : Promise.reject(new Error('stream cancel failure')));
+  const stream = new ReadableStream<Uint8Array>({ cancel });
+  const result = await settledSoon(readSources({ ...options(), fetchImpl: async () => new Response(stream, { headers: { 'Content-Type': 'application/pdf' } }) }));
+  expect(result).toMatchObject({ kind: 'resolved', value: [{ status: 'unavailable', warnings: ['source_response_blocked'] }] });
+  expect(cancel).toHaveBeenCalledTimes(1); expect(stream.locked).toBe(false);
+});
+
+it('Firecrawl blocked-response cleanup does not wait on cancellation', async () => {
+  const cancel = vi.fn(() => new Promise<void>(() => {}));
+  const stream = new ReadableStream<Uint8Array>({ cancel });
+  const result = await settledSoon(firecrawl.readSources!({ sources: [{ sourceId: 'sr_r1_1', url: 'https://example.com/' }], signal: signal(), config: {}, fetchImpl: async () => new Response(stream, { status: 403 }) }));
+  expect(result).toMatchObject({ kind: 'resolved', value: [{ status: 'unavailable', warnings: ['source_provider_unavailable'] }] });
+  expect(cancel).toHaveBeenCalledTimes(1);
+});
+
+it('allows exactly 1 MiB while rejecting one byte over the cap', async () => {
+  const fetchImpl = (size: number) => async () => new Response('x'.repeat(size), { headers: { 'Content-Type': 'text/plain' } });
+  const exact = await readSources({ ...options(), fetchImpl: fetchImpl(1024 * 1024) });
+  expect(exact[0]).toMatchObject({ status: 'read', warnings: ['source_text_truncated'] });
+  expect(exact[0]?.text).toHaveLength(12_000);
+  const over = await readSources({ ...options(), fetchImpl: fetchImpl(1024 * 1024 + 1) });
+  expect(over[0]).toMatchObject({ status: 'unavailable', warnings: ['source_body_too_large'] });
+});
+
+it('direct reads reject an SSO login form beside article text', async () => {
+  const result = await readSources({ ...options(), fetchImpl: async () => new Response('<article>Public-looking excerpt.</article><form action="/auth"><button>Continue with Google</button></form>', { headers: { 'Content-Type': 'text/html' } }) });
+  expect(result[0]).toMatchObject({ status: 'unavailable', text: '', warnings: ['source_login_page'] });
+});

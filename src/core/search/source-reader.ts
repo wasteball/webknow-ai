@@ -44,13 +44,13 @@ export async function readBoundedSourceBody(response: Response, signal: AbortSig
       bytes += next.value.byteLength;
       if (bytes > MAX_BODY_BYTES) throw new SourceBodyFailure('source_body_too_large');
       chunks.push(decoder.decode(next.value, { stream: true }));
-      if (bytes === MAX_BODY_BYTES) throw new SourceBodyFailure('source_body_too_large');
     }
     chunks.push(decoder.decode());
     return chunks.join('');
   } finally {
     signal.removeEventListener('abort', cancel);
-    await reader.cancel().catch(() => {});
+    // Cancellation can return an untrusted, nonsettling promise. Initiate it, then release immediately.
+    cancel();
     reader.releaseLock();
   }
 }
@@ -119,7 +119,7 @@ export async function readSources(input: {
         const type = response.headers.get('Content-Type')?.split(';')[0]?.trim().toLowerCase();
         if (!response.ok || response.redirected || (response.url && response.url !== url.href) ||
             !['text/html', 'text/plain'].includes(type ?? '') || /\battachment\b/i.test(response.headers.get('Content-Disposition') ?? '')) {
-          await response.body?.cancel().catch(() => {});
+          void response.body?.cancel().catch(() => {});
           throw new SourceBodyFailure('source_response_blocked');
         }
         const raw = await readBoundedSourceBody(response, input.signal);
