@@ -30,7 +30,7 @@ describe('搜索供应商解析（产品化改造 F3）', () => {
       }),
     });
     expect(results).toHaveLength(2);
-    expect(results[0]).toEqual({ title: 'T1', url: 'https://a.example.com/x', snippet: '内容一' });
+    expect(results[0]).toEqual({ title: 'T1', url: 'https://a.example.com/x', snippet: '内容一', publishedAt: null });
 
     await expect(
       searxng.search({ query: '测试', count: 3, signal, config: {}, fetchImpl: mockFetch({}) }),
@@ -138,6 +138,7 @@ describe('免 Key 搜索供应商', () => {
       title: '配送路径研究综述',
       url: 'https://example.com/a',
       snippet: '这篇综述比较了三种路径方案。',
+      publishedAt: null,
     });
     expect(results[1]!.url).toBe('https://example.com/b');
   });
@@ -167,10 +168,12 @@ describe('免 Key 搜索供应商', () => {
     expect(results[0]!.url).toBe('https://example.com/ok');
   });
 
-  it('Bing：页面结构变了（抽不到）就抛错，交给上游降级', async () => {
+  it('Bing：页面结构变了（抽不到）返回空数组，兼容入口仍抛 SEARCH_FAILED', async () => {
     await expect(
       bingKeyless.search({ query: 'q', count: 5, signal, config: {}, fetchImpl: htmlResponse('<html><body>改版了</body></html>') }),
-    ).rejects.toThrow(/没有返回可解析的结果/);
+    ).resolves.toEqual([]);
+    await expect(searchWithProvider({ providerId: 'bing', query: 'q', count: 5, signal, config: {}, fetchImpl: htmlResponse('<html></html>') }))
+      .rejects.toMatchObject({ code: 'SEARCH_FAILED' });
   });
 
   it('DuckDuckGo：跳转链接还原成真实目标，摘要按顺序配对', async () => {
@@ -216,7 +219,7 @@ describe('免 Key 搜索供应商', () => {
     const results = await firecrawl.search({
       query: '测试', count: 3, signal, config: {}, fetchImpl,
     });
-    expect(results).toEqual([{ title: '标题甲', url: 'https://example.com/a', snippet: '摘要甲' }]);
+    expect(results).toEqual([{ title: '标题甲', url: 'https://example.com/a', snippet: '摘要甲', publishedAt: null }]);
     // 关键：不带任何鉴权头，这才是"不用注册、不用 Key"。
     const headers = (captured?.headers ?? {}) as Record<string, string>;
     expect(Object.keys(headers).map((key) => key.toLowerCase())).not.toContain('authorization');

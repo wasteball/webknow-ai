@@ -9,6 +9,8 @@
  * 但永远不能被当作“作者原话”（引用只来自本地正文块，见 answer 提示词的固定纪律）。
  */
 
+import type { Freshness, SearchPurpose, TimeContext } from './agent-types';
+
 export type SearchProviderConfigField = {
   key: string;
   label: string;
@@ -17,7 +19,7 @@ export type SearchProviderConfigField = {
   placeholder?: string;
 };
 
-export type SearchResult = { title: string; url: string; snippet: string };
+export type SearchResult = { title: string; url: string; snippet: string; publishedAt?: string | null };
 
 export type SearchRequest = {
   query: string;
@@ -26,6 +28,12 @@ export type SearchRequest = {
   /** 该供应商的配置（apiKey / baseUrl 等）。 */
   config: Record<string, string>;
   fetchImpl?: typeof fetch;
+  purpose?: SearchPurpose;
+  freshness?: Freshness;
+  language?: string;
+  domains?: string[];
+  /** Frozen program-owned range, never supplied by the model action. */
+  time?: TimeContext;
 };
 
 export type SearchProvider = {
@@ -35,8 +43,17 @@ export type SearchProvider = {
   /** 启用该供应商需要向用户申请的 host 权限（根据配置计算）。 */
   hosts: (config: Record<string, string>) => string[];
   configFields: SearchProviderConfigField[];
+  /** Verified field semantics, not guaranteed result completeness. Unverified capabilities stay false. */
+  capabilities: { dateFilter: boolean; domainFilter: boolean; publishedAt: boolean; content: boolean };
   search: (request: SearchRequest) => Promise<SearchResult[]>;
 };
+
+/** Typed classification without inspecting or returning supplier error bodies. */
+export class SearchProviderFailure extends Error {
+  constructor(message: string, readonly kind: 'http' | 'network' | 'invalid_response', readonly status?: number) {
+    super(message);
+  }
+}
 
 export function originOfUrl(url: string): string | null {
   try {

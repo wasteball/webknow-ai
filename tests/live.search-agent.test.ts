@@ -46,12 +46,12 @@ describe('search-agent capability samples (offline)', () => {
     }
   });
 
-  it.each(BUILTIN_SEARCH_PROVIDERS)('$id currently exposes snippets, not dates, filters, or source-body reads', async (provider) => {
-    // Deliberately richer upstream fixtures demonstrate information lost by existing adapters.
+  it.each(BUILTIN_SEARCH_PROVIDERS)('$id preserves publication semantics and keeps legacy query payloads narrow', async (provider) => {
+    // Similar-looking date fields cannot substitute for a documented publication field.
     const entry = {
       title: 'Fixed probe', name: 'Fixed probe', url: 'https://example.com/probe',
       content: 'fixed snippet', description: 'fixed snippet', summary: 'fixed snippet',
-      publishedDate: '2026-10-01', published_time: '2026-10-01', dateLastCrawled: '2026-10-01',
+      publishedDate: '2026-10-01', published_time: '2026-10-01', datePublished: '2026-10-01', dateLastCrawled: '2026-10-01',
       raw_content: 'fixed source body', markdown: 'fixed source body',
     };
     const payloads: Record<string, unknown> = {
@@ -71,7 +71,10 @@ describe('search-agent capability samples (offline)', () => {
       },
     });
     expect(results).toHaveLength(1);
-    expect(Object.keys(results[0]!).sort()).toEqual(['snippet', 'title', 'url']);
+    expect(Object.keys(results[0]!).sort()).toEqual(['publishedAt', 'snippet', 'title', 'url']);
+    expect(results[0]!.publishedAt).toBe(provider.id === 'bocha' ? '2026-10-01' : null);
+    // Legacy callers supply no research filters. Native research serialization is
+    // covered separately by search-provider-contract.test.ts.
     expect(/published|freshness|time_range|include_raw_content|scrapeOptions/.test(requestBody)).toBe(false);
     expect(provider.hosts({ baseUrl: 'https://example.com' }).length).toBeGreaterThan(0);
     expect('readSources' in provider).toBe(false);

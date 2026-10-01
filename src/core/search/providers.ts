@@ -1,4 +1,4 @@
-import type { SearchProvider, SearchResult } from './types';
+import { SearchProviderFailure, type SearchProvider, type SearchResult } from './types';
 
 /**
  * 搜索供应商。两类：
@@ -58,7 +58,7 @@ function unwrapRedirect(href: string): string {
 
 /** 按出现顺序把「标题链接」与「摘要」两串配对：两类页面都是同序一一对应。 */
 function zipResults(titles: { title: string; url: string }[], snippets: string[]): SearchResult[] {
-  return titles.map((item, index) => ({ ...item, snippet: snippets[index] ?? '' }));
+  return titles.map((item, index) => ({ ...item, snippet: snippets[index] ?? '', publishedAt: null }));
 }
 
 function pickString(value: unknown, path: (string | number)[]): string | undefined {
@@ -79,8 +79,22 @@ function pickArray(value: unknown, path: (string | number)[]): unknown[] | undef
   return Array.isArray(current) ? current : undefined;
 }
 
+function resultEntries(value: unknown, path: (string | number)[]): unknown[] {
+  const entries = pickArray(value, path);
+  if (!entries) throw new SearchProviderFailure('搜索结果格式无法识别', 'invalid_response');
+  return entries;
+}
+
+/** Site operators are the documented Firecrawl domain condition, not a post-filter guarantee. */
+function siteQuery(query: string, domains: string[] = []): string {
+  if (!domains.length) return query;
+  const sites = domains.map((domain) => `site:${domain}`);
+  return `${query} ${sites.length === 1 ? sites[0] : `(${sites.join(' OR ')})`}`;
+}
+
 export const searxng: SearchProvider = {
   id: 'searxng',
+  capabilities: { dateFilter: true, domainFilter: false, publishedAt: false, content: false },
   name: 'SearXNG（自建或公开实例）',
   description: '开源聚合搜索，不需要 Key；填你的实例地址，实例需开启 JSON 输出。',
   configFields: [
@@ -100,26 +114,33 @@ export const searxng: SearchProvider = {
     const base = request.config.baseUrl?.trim().replace(/\/+$/, '');
     if (!base) throw new Error('SearXNG 缺少实例地址');
     const doFetch = request.fetchImpl ?? fetch;
-    const url = `${base}/search?q=${encodeURIComponent(request.query)}&format=json&language=zh-CN`;
+    const params = new URLSearchParams({ q: request.query, format: 'json', language: request.language ?? 'zh-CN' });
+    if (!request.time?.from && !request.time?.to) {
+      if (request.freshness === 'day' || request.freshness === 'live') params.set('time_range', 'day');
+      if (request.freshness === 'month') params.set('time_range', 'month');
+    }
+    const url = `${base}/search?${params}`;
     const response = await doFetch(url, {
       headers: { Accept: 'application/json' },
       signal: request.signal,
     });
-    if (!response.ok) throw new Error(`SearXNG 返回 ${response.status}（实例可能未开启 JSON 输出）`);
+    if (!response.ok) throw new SearchProviderFailure(`SearXNG 返回 ${response.status}（实例可能未开启 JSON 输出）`, 'http', response.status);
     const payload: unknown = await response.json();
-    const entries = pickArray(payload, ['results']) ?? [];
+    const entries = resultEntries(payload, ['results']);
     return entries
       .map((entry) => ({
         title: pickString(entry, ['title']) ?? '',
         url: pickString(entry, ['url']) ?? '',
         snippet: pickString(entry, ['content']) ?? '',
+        publishedAt: null,
       }))
-      .filter((item): item is SearchResult => Boolean(item.url && item.title));
+      .filter((item) => Boolean(item.url && item.title));
   },
 };
 
 export const tavily: SearchProvider = {
   id: 'tavily',
+  capabilities: { dateFilter: true, domainFilter: true, publishedAt: false, content: false },
   name: 'Tavily',
   description: '面向 AI 的搜索接口，需要自己的 API Key（有免费额度）。',
   configFields: [
@@ -133,19 +154,31 @@ export const tavily: SearchProvider = {
     const response = await doFetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ query: request.query, max_results: request.count, search_depth: 'basic' }),
+      body: JSON.stringify({
+        query: request.query, max_results: request.count, search_depth: 'basic',
+        ...(request.domains?.length ? { include_domains: request.domains } : {}),
+        ...(request.time?.from || request.time?.to ? {
+          ...(request.time.from ? { start_date: request.time.from.slice(0, 10) } : {}),
+          ...(request.time.to ? { end_date: request.time.to.slice(0, 10) } : {}),
+          filter_by_published_date: true,
+        } : request.freshness && request.freshness !== 'any' ? {
+          time_range: request.freshness === 'live' ? 'day' : request.freshness,
+          filter_by_published_date: true,
+        } : {}),
+      }),
       signal: request.signal,
     });
-    if (!response.ok) throw new Error(`Tavily 返回 ${response.status}`);
+    if (!response.ok) throw new SearchProviderFailure(`Tavily 返回 ${response.status}`, 'http', response.status);
     const payload: unknown = await response.json();
-    const entries = pickArray(payload, ['results']) ?? [];
+    const entries = resultEntries(payload, ['results']);
     return entries
       .map((entry) => ({
         title: pickString(entry, ['title']) ?? '',
         url: pickString(entry, ['url']) ?? '',
         snippet: pickString(entry, ['content']) ?? '',
+        publishedAt: null,
       }))
-      .filter((item): item is SearchResult => Boolean(item.url && item.title));
+      .filter((item) => Boolean(item.url && item.title));
   },
 };
 
@@ -156,27 +189,36 @@ export const tavily: SearchProvider = {
  */
 export const bingKeyless: SearchProvider = {
   id: 'bing',
+  capabilities: { dateFilter: false, domainFilter: false, publishedAt: false, content: false },
   name: 'Bing',
   description: '直接用 Bing 的结果页，不用注册也不用填 Key。国内网络可用；对方改版可能失效。',
   configFields: [],
   hosts: () => ['https://cn.bing.com/*', 'https://www.bing.com/*'],
   async search(request) {
     const doFetch = request.fetchImpl ?? fetch;
+    let lastFailure: SearchProviderFailure | undefined;
     for (const host of ['https://cn.bing.com', 'https://www.bing.com']) {
-      const url = `${host}/search?q=${encodeURIComponent(request.query)}&setlang=zh-CN`;
+      request.signal.throwIfAborted();
+      const url = `${host}/search?q=${encodeURIComponent(request.query)}&setlang=${encodeURIComponent(request.language ?? 'zh-CN')}`;
       const response = await doFetch(url, {
         headers: {
           Accept: 'text/html,application/xhtml+xml',
-          'Accept-Language': 'zh-CN,zh;q=0.9',
+          'Accept-Language': request.language ?? 'zh-CN,zh;q=0.9',
         },
         signal: request.signal,
       });
-      if (!response.ok) continue;
+      request.signal.throwIfAborted();
+      if (!response.ok) {
+        lastFailure = new SearchProviderFailure(`Bing 返回 ${response.status}`, 'http', response.status);
+        if (response.status < 500 && response.status !== 429 && response.status !== 408) throw lastFailure;
+        continue;
+      }
       const results = parseBing(await response.text(), request.count);
       // 第一个 host 抽不到就换第二个；都抽不到才交给上游降级。
       if (results.length) return results;
     }
-    throw new Error('Bing 没有返回可解析的结果（页面结构可能变了）');
+    if (lastFailure) throw lastFailure;
+    return [];
   },
 };
 
@@ -204,6 +246,7 @@ function parseBing(html: string, count: number): SearchResult[] {
  */
 export const duckduckgo: SearchProvider = {
   id: 'duckduckgo',
+  capabilities: { dateFilter: false, domainFilter: false, publishedAt: false, content: false },
   name: 'DuckDuckGo',
   description: '直接用 DuckDuckGo 的结果页，不用注册也不用填 Key。海外网络可用；对方改版可能失效。',
   configFields: [],
@@ -214,7 +257,7 @@ export const duckduckgo: SearchProvider = {
       `https://html.duckduckgo.com/html/?q=${encodeURIComponent(request.query)}`,
       { headers: { Accept: 'text/html' }, signal: request.signal },
     );
-    if (!response.ok) throw new Error(`DuckDuckGo 返回 ${response.status}`);
+    if (!response.ok) throw new SearchProviderFailure(`DuckDuckGo 返回 ${response.status}`, 'http', response.status);
     return parseDuckDuckGo(await response.text(), request.count);
   },
 };
@@ -248,6 +291,7 @@ function parseDuckDuckGo(html: string, count: number): SearchResult[] {
  */
 export const firecrawl: SearchProvider = {
   id: 'firecrawl',
+  capabilities: { dateFilter: true, domainFilter: true, publishedAt: false, content: true },
   name: 'Firecrawl',
   description: '面向 agent 的搜索接口，匿名可用——不用注册、不用填 Key，直接返回结构化结果。',
   configFields: [],
@@ -257,26 +301,32 @@ export const firecrawl: SearchProvider = {
     const response = await doFetch('https://api.firecrawl.dev/v2/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: request.query, limit: request.count }),
+      body: JSON.stringify({
+        query: siteQuery(request.query, request.domains), limit: request.count,
+        ...(!request.time?.from && !request.time?.to && request.freshness && request.freshness !== 'any'
+          ? { tbs: `qdr:${({ live: 'd', day: 'd', week: 'w', month: 'm' } as const)[request.freshness]}` } : {}),
+      }),
       signal: request.signal,
     });
     if (!response.ok) {
-      throw new Error(`Firecrawl 返回 ${response.status}（匿名额度可能已被限流）`);
+      throw new SearchProviderFailure(`Firecrawl 返回 ${response.status}（匿名额度可能已被限流）`, 'http', response.status);
     }
     const payload: unknown = await response.json();
-    const entries = pickArray(payload, ['data', 'web']) ?? [];
+    const entries = resultEntries(payload, ['data', 'web']);
     return entries
       .map((entry) => ({
         title: pickString(entry, ['title']) ?? '',
         url: pickString(entry, ['url']) ?? '',
         snippet: pickString(entry, ['description']) ?? '',
+        publishedAt: null,
       }))
-      .filter((item): item is SearchResult => Boolean(item.url && item.title));
+      .filter((item) => Boolean(item.url && item.title));
   },
 };
 
 export const bocha: SearchProvider = {
   id: 'bocha',
+  capabilities: { dateFilter: false, domainFilter: false, publishedAt: true, content: false },
   name: '博查 Bocha',
   description: '国内可用的网页搜索 API，需要自己的 API Key（按量计费）。',
   configFields: [
@@ -293,15 +343,17 @@ export const bocha: SearchProvider = {
       body: JSON.stringify({ query: request.query, summary: true, count: request.count }),
       signal: request.signal,
     });
-    if (!response.ok) throw new Error(`博查返回 ${response.status}`);
+    if (!response.ok) throw new SearchProviderFailure(`博查返回 ${response.status}`, 'http', response.status);
     const payload: unknown = await response.json();
-    const entries = pickArray(payload, ['data', 'webPages', 'value']) ?? [];
+    const entries = resultEntries(payload, ['data', 'webPages', 'value']);
     return entries
       .map((entry) => ({
         title: pickString(entry, ['name']) ?? '',
         url: pickString(entry, ['url']) ?? '',
         snippet: pickString(entry, ['summary']) ?? pickString(entry, ['snippet']) ?? '',
+        // Official field is publication time. dateLastCrawled is deliberately ignored.
+        publishedAt: pickString(entry, ['datePublished']) ?? null,
       }))
-      .filter((item): item is SearchResult => Boolean(item.url && item.title));
+      .filter((item) => Boolean(item.url && item.title));
   },
 };
