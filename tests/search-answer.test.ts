@@ -38,6 +38,18 @@ describe('verified research answer mapping', () => {
     value.answer.references = ['sr_other_1'];
     expect(() => toResearchAnswer(value)).toThrow();
   });
+  it.each(['attempt', 'assessment_source', 'assessment_conflict'] as const)('rejects foreign and unknown %s provenance before writing completion metadata', (field) => {
+    for (const id of ['sr_other_1', 'sr_r1_99']) {
+      const value = outcome();
+      const ledger = value.checkpoint.ledger;
+      ledger.attempts = [{ id: 1, action: { type: 'search_web', query: '试点', purpose: 'fact_check', freshness: 'any', language: 'zh-CN', domains: [], maxResults: 5 }, queryKey: 'query', strategyKey: 'strategy', status: 'ok', reason: '核对', sourceIds: ['sr_r1_1'], retrievedAt: source.retrievedAt }];
+      ledger.assessment = { sources: [{ sourceId: 'sr_r1_1', relevant: true, supportedAspects: ['团队'], reason: '直接支持' }], missing: [], conflicts: [] };
+      if (field === 'attempt') ledger.attempts[0]!.sourceIds.push(id);
+      else if (field === 'assessment_source') ledger.assessment.sources[0]!.sourceId = id;
+      else ledger.assessment.conflicts = [{ sourceIds: ['sr_r1_1', id], description: '未核验冲突' }];
+      expect(() => toResearchAnswer(value)).toThrow();
+    }
+  });
   it('validates all article IDs before cleaning rather than silently dropping bad citations', () => {
     const value = outcome(); value.answer.citations = ['b_0', 'b_missing'];
     expect(() => toResearchAnswer(value)).toThrow();

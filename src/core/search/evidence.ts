@@ -11,13 +11,25 @@ import { publicationDateStatus } from './time';
 type Scope = Pick<GateResult, 'freshness' | 'time'>;
 const unique = <T>(values: T[]) => [...new Set(values)];
 function invalid(): never { throw appError('BAD_OUTPUT', '研究证据或查询策略无效，没有采用。'); }
-/** Call with snapshot.identity.runId before exposing a resumed ledger to either auditor. */
+function sourceIndex(sourceId: string, runId: string): number {
+  const prefix = `sr_${runId}_`;
+  const tail = sourceId.slice(prefix.length);
+  const index = Number(tail);
+  if (!sourceId.startsWith(prefix) || !/^[1-9]\d*$/.test(tail) || !Number.isSafeInteger(index)) invalid();
+  return index;
+}
+/** Validates ownership, safe indexes and nested provenance. Call before either resumed auditor input. */
 export function assertLedgerRun(ledger: EvidenceLedger, expectedRunId: string = ledger.runId): void {
-  const prefix = `sr_${ledger.runId}_`;
+  const ids = new Set(ledger.sources.map(source => source.sourceId));
   if (ledger.runId !== expectedRunId || !/^[a-zA-Z0-9_-]+$/.test(ledger.runId) ||
-    new Set(ledger.sources.map(source => source.sourceId)).size !== ledger.sources.length ||
-    ledger.sources.some(source => !source.sourceId.startsWith(prefix) ||
-      !/^[1-9]\d*$/.test(source.sourceId.slice(prefix.length)))) invalid();
+    ids.size !== ledger.sources.length) invalid();
+  for (const source of ledger.sources) sourceIndex(source.sourceId, ledger.runId);
+  const provenance = [
+    ...ledger.attempts.flatMap(attempt => attempt.sourceIds),
+    ...(ledger.assessment?.sources.map(source => source.sourceId) ?? []),
+    ...(ledger.assessment?.conflicts.flatMap(conflict => conflict.sourceIds) ?? []),
+  ];
+  if (provenance.some(id => !ids.has(id))) invalid();
 }
 
 /** Scope is the frozen question gate, not the individual search action's filter. */
@@ -35,6 +47,7 @@ export function recordSearch(ledger: EvidenceLedger, action: SearchAction, batch
   } else if (ledger.attempts.some(attempt => attempt.strategyKey === strategy)) invalid();
   const id = ledger.attempts.length + 1;
   const sources = ledger.sources.map(source => ({ ...source, attempts: [...source.attempts], warnings: [...source.warnings] }));
+  let lastSourceIndex = sources.reduce((max, source) => Math.max(max, sourceIndex(source.sourceId, ledger.runId)), 0);
   const sourceIds: string[] = [];
   const diagnostics = [...batch.warnings];
   let changed = false;
@@ -45,7 +58,8 @@ export function recordSearch(ledger: EvidenceLedger, action: SearchAction, batch
     const publishedAt = sourcePublishedAt(result.publishedAt);
     let source = sources.find(item => item.url === url.href);
     if (!source) {
-      source = { sourceId: `sr_${ledger.runId}_${sources.length + 1}`, url: url.href, domain: url.hostname,
+      if (!Number.isSafeInteger(++lastSourceIndex)) invalid();
+      source = { sourceId: `sr_${ledger.runId}_${lastSourceIndex}`, url: url.href, domain: url.hostname,
         title: result.title, snippet: result.snippet, provider: batch.provider, attempts: [id], publishedAt,
         retrievedAt: batch.retrievedAt, readStatus: 'not_read', decision: 'candidate',
         dateStatus: publicationDateStatus(publishedAt, scope), warnings: [...batch.warnings] };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyAssessment, recordReads, recordSearch } from '../src/core/search/evidence';
+import { applyAssessment, assertLedgerRun, recordReads, recordSearch } from '../src/core/search/evidence';
 import { queryChange, queryKey } from '../src/core/search/query';
 import type { EvidenceLedger, SearchAction, SearchBatch } from '../src/core/search/agent-types';
 import { snapshotFixture } from './helpers/research';
@@ -32,6 +32,44 @@ describe('meaningful query strategies', () => {
 });
 
 describe('evidence ledger', () => {
+  it('allocates above the highest sparse checkpoint index and remains valid for the next mutation', () => {
+    const sparse: EvidenceLedger = { ...empty(), sources: [{ ...search().sources[0]!, sourceId: 'sr_r1_2' }] };
+    const result = recordSearch(sparse, action, { ...batch, results: [
+      { ...batch.results[0]!, url: 'https://news.cn/new' },
+      { ...batch.results[0]!, url: 'https://news.cn/another' },
+    ] }, '恢复后核查');
+    expect(result.sources.map(source => source.sourceId)).toEqual(['sr_r1_2', 'sr_r1_3', 'sr_r1_4']);
+    expect(result.attempts[0]!.sourceIds).toEqual(['sr_r1_3', 'sr_r1_4']);
+    expect(() => assertLedgerRun(result, 'r1')).not.toThrow();
+    expect(recordReads(result, []).sources.map(source => source.sourceId)).toEqual(['sr_r1_2', 'sr_r1_3', 'sr_r1_4']);
+    expect(sparse.sources.map(source => source.sourceId)).toEqual(['sr_r1_2']);
+  });
+  it.each(['9007199254740992', '99999999999999999999999999999999999999'])('rejects unsafe numeric checkpoint index %s', (index) => {
+    const ledger = { ...empty(), sources: [{ ...search().sources[0]!, sourceId: `sr_r1_${index}` }] };
+    expect(() => assertLedgerRun(ledger)).toThrow();
+  });
+  it('allows the last safe index allocation but rejects the next without mutating the checkpoint', () => {
+    const ledger = { ...empty(), sources: [{ ...search().sources[0]!, sourceId: 'sr_r1_9007199254740990' }] };
+    const result = recordSearch(ledger, action, { ...batch, results: [{ ...batch.results[0]!, url: 'https://news.cn/new' }] }, '恢复后核查');
+    expect(result.sources[1]!.sourceId).toBe('sr_r1_9007199254740991');
+    expect(() => assertLedgerRun(result)).not.toThrow();
+    expect(() => recordSearch(result, { ...action, domains: ['news.cn'] }, { ...batch, results: [{ ...batch.results[0]!, url: 'https://news.cn/another' }] }, '索引耗尽')).toThrow();
+    expect(result.sources.map(source => source.sourceId)).toEqual(['sr_r1_9007199254740990', 'sr_r1_9007199254740991']);
+  });
+  it.each(['attempt', 'assessment_source', 'assessment_conflict'] as const)('rejects foreign and unknown IDs in %s provenance before every mutation', (field) => {
+    for (const id of ['sr_other_1', 'sr_r1_99']) {
+      const ledger = search();
+      const assessment = { sources: [{ sourceId: 'sr_r1_1', relevant: true, supportedAspects: ['团队'], reason: '直接支持' }], missing: [], conflicts: [] };
+      ledger.assessment = structuredClone(assessment);
+      if (field === 'attempt') ledger.attempts[0]!.sourceIds.push(id);
+      else if (field === 'assessment_source') ledger.assessment.sources[0]!.sourceId = id;
+      else ledger.assessment.conflicts = [{ sourceIds: ['sr_r1_1', id], description: '未核验冲突' }];
+      expect(() => assertLedgerRun(ledger, 'r1')).toThrow();
+      expect(() => recordSearch(ledger, { ...action, domains: ['news.cn'] }, batch, '恢复后核查')).toThrow();
+      expect(() => recordReads(ledger, [])).toThrow();
+      expect(() => applyAssessment(ledger, assessment)).toThrow();
+    }
+  });
   it('merges canonical URLs without losing snippets, attempts or bounded provider fallback history', () => {
     const first = search();
     const next = recordSearch(first, { ...action, domains: ['news.cn'] }, { ...batch, results: [{ ...batch.results[0]!, url: 'https://news.cn/pilot#second', snippet: '位于上海。' }] }, '核查地区', undefined, gate);
