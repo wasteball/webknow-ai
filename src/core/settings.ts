@@ -1,3 +1,4 @@
+import { DIRECT_READ_VERIFIED } from './search/source-reader';
 import { LIMITS, SUMMARY_LENGTH_CHARS, type SummaryLength } from './limits';
 import { MODEL_PROVIDERS, findProvider, type ProviderId } from './model-providers';
 import { resolveThinking, type ThinkingLevel, type ThinkingStore } from './model-thinking';
@@ -137,4 +138,28 @@ export function effectiveSettings(config: {
     diagrams: config.diagrams ?? DEFAULT_SETTINGS.diagrams,
     thinking: resolveThinking(model, config.thinking?.[provider.id]?.[model]),
   };
+}
+
+/** Stable public receiver/data declaration; deliberately allowlists no credentials or key fingerprints. */
+export const OUTBOUND_NOTICE_VERSION = '2026-10-01.1';
+export function outboundScope(config: {
+  provider?: string;
+  search?: { providerId?: string; agent?: Partial<import('./search/agent-types').AgentSettings>; credentials?: Record<string, Record<string, string>> };
+}): string {
+  const model = findProvider(config.provider);
+  const id = config.search?.providerId ?? null;
+  let origin: string | null = null;
+  if (id === 'searxng') {
+    try {
+      const url = new URL(config.search?.credentials?.searxng?.baseUrl ?? '');
+      if (url.protocol === 'https:' || url.protocol === 'http:') origin = url.origin;
+    } catch { /* An invalid instance has no authorized receiver. */ }
+  }
+  const reading = config.search?.agent?.sourceReading ?? 'provider';
+  return JSON.stringify({ version: OUTBOUND_NOTICE_VERSION, model: model.receiver, modelOrigin: model.origin,
+    search: id, selfHostOrigin: origin, sourceReading: reading,
+    directRead: DIRECT_READ_VERIFIED,
+    contentReceiver: reading === 'off' ? null : id === 'firecrawl' ? 'https://api.firecrawl.dev' : 'unavailable',
+    data: { model: 'article,question,history,search-material,source-body,readable-images-when-supported',
+      search: 'query,filters,own-authentication', content: 'selected-source-urls', direct: 'unavailable' } });
 }

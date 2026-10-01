@@ -7,9 +7,10 @@ import { LIMITS } from '../core/limits';
 import { MODEL_PROVIDERS, findProvider } from '../core/model-providers';
 import { effectiveAgentSettings } from '../core/search/agent-policy';
 import { researchSummary } from '../core/search/answer';
-import { effectiveSettings } from '../core/settings';
+import { outboundScope, effectiveSettings } from '../core/settings';
 import { validateCustomSkill } from '../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS, searchWithProvider } from '../core/search/registry';
+import { DIRECT_READ_VERIFIED } from '../core/search/source-reader';
 import { sameDocument } from '../core/page-drift';
 import { prepareQuote } from '../core/quote';
 import { createSession, emptySession, markStale } from '../core/session';
@@ -38,6 +39,7 @@ import {
   saveCustomSkill,
   saveImaConfig,
   saveSearchConfig,
+  saveSearchAgentSettings,
   setPending,
   writeConfig,
 } from './store';
@@ -184,24 +186,21 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
   };
 }
 
-/** 联网搜索的界面可见状态（F3）：只有启用状态与名称，凭证不出后台。 */
-function searchStatus(config: import('./store').Config): {
-  enabled: boolean;
-  providerName: string | null;
-  hasCredentials: boolean;
-} {
+/** 界面可编辑偏好与已声明接收方；凭证和运行快照不出后台。 */
+function searchStatus(config: import('./store').Config): PanelState['settings']['search'] {
   const providerId = config.search?.providerId;
-  if (!providerId) return { enabled: false, providerName: null, hasCredentials: false };
-  const provider = BUILTIN_SEARCH_PROVIDERS.find((item) => item.id === providerId);
-  if (!provider) return { enabled: false, providerName: null, hasCredentials: false };
-  const saved = config.search?.credentials?.[providerId] ?? {};
-  return {
-    enabled: effectiveAgentSettings(config).enabled,
-    providerName: provider.name,
-    hasCredentials: provider.configFields.every(
-      (field) => !field.required || Boolean(saved[field.key]?.trim()),
-    ),
-  };
+  const provider = BUILTIN_SEARCH_PROVIDERS.find(item => item.id === providerId);
+  const saved = config.search?.credentials?.[providerId ?? ''] ?? {};
+  let receiver = provider?.name ?? null;
+  if (providerId === 'searxng') {
+    try { receiver = `SearXNG（${new URL(saved.baseUrl ?? '').origin}）`; } catch { receiver = 'SearXNG（尚未配置实例）'; }
+  }
+  return { enabled: Boolean(provider) && effectiveAgentSettings(config).enabled,
+    providerName: provider?.name ?? null, receiver,
+    hasCredentials: Boolean(provider?.configFields.every(field => !field.required || Boolean(saved[field.key]?.trim()))),
+    agent: effectiveAgentSettings(config),
+    sourceCapabilities: { providerContent: provider?.capabilities.content ?? false, directRead: DIRECT_READ_VERIFIED,
+      directReadReason: DIRECT_READ_VERIFIED ? null : '直接读取尚未通过公开目标隔离验证；使用供应商内容接口或搜索摘要。' } };
 }
 
 /**
@@ -477,14 +476,25 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         return { ok: true, message: '技能已删除。' };
       }
 
+      case 'saveSearchAgentSettings': {
+        const before = await readConfig();
+        await saveSearchAgentSettings(command.patch);
+        const after = await readConfig();
+        if (!effectiveAgentSettings(after).enabled || outboundScope(before) !== outboundScope(after)) await invalidateAllResearch();
+        await pushAllStates();
+        return { ok: true, message: '联网偏好已保存，下一次提问生效。' };
+      }
+
       case 'saveSearchConfig': {
         const providerId = command.providerId;
         if (providerId !== null && !BUILTIN_SEARCH_PROVIDERS.some((provider) => provider.id === providerId)) {
           return { ok: false, error: appError('BAD_OUTPUT', '这个搜索供应商不存在。', false) };
         }
+        const before = await readConfig();
         await saveSearchConfig({ providerId, credentials: command.credentials });
+        if (outboundScope(before) !== outboundScope(await readConfig())) await invalidateAllResearch();
         await pushAllStates();
-        return { ok: true, message: providerId ? '联网搜索已启用。' : '联网搜索已停用。' };
+        return { ok: true, message: providerId ? '搜索服务已配置。' : '搜索服务已停用。' };
       }
 
       case 'testSearch': {
@@ -563,12 +573,14 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         }
       }
 
-      case 'confirmOutbound':
+      case 'confirmOutbound': {
+        const config = await readConfig();
         await writeConfig({
-          outbound: { version: OUTBOUND_NOTICE_VERSION, acceptedAt: Date.now(), receiver: await currentReceiver() },
+          outbound: { version: OUTBOUND_NOTICE_VERSION, acceptedAt: Date.now(), receiver: findProvider(config.provider).receiver, scope: outboundScope(config) },
         });
         await pushAllStates();
         return { ok: true };
+      }
 
       default:
         return { ok: false, error: appError('INTERNAL', '未知指令。') };
@@ -700,4 +712,10 @@ export async function onActionClicked(tab: { id?: number; url?: string }): Promi
   if (url && origin) await setPending(tabId, { url, origin, at: Date.now() });
 
   await pushState(tabId);
+}
+
+/** Permission revocation stops logical waiting runs as well as active invocations. */
+export async function onPermissionsRemoved(): Promise<void> {
+  await invalidateAllResearch();
+  await pushAllStates();
 }

@@ -13,14 +13,15 @@ import {
 } from '../core/learn-policy';
 import { learnMessages, type LearnMode } from '../core/prompts/learn';
 import type { AgentCheckpoint, AgentEvent, AgentResume, NetworkMode } from '../core/search/agent-types';
-import { effectiveAgentSettings } from '../core/search/agent-policy';
+import { runtimeAgentSettings } from '../core/search/agent-policy';
 import { initialCheckpoint } from '../core/search/agent-limits';
 import { evaluateSearchGate } from '../core/search/gate';
 import { SEARCH_AGENT_VERSION } from '../core/prompts/search-agent';
 import { toResearchAnswer } from '../core/search/answer';
 import { assertResearchCurrent, executeResearch, permissionOrigins, researchModelSelection } from './research';
 import { prepareQuote, type Quote } from '../core/quote';
-import { effectiveSettings } from '../core/settings';
+import { browser } from 'wxt/browser';
+import { outboundScope, effectiveSettings } from '../core/settings';
 import { resolvePolicy } from '../core/skills';
 import {
   acceptsWriteBack,
@@ -403,7 +404,7 @@ async function runAsk(
     'answer',
     async (session, runId, signal) => {
       let current = await adoptCurrentPage(tabId, session);
-      const settings = effectiveAgentSettings(config);
+      const settings = runtimeAgentSettings(config, browser.i18n?.getUILanguage() ?? globalThis.navigator?.language ?? 'en');
       const preparedQuote = rawQuote === undefined ? current.quote ?? null
         : rawQuote === null ? null : prepareQuote(rawQuote, current.blocks);
       const frozenQuote = preparedQuote ? { ...preparedQuote, id: rawQuote === undefined ? preparedQuote.id : quoteId ?? preparedQuote.id } : null;
@@ -415,7 +416,7 @@ async function runAsk(
         const checkpoint = initialCheckpoint({
           identity: { tabId, sessionId: current.id, runId, url: current.url, fingerprint: current.fingerprint,
             modelProvider: model.modelProvider, modelId: model.modelId }, thinking: model.thinking,
-          searchProviderId: config.search?.providerId, question, title: current.title, blocks: structuredClone(current.blocks), quote: frozenQuote,
+          searchProviderId: config.search?.providerId, outboundScope: outboundScope(config), question, title: current.title, blocks: structuredClone(current.blocks), quote: frozenQuote,
           history: current.chat.slice(-LIMITS.maxHistoryTurns).map(turn => ({ question: turn.question, answer: turn.answer })),
           disclosure: describeCompleteness(current.completeness), gate, settings,
           policyVersion: SEARCH_AGENT_VERSION, answerPolicy: resolvePolicy('answer', config) ?? ANSWER_DEFAULT_POLICY,
@@ -545,14 +546,14 @@ async function researchStep(session: PageSession, checkpoint: AgentCheckpoint, s
         Object.entries(identity).some(([key, value]) => event.identity[key as keyof typeof identity] !== value) || event.seq <= (active.seq ?? 0)) return;
     active.seq = event.seq;
     events = events.then(async () => {
-      await assertResearchCurrent(identity, thinking, signal, checkpoint.snapshot.searchProviderId);
+      await assertResearchCurrent(identity, thinking, signal, checkpoint.snapshot.searchProviderId, checkpoint.snapshot.outboundScope);
       if (controllers.get(identity.tabId) !== active) return;
       active.agent = event; hooks.onAgent?.(identity.tabId, event);
     });
     void events.catch(() => {});
   }, resume);
   await events;
-  await assertResearchCurrent(identity, thinking, signal, checkpoint.snapshot.searchProviderId);
+  await assertResearchCurrent(identity, thinking, signal, checkpoint.snapshot.searchProviderId, checkpoint.snapshot.outboundScope);
   const fresh = await getSession(identity.tabId);
   if (!fresh || fresh.id !== identity.sessionId || fresh.run?.id !== identity.runId ||
       fresh.url !== identity.url || fresh.fingerprint !== identity.fingerprint || signal.aborted) return null;

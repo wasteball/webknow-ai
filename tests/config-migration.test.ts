@@ -51,3 +51,13 @@ describe('配置迁移：选中的模板 → 看得见的文字', () => {
     expect('skillChoices' in config).toBe(false);
   });
 });
+
+it('preserves legacy selected search provider and credentials while intelligent search stays off', async () => {
+  const legacy = { apiKey: 'model-private', search: { providerId: 'tavily', credentials: { tavily: { apiKey: 'search-private' } } } };
+  store.set(KEY, legacy);
+  const config = await readConfig();
+  const { effectiveAgentSettings } = await import('../src/core/search/agent-policy');
+  expect(effectiveAgentSettings(config).enabled).toBe(false);
+  expect(config.search).toEqual(legacy.search);
+  expect(config.apiKeys?.deepseek).toBe('model-private');
+});

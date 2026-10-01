@@ -1,3 +1,4 @@
+import { effectiveAgentSettings } from '../../src/core/search/agent-policy';
 import type { PanelState } from '../../src/core/protocol';
 
 export function panel(overrides: Partial<PanelState> = {}): PanelState {
@@ -8,7 +9,7 @@ export function panel(overrides: Partial<PanelState> = {}): PanelState {
       provider: 'deepseek', providerKeys: { deepseek: true, zhipu: false },
       models: {}, model: 'deepseek-flash', thinking: 'off', prompts: {}, customSkills: [],
       learningStyle: 'mixed', maxBubbles: 3, summaryLength: 'medium', fontSize: 'normal',
-      diagrams: 'off', search: { enabled: false, providerName: null, hasCredentials: false },
+      diagrams: 'off', search: { enabled: false, providerName: null, hasCredentials: false, agent: effectiveAgentSettings({}), sourceCapabilities: { providerContent: false, directRead: false, directReadReason: '直接读取尚未验证' } },
       ima: { enabled: false, kbName: null },
     },
     outboundConfirmed: true, completeness: null,

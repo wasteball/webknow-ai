@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { panel as sharedPanel } from './helpers/panel';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -24,7 +25,7 @@ function panel(over: Partial<PanelState> = {}): PanelState {
       provider: 'deepseek',
       providerKeys: { deepseek: true, zhipu: false },
       models: {},
-      search: { enabled: false, providerName: null, hasCredentials: false },
+      search: sharedPanel().settings.search,
       ima: { enabled: false, kbName: null },
       maxBubbles: 4,
       summaryLength: 'medium',

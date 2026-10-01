@@ -74,6 +74,8 @@ export type ResearchSummary = {
 export type AgentSnapshot = {
   /** Program-owned receiver frozen by the backend; never supplied by a model action. */
   searchProviderId?: string;
+  /** Program-owned frozen receiver declaration, never supplied by a model action. */
+  outboundScope?: string;
   identity: RunIdentity; question: string; quote: Quote | null;
   title: string; blocks: EvidenceBlock[]; disclosure: string;
   history: { question: string; answer: string }[];

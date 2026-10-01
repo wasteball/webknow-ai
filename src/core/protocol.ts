@@ -6,7 +6,7 @@ import type { ThinkingLevel } from './model-thinking';
 import type { DiagramMode, FontSize, PromptOverrides } from './settings';
 import type { Skill } from './skills';
 import type { Quote } from './quote';
-import type { AgentEvent, NetworkMode, ResearchSummary } from './search/agent-types';
+import type { AgentEvent, AgentSettings, NetworkMode, ResearchSummary } from './search/agent-types';
 import type { ResearchPending, Bubble, ChatTurn, LearningHistory, LearningState, RequestKind, SessionState } from './session';
 
 /** 侧栏可见的页面状态（PRD 4.2）。由配置、权限与会话状态共同推导。 */
@@ -34,7 +34,9 @@ export type PanelSettings = {
   providerKeys: Record<ProviderId, boolean>;
   models: Partial<Record<ProviderId, string>>;
   /** 联网搜索（F3）：只暴露状态，凭证永不进界面。 */
-  search: { enabled: boolean; providerName: string | null; hasCredentials: boolean };
+  search: { enabled: boolean; providerName: string | null; hasCredentials: boolean;
+    agent: AgentSettings; sourceCapabilities: { providerContent: boolean; directRead: boolean; directReadReason: string | null };
+    receiver?: string | null };
   /** 知识库（K-ima）：只暴露状态；凭证永不进界面。 */
   ima: { enabled: boolean; kbName: string | null };
   maxBubbles: number;
@@ -99,6 +101,7 @@ export type Command =
   | { type: 'saveSettings'; patch: import('./settings').SettingsPatch }
   | { type: 'saveSkill'; skill: { id?: string; name: string; description: string; target: 'guide' | 'answer' | 'learn'; body: string } }
   | { type: 'deleteSkill'; id: string }
+  | { type: 'saveSearchAgentSettings'; patch: Partial<AgentSettings> }
   | { type: 'saveSearchConfig'; providerId: string | null; credentials?: Record<string, string> }
   | { type: 'testSearch'; providerId: string; credentials?: Record<string, string> }
   | { type: 'saveImaConfig'; clientId?: string; apiKey?: string }

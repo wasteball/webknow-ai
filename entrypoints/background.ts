@@ -5,6 +5,7 @@ import { cleanupDiagrams, cleanupNavigatedDiagram } from '../src/background/diag
 import {
   onActionClicked,
   onPageChanged,
+  onPermissionsRemoved,
   onQuoteSelected,
   onTabNavigating,
   onTabRemoved,
@@ -39,6 +40,8 @@ export default defineBackground(() => {
   browser.action.onClicked.addListener((tab) => {
     void onActionClicked(tab);
   });
+
+  browser.permissions.onRemoved.addListener(() => { void onPermissionsRemoved(); });
 
   browser.tabs.onRemoved.addListener((tabId) => {
     void onTabRemoved(tabId);

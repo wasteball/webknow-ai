@@ -1,6 +1,7 @@
+import { panel } from './helpers/panel';
 import { describe, expect, it } from 'vitest';
 
-import { outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from '../src/sidepanel/outbound-copy';
+import { outboundReceiverLines, outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from '../src/sidepanel/outbound-copy';
 
 /**
  * 这些句子会进首次外发告知。哪家供应商的名字写死成 DeepSeek，
@@ -22,4 +23,16 @@ describe('外发告知文案跟着当前供应商走', () => {
     expect(outboundConfirmedHint('DeepSeek（深度求索）', true)).toContain('DeepSeek（深度求索）');
     expect(outboundConfirmedHint('DeepSeek（深度求索）', true)).toContain('可读取的内容图片');
   });
+});
+
+
+it('shares model/search/content receivers and only own-channel authentication in all disclosure surfaces', () => {
+  const settings = panel().settings;
+  settings.search.providerName = 'Firecrawl'; settings.search.sourceCapabilities.providerContent = true;
+  const lines = outboundReceiverLines(settings).join(' ');
+  expect(lines).toContain('搜索词和筛选条件'); expect(lines).toContain('内容接口（Firecrawl）');
+  expect(lines).toContain('来源 URL'); expect(lines).toContain('自己的认证通道');
+  expect(outboundConfirmedHint('DeepSeek', true, settings)).toContain(lines);
+  settings.search.sourceCapabilities.providerContent = false;
+  expect(outboundReceiverLines(settings).join(' ')).toContain('直接读取来源网站暂不可用');
 });

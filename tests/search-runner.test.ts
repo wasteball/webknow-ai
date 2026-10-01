@@ -214,3 +214,27 @@ it('adopts edited article content before freezing the research snapshot', async 
   expect(storage.research.mock.calls[0]?.[0].snapshot.identity.fingerprint).toBe('edited');
   expect(storage.research.mock.calls[0]?.[0].snapshot.blocks[0]?.content).toBe('新内容只有两个团队。');
 });
+
+it('permission removal invalidates a waiting logical run without a resume request', async () => {
+  storage.research.mockImplementationOnce(async checkpoint => waiting(checkpoint));
+  await ask();
+  const { onPermissionsRemoved } = await import('../src/background/router');
+  await onPermissionsRemoved();
+  expect((await storage.get())?.run).toBeNull();
+  expect((await storage.get())?.researchPending?.status).toBe('interrupted');
+  expect(storage.research).toHaveBeenCalledOnce();
+});
+it('permission removal aborts running research and rejects its late result', async () => {
+  let release!: () => void;
+  storage.research.mockImplementation(async (checkpoint: AgentCheckpoint, signal: AbortSignal) => {
+    await new Promise<void>(resolve => { release = resolve; });
+    expect(signal.aborted).toBe(true);
+    return finished(checkpoint);
+  });
+  const pending = ask();
+  await vi.waitFor(() => expect(storage.research).toHaveBeenCalledOnce());
+  const { onPermissionsRemoved } = await import('../src/background/router');
+  await onPermissionsRemoved(); release(); await pending;
+  expect((await storage.get())?.chat).toEqual([]);
+  expect((await storage.get())?.run).toBeNull();
+});

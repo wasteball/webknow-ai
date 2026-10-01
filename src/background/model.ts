@@ -1,3 +1,4 @@
+import { outboundScope } from '../core/settings';
 import { browser } from 'wxt/browser';
 import type { RunIdentity } from '../core/search/agent-types';
 import { effectiveAgentSettings } from '../core/search/agent-policy';
@@ -118,7 +119,7 @@ export async function listModels(providerId: string, key: string): Promise<strin
 
 /** Frozen research receiver; credentials are read only at this network boundary. */
 export async function callResearchModel(input: {
-  identity: RunIdentity; messages: Message[]; signal: AbortSignal; thinking?: string; searchProviderId?: string;
+  identity: RunIdentity; messages: Message[]; signal: AbortSignal; thinking?: string; searchProviderId?: string; outboundScope?: string;
 }): Promise<unknown> {
   const assertConfig = (config: Config) => {
     const provider = findProvider(config.provider);
@@ -128,6 +129,7 @@ export async function callResearchModel(input: {
         input.searchProviderId !== undefined && config.search?.providerId !== input.searchProviderId) {
       throw appError('STALE_PAGE', '页面或模型已经变化，请重新提问。');
     }
+    if (input.outboundScope !== undefined && outboundScope(config) !== input.outboundScope) throw appError('STALE_PAGE', '外发接收方或范围已经变化，请重新提问。');
     assertOutboundConfirmation(config);
     if (!effectiveAgentSettings(config).enabled) throw appError('ABORTED', '联网已关闭。');
     return provider;

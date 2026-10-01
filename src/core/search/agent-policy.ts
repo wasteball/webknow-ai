@@ -1,3 +1,4 @@
+import { DEFAULT_SEARCH_AGENT_POLICY } from '../prompts/search-agent';
 import { LIMITS } from '../limits';
 import type { AgentSettings } from './agent-types';
 
@@ -40,5 +41,15 @@ export function normalizeAgentSettings(patch: unknown): Partial<AgentSettings> {
 
 /** Legacy provider selection never enables the independent global network switch. */
 export function effectiveAgentSettings(config: { search?: { agent?: Partial<AgentSettings> } }): AgentSettings {
-  return { ...DEFAULT_AGENT_SETTINGS, ...normalizeAgentSettings(config.search?.agent) };
+  const effective = { ...DEFAULT_AGENT_SETTINGS, ...normalizeAgentSettings(config.search?.agent) };
+  effective.policy = effective.policy.trim() || DEFAULT_SEARCH_AGENT_POLICY;
+  return effective;
+}
+
+/** Saved empty values follow the browser, resolved once when freezing the run. No geolocation. */
+export function runtimeAgentSettings(config: Parameters<typeof effectiveAgentSettings>[0], locale: string): AgentSettings {
+  const settings = effectiveAgentSettings(config);
+  let browserLocale: Intl.Locale;
+  try { browserLocale = new Intl.Locale(locale); } catch { browserLocale = new Intl.Locale('en'); }
+  return { ...settings, language: settings.language || browserLocale.toString(), region: settings.region || browserLocale.region || '' };
 }

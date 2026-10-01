@@ -1,3 +1,5 @@
+import { normalizeAgentSettings } from '../core/search/agent-policy';
+import type { AgentSettings } from '../core/search/agent-types';
 import { storage } from 'wxt/utils/storage';
 
 import { appError } from '../core/errors';
@@ -6,6 +8,8 @@ import { findProvider, type ProviderId } from '../core/model-providers';
 import { rememberThinking, type ThinkingStore } from '../core/model-thinking';
 import {
   normalizeSettings,
+  outboundScope,
+  OUTBOUND_NOTICE_VERSION,
   type DiagramMode,
   type FontSize,
   type PromptOverrides,
@@ -24,16 +28,15 @@ import type { PageSession } from '../core/session';
 /**
  * 外发告知版本：接收方或发送范围实质变化时必须更新，旧确认随之失效（FR-022）。
  *
- * 2026-09-19.2：加入智谱。此前接收方恒为 DeepSeek，现在取决于用户选哪家——
- * 接收方集合发生实质变化，因此提版，让老用户对新边界重新确认一次。
- * 具体接收方名称不在这里写死，改由所选供应商给出（core/model-providers.ts）。
+ * 2026-10-01.1：包括模型、搜索服务／自建实例和来源读取接收方及数据范围。
  */
-export const OUTBOUND_NOTICE_VERSION = '2026-09-19.2';
+export { OUTBOUND_NOTICE_VERSION } from '../core/settings';
 
 /** 外发确认只对当前版本与当前接收方有效。 */
 export function hasOutboundConfirmation(config: Config): boolean {
   return config.outbound?.version === OUTBOUND_NOTICE_VERSION &&
-    config.outbound?.receiver === findProvider(config.provider).receiver;
+    config.outbound?.receiver === findProvider(config.provider).receiver &&
+    config.outbound?.scope === outboundScope(config);
 }
 
 /**
@@ -49,7 +52,7 @@ export type Config = {
   models?: Partial<Record<ProviderId, string>>;
   /** 每家、每个模型各记的思考档。缺省按模型表。 */
   thinking?: ThinkingStore;
-  outbound?: { version: string; acceptedAt: number; receiver: string };
+  outbound?: { version: string; acceptedAt: number; receiver: string; scope?: string };
   prompts?: PromptOverrides;
   /** 用户自建的写法模板；内置模板在代码里，不进存储。 */
   skills?: Skill[];
@@ -200,7 +203,8 @@ export async function saveSearchConfig(input: {
   if (input.providerId === null) delete search.providerId;
   else search.providerId = input.providerId;
   const next: Config = { ...current, search };
-  if (!next.search?.providerId && !next.search?.credentials) delete next.search;
+  if (!next.search?.providerId && !next.search?.credentials && !next.search?.agent) delete next.search;
+  if (outboundScope(current) !== outboundScope(next)) delete next.outbound;
   await storage.setItem(CONFIG_KEY, next);
 }
 
@@ -339,4 +343,14 @@ export async function getPending(tabId: number): Promise<Pending | null> {
 
 export async function clearPending(tabId: number): Promise<void> {
   await storage.removeItem(pendingKey(tabId));
+}
+
+/** Merge a partial validated patch; invalid fields preserve the saved value. */
+export async function saveSearchAgentSettings(patch: Partial<AgentSettings>): Promise<void> {
+  const current = await readConfig();
+  const agent = { ...current.search?.agent, ...normalizeAgentSettings(patch) };
+  if (agent.policy === '') delete agent.policy;
+  const next: Config = { ...current, search: { ...current.search, agent } };
+  if (outboundScope(current) !== outboundScope(next)) delete next.outbound;
+  await storage.setItem(CONFIG_KEY, next);
 }

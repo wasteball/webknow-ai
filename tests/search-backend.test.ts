@@ -19,17 +19,18 @@ vi.mock('../src/background/page', () => ({
   readPageIdentity: vi.fn(async () => ({ ...boundary.identity })), toAppError: (e: unknown) => e,
 }));
 vi.mock('../src/core/model-call', () => ({ chatJson: boundary.json }));
-vi.mock('wxt/browser', () => ({ browser: { permissions: { contains: boundary.permission } } }));
+vi.mock('wxt/browser', () => ({ browser: { i18n: { getUILanguage: () => 'zh-Hant-TW' }, permissions: { contains: boundary.permission } } }));
 import { emptySession } from '../src/core/session';
 import { handleIntent, abortRun, recoverInterruptedRun } from '../src/background/runner';
 import { callResearchModel } from '../src/background/model';
 import { initialCheckpoint } from '../src/core/search/agent-limits';
 import { snapshotFixture } from './helpers/research';
-import { bocha, firecrawl, tavily } from '../src/core/search/providers';
+import { outboundScope } from '../src/core/settings';
+import { bocha, firecrawl, tavily, searxng } from '../src/core/search/providers';
 import { executeResearch } from '../src/background/research';
 const hooks = { onState: vi.fn(), onProgress: vi.fn() };
 function activeCheckpoint() {
-  const snapshot = snapshotFixture({ searchProviderId: 'firecrawl',
+  const snapshot = snapshotFixture({ searchProviderId: 'firecrawl', outboundScope: outboundScope(boundary.config),
     identity: { ...snapshotFixture().identity, modelId: 'deepseek-flash' }, thinking: 'off',
     gate: { level: 'recommended', canSearch: true, mustSearch: false, freshness: 'any', reasons: [],
       time: { nowIso: new Date().toISOString(), localDate: '2026-10-01', timeZone: 'Asia/Shanghai', from: '2026-09-01', to: '2026-09-30' } } });
@@ -89,7 +90,7 @@ describe('real backend research adapters', () => {
   });
   it('direct_allowed never enables direct requests for an unverified reader or Tavily content', async () => {
     const checkpoint = activeCheckpoint(); checkpoint.snapshot.settings.sourceReading = 'direct_allowed';
-    checkpoint.snapshot.searchProviderId = 'tavily'; boundary.config.search!.providerId = 'tavily';
+    checkpoint.snapshot.searchProviderId = 'tavily'; boundary.config.search!.providerId = 'tavily'; checkpoint.snapshot.outboundScope = outboundScope(boundary.config);
     checkpoint.ledger.sources = [{ sourceId: 'sr_r1_1', title: 'release', url: 'https://example.net/release', domain: 'example.net', snippet: 'summary',
       provider: 'tavily', attempts: [], publishedAt: null, retrievedAt: new Date().toISOString(), readStatus: 'not_read', decision: 'candidate', dateStatus: 'date_unknown', warnings: [] }];
     boundary.json.mockResolvedValueOnce({ type: 'read_sources', sourceIds: ['sr_r1_1'], focus: 'release' }).mockResolvedValueOnce(evidence).mockResolvedValueOnce(wait);
@@ -130,6 +131,7 @@ describe('prepared credential revocation at physical egress', () => {
     const checkpoint = activeCheckpoint();
     checkpoint.snapshot.searchProviderId = providerId;
     boundary.config.search = { providerId, agent: { enabled: true }, credentials: { [providerId]: { apiKey: 'obsolete-search-key' } } };
+    checkpoint.snapshot.outboundScope = outboundScope(boundary.config);
     const provider = providerId === 'tavily' ? tavily : bocha;
     const original = provider.search;
     const spy = vi.spyOn(provider, 'search').mockImplementation(async request => {
@@ -150,6 +152,7 @@ describe('prepared credential revocation at physical egress', () => {
   it.each(['tavily', 'bocha'] as const)('allows %s to transmit unchanged current authentication', async providerId => {
     const checkpoint = activeCheckpoint(); checkpoint.snapshot.searchProviderId = providerId;
     boundary.config.search = { providerId, agent: { enabled: true }, credentials: { [providerId]: { apiKey: 'current-search-key' } } };
+    checkpoint.snapshot.outboundScope = outboundScope(boundary.config);
     boundary.json.mockResolvedValueOnce(search).mockResolvedValueOnce({ sources: [], missing: [], conflicts: [] }).mockResolvedValueOnce(wait);
     boundary.fetch.mockResolvedValue(new Response(JSON.stringify({ results: [], data: { webPages: { value: [] } } })));
     expect((await executeResearch(checkpoint, new AbortController().signal, vi.fn())).kind).toBe('waiting');
@@ -181,5 +184,67 @@ describe('prepared credential revocation at physical egress', () => {
     expect(outcome.checkpoint.ledger.sources[0]?.readStatus).toBe('unavailable');
     expect(boundary.fetch).not.toHaveBeenCalled();
     expect(JSON.stringify(outcome)).not.toContain('obsolete-content-key');
+  });
+});
+
+
+describe('frozen outbound scope at every receiver boundary', () => {
+  it.each(['origin', 'reading'] as const)('fresh confirmation after %s changes cannot revive a waiting checkpoint', async change => {
+    boundary.config.search = { providerId: 'searxng', credentials: { searxng: { baseUrl: 'https://one.example' } }, agent: { enabled: true } };
+    const checkpoint = activeCheckpoint(); checkpoint.snapshot.searchProviderId = 'searxng';
+    checkpoint.waiting = { type: 'ask_user', reason: 'conflict', question: '核对哪一点？' };
+    if (change === 'origin') boundary.config.search.credentials!.searxng!.baseUrl = 'https://two.example';
+    else boundary.config.search.agent!.sourceReading = 'off';
+    boundary.confirmed = true; // A genuinely new confirmation belongs to the NEW scope, never the old checkpoint.
+    boundary.json.mockResolvedValue(wait);
+    await expect(executeResearch(checkpoint, new AbortController().signal, vi.fn(), { mode: 'continue', text: '发布说明' })).rejects.toMatchObject({ code: 'STALE_PAGE' });
+    expect(boundary.json).not.toHaveBeenCalled(); expect(boundary.fetch).not.toHaveBeenCalled();
+  });
+  it('blocks a changed source receiver during the model permission await', async () => {
+    const checkpoint = activeCheckpoint();
+    boundary.permission.mockImplementation(async () => { boundary.config.search!.agent!.sourceReading = 'off'; return true; });
+    boundary.json.mockResolvedValue(wait);
+    await expect(callResearchModel({ identity: checkpoint.snapshot.identity, thinking: 'off', outboundScope: checkpoint.snapshot.outboundScope,
+      messages: [], signal: new AbortController().signal })).rejects.toMatchObject({ code: 'STALE_PAGE' });
+    expect(boundary.json).not.toHaveBeenCalled();
+  });
+  it('blocks the prepared self-host search request after its origin changes', async () => {
+    boundary.config.search = { providerId: 'searxng', credentials: { searxng: { baseUrl: 'https://one.example' } }, agent: { enabled: true } };
+    const checkpoint = activeCheckpoint(); checkpoint.snapshot.searchProviderId = 'searxng';
+    const original = searxng.search;
+    vi.spyOn(searxng, 'search').mockImplementation(async request => {
+      boundary.config.search!.credentials!.searxng!.baseUrl = 'https://two.example';
+      return original(request);
+    });
+    boundary.json.mockResolvedValueOnce(search).mockResolvedValueOnce({ sources: [], missing: [], conflicts: [] }).mockResolvedValueOnce(wait);
+    boundary.fetch.mockResolvedValue(new Response(JSON.stringify({ results: [] })));
+    await expect(executeResearch(checkpoint, new AbortController().signal, vi.fn())).rejects.toMatchObject({ code: 'STALE_PAGE' });
+    expect(boundary.fetch).not.toHaveBeenCalled();
+  });
+  it('blocks the prepared provider-content request after reading scope changes', async () => {
+    const checkpoint = activeCheckpoint();
+    checkpoint.ledger.sources = [{ sourceId: 'sr_r1_1', title: 'release', url: 'https://example.net/release', domain: 'example.net', snippet: 'summary',
+      provider: 'firecrawl', attempts: [], publishedAt: null, retrievedAt: new Date().toISOString(), readStatus: 'not_read', decision: 'candidate', dateStatus: 'date_unknown', warnings: [] }];
+    const original = firecrawl.readSources!;
+    vi.spyOn(firecrawl, 'readSources').mockImplementation(async request => { boundary.config.search!.agent!.sourceReading = 'off'; return original(request); });
+    boundary.json.mockResolvedValueOnce({ type: 'read_sources', sourceIds: ['sr_r1_1'], focus: 'release' }).mockResolvedValueOnce(evidence).mockResolvedValueOnce(wait);
+    boundary.fetch.mockResolvedValue(new Response(JSON.stringify({ data: { markdown: 'release' } })));
+    await expect(executeResearch(checkpoint, new AbortController().signal, vi.fn())).rejects.toMatchObject({ code: 'STALE_PAGE' });
+    expect(boundary.fetch).not.toHaveBeenCalled();
+  });
+  it.each([['', '', 'zh-Hant-TW', 'TW'], ['fr', 'CA', 'fr', 'CA']] as const)('sends frozen resolved locale %s/%s to the model context', async (language, region, expectedLanguage, expectedRegion) => {
+    boundary.config.search!.agent = { enabled: true, language, region };
+    vi.stubGlobal('navigator', { language: 'en-GB' });
+    boundary.json.mockImplementationOnce(async ({ messages }) => {
+      const context = JSON.parse(messages[1].content.slice(messages[1].content.indexOf('{'), messages[1].content.lastIndexOf('}') + 1));
+      expect(context.settings).toMatchObject({ language: expectedLanguage, region: expectedRegion });
+      expect(context).not.toHaveProperty('outboundScope');
+      boundary.config.search!.agent = { enabled: true, language: 'de', region: 'DE', depth: 'quick', policy: 'new policy' };
+      return wait;
+    });
+    expect(await handleIntent({ kind: 'ask', tabId: 7, question: '查证发布说明', network: 'force' }, hooks)).toBeNull();
+    expect(boundary.session?.researchCheckpoint?.snapshot.settings).toMatchObject({ language: expectedLanguage, region: expectedRegion, depth: 'deep' });
+    expect(boundary.session?.researchCheckpoint?.snapshot.outboundScope).toBe(outboundScope(boundary.config));
+    expect(boundary.session?.researchCheckpoint?.snapshot.settings.policy).not.toBe('new policy');
   });
 });
