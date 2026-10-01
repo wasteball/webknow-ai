@@ -26,7 +26,9 @@ export const EvidenceAssessmentSchema = z.object({
 
 export const AuditResultSchema = z.object({
   decision: z.enum(['accept', 'revise', 'research']),
-  claims: z.array(z.object({ text: text(8000), sourceIds }).strict()).max(LIMITS.maxBlocks),
+  claims: z.array(z.object({ text: text(8000), sourceIds,
+    temporalScope: z.enum(['requested', 'background']).optional(),
+  }).strict()).max(LIMITS.maxBlocks),
   missing, conflicts: z.array(text(1000)).max(20),
   freshness: z.enum(['verified', 'date_unknown', 'stale', 'not_applicable']),
 }).strict() satisfies z.ZodType<AuditResult>;
@@ -53,7 +55,10 @@ const ANSWER_SYSTEM = `${COMMON_SYSTEM}
 逐条列出每项外部事实 claims，给出实际支持它的 sourceIds；不能略去无依据事实以获得通过。
 文章事实用 candidate.citations 对应的文章块核对。source=original 不得夹带外部资料或外部事实。
 source=extended 的接受结果必须逐条有外部事实支持，且 sourceIds 出现在 candidate.references 中；引用不能靠删除后继续接受。
-输出严格结构 {decision:"accept"|"revise"|"research",claims:[{text,sourceIds}],missing:[string],conflicts:[string],freshness:"verified"|"date_unknown"|"stale"|"not_applicable"}。
+每项外部事实用 temporalScope 标明 requested（当前问题请求的时间/状态范围）或 background（答案明确说明的历史/背景）；省略按 requested 处理。
+历史背景可保留范围外的旧来源；不能把当前事实改标为背景来通过审查。新鲜度核验须至少有一项 requested 事实获支持。
+所有接受答案的外部支持和 references 必须来自 decision=accepted 的已采用来源；candidate 尚待评估，不能当作已核验依据。
+输出严格结构 {decision:"accept"|"revise"|"research",claims:[{text,sourceIds,temporalScope?:"requested"|"background"}],missing:[string],conflicts:[string],freshness:"verified"|"date_unknown"|"stale"|"not_applicable"}。
 accept 仅限文本支持全部事实且诚实披露局限；可接受明确披露 date_unknown/stale 的部分回答。
 措辞、遗漏或披露问题用 revise；需要新的外部证据用 research。不得用一句通过代替逐条审查，不得输出额外字段。`;
 
@@ -170,13 +175,24 @@ export async function auditAnswer(input: {
   if (supportingIds.some(id => !sources.has(id) || sources.get(id)!.decision === 'rejected') ||
     (candidate.source === 'original' && supportingIds.length > 0)) badOutput();
   if (result.decision === 'accept') {
-    if (supportingIds.some(id => !candidate.references.includes(id)) ||
-      result.claims.some(claim => claim.sourceIds.length === 0) ||
-      (candidate.source === 'extended' && result.claims.length === 0)) badOutput();
+    if (supportingIds.some(id => !candidate.references.includes(id))) badOutput();
+    const unsupported = result.claims.some(claim => claim.sourceIds.length === 0) ||
+      (candidate.source === 'extended' && result.claims.length === 0);
+    const undecided = [...candidate.references, ...supportingIds].some(id => sources.get(id)!.decision !== 'accepted');
+    if (unsupported || undecided) return { ...result, decision: 'research',
+      freshness: result.freshness === 'verified' || candidate.freshness === 'verified' ? 'date_unknown' : result.freshness,
+      missing: [...new Set([...result.missing, unsupported
+        ? '外部事实缺少逐条来源支持，需要补齐证据。' : '引用来源尚未评估采用，需要先核对来源。'])].slice(0, 20) };
   }
   if (result.freshness === 'verified' || candidate.freshness === 'verified') {
-    const states = candidate.references.map(id => publicationState(sources.get(id)!, input.snapshot));
-    const freshness = states.includes('date_unknown') || (states.length === 0 && input.snapshot.gate.freshness !== 'any')
+    // Background remains cited and adopted, but its publication date cannot invalidate current support.
+    // Absence of temporalScope is deliberately conservative for earlier callers/models.
+    const requestedClaims = result.claims.filter(claim => claim.temporalScope !== 'background');
+    const requestedIds = [...new Set(requestedClaims.flatMap(claim => claim.sourceIds))];
+    const states = requestedIds.map(id => publicationState(sources.get(id)!, input.snapshot));
+    const freshnessRequired = input.snapshot.gate.freshness !== 'any' ||
+      !!input.snapshot.gate.time.from || !!input.snapshot.gate.time.to;
+    const freshness = states.includes('date_unknown') || (states.length === 0 && freshnessRequired)
       ? 'date_unknown' : states.includes('stale') ? 'stale' : null;
     if (freshness) return { ...result, decision: 'research', freshness,
       missing: [...new Set([...result.missing, '当前状态或日期范围缺少可核验的来源支持。'])].slice(0, 20) };

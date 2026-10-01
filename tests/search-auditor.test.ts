@@ -111,14 +111,66 @@ describe('fixed independent auditors', () => {
 
   it.each([
     { ...audit, claims: [{ text: '事实', sourceIds: ['sr_missing'] }] },
-    { ...audit, claims: [{ text: '事实', sourceIds: [] }] },
-    { ...audit, claims: [] },
     { ...audit, permittedTool: 'fetch' },
     assessment,
-  ])('rejects invalid or unsupported accepting answer output', async (value) => {
+    { ...audit, claims: [{ text: '事实', sourceIds: ['sr_1'], temporalScope: 'tomorrow' }] },
+  ])('rejects malformed accepting answer output', async (value) => {
     const callJson = vi.fn().mockResolvedValue(value);
     await expect(auditAnswer({ ...input(), candidate, callJson })).rejects.toMatchObject({ code: 'BAD_OUTPUT' });
     expect(callJson).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { claims: [] }, { claims: [{ text: '最新版本是 2。', sourceIds: [] }] },
+  ])('recovers unsupported accepting claims without a format error: %j', async ({ claims }) => {
+    const callJson = vi.fn().mockResolvedValue({ ...audit, claims });
+    await expect(auditAnswer({ ...input(), ledger: ledger([{ ...source, publishedAt: null }]), candidate, callJson }))
+      .resolves.toMatchObject({ decision: 'research', freshness: 'date_unknown' });
+    expect(callJson).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps historical background outside the requested current publication window', async () => {
+    const snapshot = snapshotFixture(); snapshot.gate.freshness = 'day';
+    const callJson = vi.fn().mockResolvedValue({ ...audit, claims: [
+      { text: '今日发布版本 2。', sourceIds: ['sr_1'], temporalScope: 'requested' },
+      { text: '上月发布版本 1。', sourceIds: ['sr_old'], temporalScope: 'background' },
+    ] });
+    await expect(auditAnswer({ ...input(), snapshot, ledger: ledger([source,
+      { ...source, sourceId: 'sr_old', publishedAt: '2026-09-01', dateStatus: 'stale' }]),
+      candidate: { ...candidate, answer: '今日发布版本 2，上月曾发布版本 1。', references: ['sr_1', 'sr_old'] }, callJson }))
+      .resolves.toMatchObject({ decision: 'accept', freshness: 'verified' });
+  });
+
+  it('cannot use all-background classifications to verify a current answer', async () => {
+    const callJson = vi.fn().mockResolvedValue({ ...audit, claims: [
+      { text: '历史版本是 2。', sourceIds: ['sr_1'], temporalScope: 'background' },
+    ] });
+    await expect(auditAnswer({ ...input(), candidate, callJson }))
+      .resolves.toMatchObject({ decision: 'research', freshness: 'date_unknown' });
+  });
+
+  it('treats omitted temporalScope conservatively as requested', async () => {
+    const snapshot = snapshotFixture(); snapshot.gate.freshness = 'day';
+    const callJson = vi.fn().mockResolvedValue(audit);
+    await expect(auditAnswer({ ...input(), snapshot, ledger: ledger([{ ...source, publishedAt: '2026-09-01' }]), candidate, callJson }))
+      .resolves.toMatchObject({ decision: 'research', freshness: 'stale' });
+  });
+
+  it.each([
+    { sources: [{ ...source, decision: 'candidate' as const }], ids: ['sr_1'], references: ['sr_1'] },
+    { sources: [source, { ...source, sourceId: 'sr_2', decision: 'candidate' as const }], ids: ['sr_1', 'sr_2'], references: ['sr_1', 'sr_2'] },
+    { sources: [source, { ...source, sourceId: 'sr_2', decision: 'candidate' as const }], ids: ['sr_1'], references: ['sr_1', 'sr_2'] },
+  ])('requires adopted sources for all final external support and references: %j', async ({ sources, ids, references }) => {
+    const callJson = vi.fn().mockResolvedValue({ ...audit, claims: [{ text: '最新版本是 2。', sourceIds: ids }] });
+    await expect(auditAnswer({ ...input(), ledger: ledger(sources), candidate: { ...candidate, references }, callJson }))
+      .resolves.toMatchObject({ decision: 'research' });
+  });
+
+  it('still rejects unknown IDs hidden in background claims', async () => {
+    const callJson = vi.fn().mockResolvedValue({ ...audit, claims: [
+      { text: '历史背景', sourceIds: ['sr_missing'], temporalScope: 'background' },
+    ] });
+    await expect(auditAnswer({ ...input(), candidate, callJson })).rejects.toMatchObject({ code: 'BAD_OUTPUT' });
   });
 
   it('requires claim support to be cited in the candidate', async () => {

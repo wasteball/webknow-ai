@@ -86,7 +86,7 @@ export type AgentEvent = {
 };
 export type AuditResult = {
   decision: 'accept' | 'revise' | 'research';
-  claims: { text: string; sourceIds: string[] }[];
+  claims: { text: string; sourceIds: string[]; temporalScope?: 'requested' | 'background' }[];
   missing: string[]; conflicts: string[]; freshness: FinishFreshness;
 };
 export type AgentJsonCall = (
