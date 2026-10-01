@@ -4,7 +4,7 @@
  * MV3 probe requires WKA_SPIKE_MV3=1 and pnpm build:e2e (test-only loopback grant).
  * Never log keys, response bodies, prompts, or provider result URLs.
  */
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -195,6 +195,9 @@ for (const provider of ['firecrawl', 'tavily'] as const) {
 it.skipIf(process.env.WKA_SPIKE_MV3 !== '1')('real MV3 worker capabilities on controlled test-only loopback endpoints', async () => {
   const started = Date.now();
   // The e2e build permits loopback only for controlled fixtures, never production direct reads.
+  // Both redirects start on loopback: they do not exercise a public origin or a
+  // public-to-private hop. No authorized publicly hosted controlled endpoint is
+  // configured for those cases; they remain unexecuted (see the capability report).
   const extensionPath = resolve('.output/chrome-mv3-e2e');
   const manifest = JSON.parse(await readFile(join(extensionPath, 'manifest.json'), 'utf8'));
   expect(manifest.manifest_version).toBe(3);
@@ -224,8 +227,10 @@ it.skipIf(process.env.WKA_SPIKE_MV3 !== '1')('real MV3 worker capabilities on co
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   const { chromium } = await import('@playwright/test');
   let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | undefined;
+  let ownedProfile: string | undefined;
   try {
-    context = await chromium.launchPersistentContext(await mkdtemp(join(tmpdir(), 'wka-probe-')), {
+    ownedProfile = await mkdtemp(join(tmpdir(), 'wka-probe-'));
+    context = await chromium.launchPersistentContext(ownedProfile, {
       channel: 'chromium', headless: true,
       args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
     });
@@ -270,8 +275,18 @@ it.skipIf(process.env.WKA_SPIKE_MV3 !== '1')('real MV3 worker capabilities on co
       directReadPublicIsolationVerified: result.directReadPublicIsolationVerified,
     });
   } finally {
-    await context?.close();
-    server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    try {
+      await context?.close();
+    } finally {
+      try {
+        server.closeAllConnections();
+        await new Promise<void>((done) => server.close(() => done()));
+      } finally {
+        // Only remove the exact fresh directory created by this probe, never
+        // a configured browser profile or any existing user directory.
+        if (ownedProfile) await rm(ownedProfile, { recursive: true, force: true });
+      }
+    }
   }
+  if (ownedProfile) await expect(access(ownedProfile)).rejects.toMatchObject({ code: 'ENOENT' });
 }, 45_000);
