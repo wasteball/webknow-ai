@@ -52,7 +52,7 @@ import {
 type PanelPort = { raw: { postMessage: (message: Event) => void }; tabId: number | null };
 
 const ports = new Set<PanelPort>();
-const stateBuilds = new Map<number | null, number>();
+const stateBuilds = new Map<number | null, Promise<void>>();
 
 /**
  * 正在写的读者正文。它不进会话：半截结果不能当完整回答留下。
@@ -276,10 +276,24 @@ const hooks: RunnerHooks = {
 };
 
 async function pushState(tabId: number | null): Promise<void> {
-  const revision = (stateBuilds.get(tabId) ?? 0) + 1;
-  stateBuilds.set(tabId, revision);
-  const state = await buildPanelState(tabId);
-  if (stateBuilds.get(tabId) === revision) broadcast(tabId, { type: 'state', state });
+  const publication = buildPanelState(tabId).then(state => {
+    if (stateBuilds.get(tabId) === publication) broadcast(tabId, { type: 'state', state });
+  });
+  stateBuilds.set(tabId, publication);
+  let current = publication;
+  for (;;) {
+    try {
+      await current;
+    } catch (error) {
+      // A failed obsolete snapshot cannot decide readiness for its successor.
+      if (!stateBuilds.has(tabId) || stateBuilds.get(tabId) === current) throw error;
+    }
+    const latest = stateBuilds.get(tabId);
+    if (!latest || latest === current) return;
+    // Wait on raw publications, never another caller's successor-wait loop.
+    // Recheck after every await: the successor can itself be replaced.
+    current = latest;
+  }
 }
 
 function broadcast(tabId: number | null, event: Event): void {

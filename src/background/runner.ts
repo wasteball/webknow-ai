@@ -147,6 +147,11 @@ export async function handleIntent(intent: Intent, hooks: RunnerHooks): Promise<
   }
 }
 
+/** Status hints are best-effort; research readiness explicitly awaits onState below. */
+function notifyState(hooks: RunnerHooks, tabId: number): void {
+  void Promise.resolve(hooks.onState(tabId)).catch(() => {});
+}
+
 async function withRun(
   tabId: number,
   kind: RequestKind,
@@ -168,7 +173,7 @@ async function withRun(
   const begun = beginRun(session, kind);
   if (!begun.ok) {
     await putSession({ ...session, error: begun.error, updatedAt: Date.now() });
-    hooks.onState(tabId);
+    notifyState(hooks, tabId);
     return begun.error;
   }
 
@@ -176,7 +181,7 @@ async function withRun(
   controllers.set(tabId, { runId: begun.run.id, sessionId: session.id, controller });
   await putSession(begun.session);
   // 用户触发后立即进入等待态（NFR-001），不等第一个字节。
-  hooks.onState(tabId);
+  notifyState(hooks, tabId);
 
   return invokeRun(tabId, kind, begun.session, begun.run.id, controller, task, hooks);
 }
@@ -207,7 +212,7 @@ async function invokeRun(tabId: number, kind: RequestKind, session: PageSession,
     const waiting = active?.controller === controller && active.waiting && !controller.signal.aborted && fresh?.run?.id === runId;
     if (!waiting && fresh?.run?.id === runId) await putSession(endRun(fresh, runId));
     if (!waiting && active?.controller === controller) controllers.delete(tabId);
-    hooks.onState(tabId);
+    notifyState(hooks, tabId);
   }
   return failure;
 }
@@ -528,7 +533,7 @@ async function resolveResearch(intent: Extract<Intent, { kind: 'resolveResearch'
   if (intent.mode === 'cancel') {
     active.controller.abort();
     active.waiting = true;
-    await recoverInterruptedRun(intent.tabId); hooks.onState(intent.tabId); return null;
+    await recoverInterruptedRun(intent.tabId); notifyState(hooks, intent.tabId); return null;
   }
   if (!intent.text.trim()) { active.waiting = true; return appError('INTERNAL', '请先回答澄清问题。'); }
   await putSession({ ...session, researchPending: session.researchPending ? { ...session.researchPending, status: 'running' } : undefined });
@@ -614,7 +619,7 @@ async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): P
   const blocked = canStartLearning(session);
   if (blocked) {
     await putSession({ ...session, error: blocked, updatedAt: Date.now() });
-    hooks.onState(tabId);
+    notifyState(hooks, tabId);
     return blocked;
   }
   if (session.learning?.status === 'active') {
