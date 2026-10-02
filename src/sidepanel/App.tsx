@@ -66,7 +66,8 @@ export function App() {
             current.busy?.kind !== 'answer' || current.researchPending?.runId !== event.identity.runId ||
             !['running', 'waiting'].includes(current.researchPending.status) ||
             (current.busy.agent && event.seq <= current.busy.agent.seq)) return current;
-        return { ...current, busy: { ...current.busy, agent: event, draft: '', reasoning: '' } };
+        return { ...current, researchDetails: event.details ?? current.researchDetails,
+          busy: { ...current.busy, agent: event, draft: '', reasoning: '' } };
       }),
     });
     clientRef.current = client;

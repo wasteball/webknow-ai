@@ -48,7 +48,8 @@ export function createClient(handlers: {
             ['running', 'waiting'].includes(nextState.researchPending.status);
           if (remembered && nextState.busy && stillCurrent &&
               (!incoming || (sameRun(incoming.identity, remembered.identity) && incoming.seq < remembered.seq))) {
-            nextState = { ...nextState, busy: { ...nextState.busy, agent: remembered } };
+            nextState = { ...nextState, researchDetails: remembered.details ?? nextState.researchDetails,
+              busy: { ...nextState.busy, agent: remembered } };
           } else latestAgent = incoming ?? null;
           state = nextState;
           handlers.onState(nextState);
@@ -64,7 +65,8 @@ export function createClient(handlers: {
             !['running', 'waiting'].includes(pendingResearch.status) ||
             (latestAgent && (!sameRun(latestAgent.identity, next.identity) || next.seq <= latestAgent.seq))) return;
         latestAgent = next;
-        state = { ...state, busy: { ...state.busy, agent: next, draft: '', reasoning: '' } };
+        state = { ...state, researchDetails: next.details ?? state.researchDetails,
+          busy: { ...state.busy, agent: next, draft: '', reasoning: '' } };
         handlers.onAgent?.(next);
       }
       else if (event.type === 'progress') {

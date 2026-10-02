@@ -72,7 +72,7 @@ export type LearnChoiceAnswer = { questionId: string; choiceIds: string[] };
 
 export type RunnerHooks = {
   onAgent?: (tabId: number, event: AgentEvent) => void;
-  onState: (tabId: number) => void;
+  onState: (tabId: number) => void | Promise<void>;
   onProgress: (tabId: number, chars: number, draft: string, reasoning: string) => void;
 };
 
@@ -428,6 +428,8 @@ async function runAsk(
         current = { ...current, researchCheckpoint: checkpoint,
           researchPending: { runId, question, quote: frozenQuote, status: 'running' } };
         await putSession(current);
+        // Publish the frozen run identity before its guarded live events can arrive.
+        await hooks.onState(tabId);
         return researchStep(current, checkpoint, signal, hooks);
       }
       current = await attachImages(tabId, current, signal, hooks);
@@ -531,13 +533,17 @@ async function resolveResearch(intent: Extract<Intent, { kind: 'resolveResearch'
   if (!intent.text.trim()) { active.waiting = true; return appError('INTERNAL', '请先回答澄清问题。'); }
   await putSession({ ...session, researchPending: session.researchPending ? { ...session.researchPending, status: 'running' } : undefined });
   return invokeRun(intent.tabId, 'answer', session, intent.runId, active.controller,
-    (current, _runId, signal) => researchStep(current, session.researchCheckpoint!, signal, hooks,
-      { mode: intent.mode as AgentResume['mode'], text: intent.text.trim().slice(0, LIMITS.maxQuestionChars) }), hooks);
+    async (current, _runId, signal) => {
+      await hooks.onState(intent.tabId);
+      return researchStep(current, session.researchCheckpoint!, signal, hooks,
+        { mode: intent.mode as AgentResume['mode'], text: intent.text.trim().slice(0, LIMITS.maxQuestionChars) });
+    }, hooks);
 }
 
 /** Events and completion use the same frozen identity; no async event can overtake completion. */
 async function researchStep(session: PageSession, checkpoint: AgentCheckpoint, signal: AbortSignal,
   hooks: RunnerHooks, resume?: AgentResume): Promise<PageSession | null> {
+  if (signal.aborted) throw appError('ABORTED', '已经停止。');
   const { identity, thinking } = checkpoint.snapshot;
   const active = controllers.get(identity.tabId)!;
   let events = Promise.resolve();

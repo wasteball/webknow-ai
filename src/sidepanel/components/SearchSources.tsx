@@ -35,7 +35,7 @@ export function SearchSources({ references, research }: { references: ChatRefere
       <ol>{research.attempts.map(attempt => <li key={attempt.id}>
         <p>{attempt.action.query}</p>
         <p>第 {attempt.id} 次 · 找到 {attempt.sourceIds.length} 个来源 · 检索时间：{attempt.retrievedAt}</p>
-        {attempt.status !== 'ok' && <p>{({ empty: '未找到资料', transient: '暂时不可用', failed: '搜索失败' })[attempt.status]}</p>}
+        {attempt.status !== 'ok' && <p>{({ pending: '正在搜索', empty: '未找到资料', transient: '暂时不可用', failed: '搜索失败' })[attempt.status]}</p>}
       </li>)}</ol>
     </>}
     <h4>已采用来源</h4>

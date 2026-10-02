@@ -51,7 +51,7 @@ export type SourceRecord = {
 };
 export type SearchAttempt = {
   id: number; action: SearchAction; queryKey: string; strategyKey: string;
-  status: 'ok' | 'empty' | 'transient' | 'failed';
+  status: 'pending' | 'ok' | 'empty' | 'transient' | 'failed';
   reason: string; retryOf?: number; sourceIds: string[]; retrievedAt: string;
 };
 export type EvidenceAssessment = {
@@ -92,6 +92,8 @@ export type AgentCheckpoint = {
   waiting: AskUserAction | null;
 };
 export type AgentEvent = {
+  /** Content-free snapshot, produced by the same allowlist as completed answer details. */
+  details?: ResearchSummary;
   identity: RunIdentity; seq: number; phase: AgentPhase;
   searches: number; reads: number;
   reason: 'initial' | 'retry' | 'conflict' | 'insufficient' | 'complete' | 'timeout';

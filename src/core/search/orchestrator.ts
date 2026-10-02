@@ -4,11 +4,13 @@ import { agentMessages } from '../prompts/search-agent';
 import { validateArticleCitations } from '../validate';
 import { requestAction } from './action-call';
 import { AGENT_LIMITS } from './agent-limits';
-import type { AgentCheckpoint, AgentDependencies, AgentEvent, AgentJsonCall, AgentOutcome, AgentResume, EvidenceLedger, SearchAction } from './agent-types';
+import type { AgentCheckpoint, AgentDependencies, AgentEvent, AgentJsonCall, AgentOutcome, AgentResume, EvidenceLedger, SearchAction, SearchBatch } from './agent-types';
+import { researchSummary } from './answer';
 import { assessEvidence, auditAnswer } from './auditor';
 import { applyAssessment, assertLedgerRun, recordReads, recordSearch } from './evidence';
 import { queryChange, queryKey, strategyKey } from './query';
 
+const SEARCH_TIMEOUT = Symbol('search phase timeout');
 const ARTICLE_ONLY = 'article_only_resume';
 const unique = (values: string[]) => [...new Set(values)];
 const badCheckpoint = () => appError('BAD_OUTPUT', '研究检查点无效，请重新开始。');
@@ -80,7 +82,7 @@ export async function runResearch(input: {
   }
 
   // Race even dependencies that ignore AbortSignal; abandoned results cannot reach ledger/events.
-  async function bounded<T>(operation: (child: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
+  async function bounded<T>(operation: (child: AbortSignal) => Promise<T>, timeoutMs: number, recoverSearchTimeout = false): Promise<T> {
     active();
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -89,8 +91,11 @@ export async function runResearch(input: {
       onAbort = () => { controller.abort(); reject(appError('ABORTED', '已经停止。')); };
       signal.addEventListener('abort', onAbort, { once: true });
       // Settle our cause first: abort-aware transports may synchronously reject from their listener.
-      timer = setTimeout(() => { reject(appError('TIMEOUT', '研究等待时间已到。')); controller.abort(); },
-        Math.min(timeoutMs, checkpoint.deadlineAt - deps.now()));
+      const remaining = checkpoint.deadlineAt - deps.now();
+      timer = setTimeout(() => {
+        reject(recoverSearchTimeout && timeoutMs < remaining ? SEARCH_TIMEOUT : appError('TIMEOUT', '研究等待时间已到。'));
+        controller.abort();
+      }, Math.min(timeoutMs, remaining));
     });
     try {
       active();
@@ -109,11 +114,11 @@ export async function runResearch(input: {
     active();
     assertLedgerRun(checkpoint.ledger, checkpoint.snapshot.identity.runId);
   }
-  async function call<T>(operation: (child: AbortSignal) => Promise<T>, timeout: number = LIMITS.requestTimeoutMs): Promise<T> {
+  async function call<T>(operation: (child: AbortSignal) => Promise<T>, timeout: number = LIMITS.requestTimeoutMs, recoverSearchTimeout = false): Promise<T> {
     await guard();
     let result: T;
     try {
-      result = await bounded(operation, timeout);
+      result = await bounded(operation, timeout, recoverSearchTimeout);
     } catch (error) {
       // Expiry/stop must never initiate another dependency. Other failures still need identity validation.
       if (!(isAppError(error) && (error.code === 'TIMEOUT' || error.code === 'ABORTED'))) await guard();
@@ -126,7 +131,7 @@ export async function runResearch(input: {
   function emit(phase: AgentEvent['phase'], reason: AgentEvent['reason']): void {
     active();
     deps.onEvent({ identity: { ...checkpoint.snapshot.identity }, seq: ++checkpoint.eventSeq, phase,
-      searches: checkpoint.ledger.attempts.length, reads: checkpoint.readIds.length, reason });
+      searches: checkpoint.ledger.attempts.length, reads: checkpoint.readIds.length, reason, details: researchSummary(checkpoint) });
     active();
   }
   function feedback(text: string): void {
@@ -193,14 +198,28 @@ export async function runResearch(input: {
         }
         const before = support(checkpoint.ledger);
         const priorLedger = checkpoint.ledger;
-        emit('searching', retryOf ? 'retry' : 'initial');
-        const batch = await call(child => {
-          // Reserve immediately before transmission, retaining the attempted query on timeout.
-          checkpoint.ledger = recordSearch(priorLedger, action, { status: 'failed', results: [], provider: '',
-            retrievedAt: new Date(deps.now()).toISOString(), warnings: [] }, '搜索未完成，未采用返回内容。', retryOf, checkpoint.snapshot.gate);
-          checkpoint.ledger.attempts.at(-1)!.strategyKey = family;
-          return deps.search(action, child);
-        }, LIMITS.searchTimeoutMs);
+        let batch: SearchBatch;
+        try {
+          batch = await call(child => {
+            // Reserve immediately before transmission, retaining the attempted query on timeout.
+            checkpoint.ledger = recordSearch(priorLedger, action, { status: 'failed', results: [], provider: '',
+              retrievedAt: new Date(deps.now()).toISOString(), warnings: [] }, '搜索未完成，未采用返回内容。', retryOf, checkpoint.snapshot.gate);
+            checkpoint.ledger.attempts.at(-1)!.strategyKey = family;
+            checkpoint.ledger.attempts.at(-1)!.status = 'pending';
+            emit('searching', retryOf ? 'retry' : 'initial');
+            return deps.search(action, child);
+          }, LIMITS.searchTimeoutMs, true);
+        } catch (error) {
+          if (error !== SEARCH_TIMEOUT) {
+            const attempt = checkpoint.ledger.attempts.at(-1);
+            if (attempt?.status === 'pending') attempt.status = 'failed';
+            throw error;
+          }
+          // call() revalidates identity after phase expiry; stop/deadline still take precedence.
+          active();
+          batch = { status: 'transient', results: [], provider: checkpoint.snapshot.searchProviderId ?? '',
+            retrievedAt: new Date(deps.now()).toISOString(), warnings: ['search_timeout'] };
+        }
         checkpoint.ledger = recordSearch(priorLedger, action, batch, '受控搜索', retryOf, checkpoint.snapshot.gate);
         checkpoint.ledger.attempts.at(-1)!.strategyKey = family;
         await assess(before, family);
@@ -216,9 +235,9 @@ export async function runResearch(input: {
         let remaining = AGENT_LIMITS.totalSourceChars - checkpoint.ledger.sources.reduce((sum, source) => sum + (source.content?.length ?? 0), 0);
         if (remaining <= 0) { feedback('来源正文读取已达上限，请依据已有证据回答。'); continue; }
         const before = support(checkpoint.ledger);
-        emit('reading', 'insufficient');
         const reads = await call(child => {
           checkpoint.readIds = unique([...checkpoint.readIds, ...ids]);
+          emit('reading', 'insufficient');
           return deps.read([...ids], action.focus, structuredClone(checkpoint.ledger), child);
         });
         if (reads.some(read => !ids.includes(read.sourceId))) throw badCheckpoint();

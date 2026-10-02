@@ -118,12 +118,14 @@ it('retains monotonic agent progress across a same-run state refresh without an 
   const attaching = client.send({ type: 'attach', tabId: 7 }); reply(transport.ports[0]!); await attaching;
   const port = transport.ports[0]!;
   const identity = snapshotFixture().identity;
-  const event = { identity, seq: 5, phase: 'reading' as const, searches: 2, reads: 1, reason: 'initial' as const };
+  const details = { sources: [], attempts: [], conflicts: [], freshness: 'not_applicable' as const, degraded: false };
+  const event = { details, identity, seq: 5, phase: 'reading' as const, searches: 2, reads: 1, reason: 'initial' as const };
   const state = panel({ sessionId: 's1', pageUrl: identity.url, researchPending: { runId: 'r1', question: '最新版本', quote: null, status: 'running' },
     busy: { kind: 'answer', chars: 0, draft: '', reasoning: '', agent: event } });
   port.emit({ type: 'state', state });
   port.emit({ type: 'state', state: { ...state, busy: { kind: 'answer', chars: 0, draft: '', reasoning: '' } } });
   expect(onState.mock.lastCall?.[0].busy.agent?.seq).toBe(5);
+  expect(onState.mock.lastCall?.[0].researchDetails).toEqual(details);
   port.emit({ type: 'agent', event: { ...event, seq: 4 } });
   expect(onAgent).not.toHaveBeenCalled();
 });

@@ -82,3 +82,11 @@ describe('independent agent prompt', () => {
     expect(JSON.parse(messages[1]!.content.split('\n')[1]!).gate).toMatchObject({ level: 'ambiguous', mustSearch: true });
   });
 });
+
+it('fixed harness permits the bounded transient transport exception to strategy-changing retries', () => {
+  const system = agentMessages(checkpointFixture())[0]!.content;
+  expect(system).toContain('transient');
+  expect(system).toContain('retryOf');
+  expect(system).toContain('同查询仅重试一次');
+  expect(system).toContain('仍计入搜索和动作上限，不延长 deadline');
+});

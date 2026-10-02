@@ -42,6 +42,49 @@ test('latest research uses frozen dates, safe source IDs and separate receiver p
   } finally { await f.close(); }
 });
 
+for (const scenario of ['latest', 'ambiguous'] as const) {
+  test(`live query and pending/adopted source details update before finish (${scenario})`, async () => {
+    const f = await launchResearchFixture({ scenario });
+    try {
+      await f.hold('checking');
+      await f.ask(scenario === 'ambiguous' ? '今天最新版本是什么？' : 'Atlas 今天最新版本是什么？', 'force');
+      if (scenario === 'ambiguous') {
+        await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
+        await f.panel.getByLabel('补充条件').fill('Atlas 数据库');
+        await f.panel.getByRole('button', { name: '继续', exact: true }).click();
+      }
+      await f.waitPhase('checking');
+      const details = f.panel.locator('#mode-panel-qa .research-details');
+      await details.locator('summary').click();
+      await expect(details).toContainText('Atlas 当前版本');
+      await expect(details).toContainText('待核验');
+      await expect(details.getByRole('link', { name: 'Atlas 官方版本公告' })).toBeVisible();
+      expect((await f.session()).chat).toHaveLength(0);
+      await f.hold('answering'); await f.release(); await f.waitPhase('answering');
+      await expect(details).toContainText('没有未采用来源');
+      await expect(details).not.toContainText('暂无已采用来源');
+      expect((await f.session()).chat).toHaveLength(0);
+      await f.release(); await f.waitFinished();
+    } finally { await f.close(); }
+  });
+}
+
+test('live source read result updates while the second assessment is still pending', async () => {
+  const f = await launchResearchFixture({ scenario: 'content-failure' });
+  try {
+    await f.hold('reading'); await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitPhase('reading');
+    const details = f.panel.locator('#mode-panel-qa .research-details');
+    await details.locator('summary').click();
+    await expect(details).toContainText('Atlas 当前版本');
+    await expect(details).not.toContainText('暂无已采用来源');
+    await expect(details).toContainText('未读正文，仅搜索摘要');
+    await f.hold('checking'); await f.release(); await f.waitPhase('checking');
+    await expect(details).toContainText('正文不可读取，仅搜索摘要');
+    expect((await f.session()).chat).toHaveLength(0);
+    await f.release(); await f.waitFinished();
+  } finally { await f.close(); }
+});
+
 test('retry changes the actual query and adds evidence before answering', async () => {
   const f = await launchResearchFixture({ scenario: 'retry' });
   try {
@@ -246,6 +289,51 @@ test('native source details preserve bottom and review scroll positions, then la
     await expect(summaries).toHaveCount(9);
     await expect.poll(bottom).toBeLessThan(2);
     expect(f.unexpected).toEqual([]);
+  } finally { await f.close(); }
+});
+
+test('immediate native keyboard summary activation preserves review through incoming updates', async () => {
+  const f = await launchResearchFixture({ width: 320, height: 440, large: true });
+  try {
+    await f.panel.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
+    await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    const session = await f.session(); const accepted = session.chat[0]!;
+    session.chat = Array.from({ length: 8 }, (_, index) => ({ ...accepted, id: `keyboard-${index}`, question: `第 ${index + 1} 题`,
+      answer: '根据网络资料，Atlas 当前版本为 3。'.repeat(20) }));
+    await f.worker.evaluate(async ({ tabId, session }) => chrome.storage.session.set({ [`sess:${tabId}`]: session }), { tabId: f.tabId, session });
+    await f.panel.reload();
+    const summaries = f.panel.locator('#mode-panel-qa .research-details summary');
+    await expect(summaries).toHaveCount(8);
+    const area = f.panel.locator('#mode-panel-qa .chat-scroll');
+    const position = () => area.evaluate(n => n.scrollTop);
+    const gap = () => area.evaluate(n => n.scrollHeight - n.clientHeight - n.scrollTop);
+    await f.panel.getByLabel('向这篇文章提问').focus();
+    await area.evaluate(n => { n.scrollTop = n.scrollHeight; });
+    await expect.poll(gap).toBeLessThan(2);
+    // Native traversal and immediate activation: no wheel, locator focus, or away-state wait.
+    await f.panel.keyboard.press('Shift+Tab'); await f.panel.keyboard.press('Shift+Tab');
+    await f.panel.keyboard.press('Enter');
+    const focused = f.panel.locator('#mode-panel-qa .research-details > summary:focus');
+    await expect(focused).toHaveCount(1);
+    await expect(focused.locator('..')).toHaveAttribute('open', '');
+    expect(await gap()).toBeGreaterThan(80);
+    const latest = f.panel.getByRole('button', { name: '回到最新消息' });
+    await expect(latest).toBeVisible();
+    const reviewing = await position();
+    // Deliver another accepted turn through a normal state broadcast, without a local send/follow request.
+    session.chat.push({ ...accepted, id: 'incoming', question: '后到的消息' });
+    await f.worker.evaluate(async ({ tabId, session }) => chrome.storage.session.set({ [`sess:${tabId}`]: session }), { tabId: f.tabId, session });
+    await f.panel.evaluate(async tabId => new Promise<void>(resolve => {
+      const port = chrome.runtime.connect({ name: 'webknow' });
+      port.onMessage.addListener(message => { if (message.type === 'reply') { port.disconnect(); resolve(); } });
+      port.postMessage({ id: 91, command: { type: 'attach', tabId } });
+    }), f.tabId);
+    await expect(summaries).toHaveCount(9);
+    await expect(latest).toContainText('有新消息');
+    await expect.poll(async () => Math.abs(await position() - reviewing)).toBeLessThanOrEqual(1);
+    await latest.focus(); await f.panel.keyboard.press('Enter');
+    await expect.poll(gap).toBeLessThan(2);
+    await expect(latest).toBeHidden();
   } finally { await f.close(); }
 });
 

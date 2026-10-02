@@ -50,6 +50,7 @@ const AGENT_HARNESS = [
 const ACTION_CONTRACT = [
   '动作契约（固定）：',
   'search_web：{"type":"search_web","query":"最多200字符","purpose":"latest|fact_check|compare|background|article_gap","freshness":"live|day|week|month|any","language":"语言","domains":["域名"],"maxResults":5}。domains 最多5项，maxResults 为1至10。搜索只提交必要实体、动作、地区与时间，不复制正文。不得把明确的时间范围放宽；检索和审查都使用 gate.time 的同一范围。',
+  '传输异常例外（固定）：最后一次搜索 status=transient（如超时、5xx）且没有 retryOf 时，同查询仅重试一次；查询条件与 maxResults 保持一致。该次仍计入搜索和动作上限，不延长 deadline；重试仍失败时须改变有效策略或降级。这是暂时传输失败的例外，其余无增益研究重试仍须改变策略。快速模式最多3次搜索、8个动作；深入模式采用下方上限；任何重试仍受剩余次数、权限和总截止时间约束。',
   '时间筛选：明确的 gate.time 范围优先；本周／本月和可表达的滚动一周／一月保留 week／month。上周／上月等历史期间与其他自定义范围使用 any 加明确起止，不能套用当前滚动筛选而截掉所请求的历史资料。',
   'read_sources：{"type":"read_sources","sourceIds":["sr_编号"],"focus":"最多500字符"}。只能使用 ledger 中已有的 sourceId，不得拼接 URL。',
   'ask_user：{"type":"ask_user","question":"最多500字符","reason":"ambiguous_entity|permission|conflict"}。结合本次文章仍缺少影响检索的主体、必要地区、时间范围等关键条件时先澄清，不猜测无效日期或未知主体；保守的 ambiguous 标记本身不要求重复询问文章已明确的条件。',

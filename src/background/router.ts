@@ -170,7 +170,8 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     learningHistory: session?.learningHistory ?? [],
     quote: session?.quote ?? null,
     researchPending: session?.researchPending,
-    researchDetails: session?.researchCheckpoint ? researchSummary(session.researchCheckpoint) : undefined,
+    researchDetails: session?.researchCheckpoint
+      ? currentAgentEvent(tabId)?.details ?? researchSummary(session.researchCheckpoint) : undefined,
     busy: session?.run
       ? {
           kind: session.run.kind,
@@ -264,9 +265,7 @@ export async function onQuoteSelected(tabId: number, text: string): Promise<AppE
 
 const hooks: RunnerHooks = {
   onAgent: (tabId, event) => { broadcast(tabId, { type: 'agent', event }); },
-  onState: (tabId) => {
-    void pushState(tabId);
-  },
+  onState: (tabId) => pushState(tabId),
   onProgress: (tabId, chars, draft, reasoning) => {
     if (tabId !== null) {
       liveDraft.set(tabId, draft);

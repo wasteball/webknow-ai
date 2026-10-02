@@ -238,3 +238,102 @@ it('permission removal aborts running research and rejects its late result', asy
   expect((await storage.get())?.chat).toEqual([]);
   expect((await storage.get())?.run).toBeNull();
 });
+
+it('router exposes current safe event details during running and resume, suppressing stale and stopped events', async () => {
+  const { researchSummary } = await import('../src/core/search/answer');
+  const { recordSearch } = await import('../src/core/search/evidence');
+  const { buildPanelState } = await import('../src/background/router');
+  let emit!: (event: AgentEvent) => void;
+  let release!: () => void;
+  let current!: AgentCheckpoint;
+  storage.research.mockImplementation((checkpoint: AgentCheckpoint, _signal: AbortSignal, onEvent: typeof emit) => {
+    current = checkpoint; emit = onEvent;
+    return new Promise(resolve => { release = () => resolve(waiting(checkpoint)); });
+  });
+  const publish = (seq: number, query: string) => {
+    const ledger = recordSearch(current.ledger, { type: 'search_web', query, purpose: 'latest', freshness: 'live', language: 'en', domains: [], maxResults: 5 },
+      { status: 'ok', results: [{ title: 'Atlas', url: 'https://example.org/release', snippet: 'Public summary' }], provider: 'bocha', retrievedAt: new Date().toISOString(), warnings: [] }, 'search');
+    ledger.sources[0]!.content = 'PRIVATE_SOURCE_BODY';
+    return { identity: current.snapshot.identity, seq, phase: 'checking' as const, searches: 1, reads: 0, reason: 'insufficient' as const,
+      details: researchSummary({ ...current, ledger }) };
+  };
+  const running = ask();
+  await vi.waitFor(() => expect(storage.research).toHaveBeenCalledTimes(1));
+  const first = publish(1, 'Atlas current'); emit(first);
+  await vi.waitFor(() => expect(hooks.onAgent).toHaveBeenCalledTimes(1));
+  expect((await buildPanelState(7)).researchDetails?.attempts[0]?.action.query).toBe('Atlas current');
+  expect(JSON.stringify(await buildPanelState(7))).not.toMatch(/PRIVATE_SOURCE_BODY|answerPolicy|researchCheckpoint/);
+  release(); await running;
+  const resumed = resume();
+  await vi.waitFor(() => expect(storage.research).toHaveBeenCalledTimes(2));
+  const next = publish(2, 'Atlas clarified'); emit(next); emit(first);
+  emit({ ...next, seq: 3, identity: { ...next.identity, fingerprint: 'obsolete' } });
+  await vi.waitFor(() => expect(hooks.onAgent).toHaveBeenCalledTimes(2));
+  expect((await buildPanelState(7)).researchDetails?.attempts[0]?.action.query).toBe('Atlas clarified');
+  abortRun(7); await recoverInterruptedRun(7);
+  emit({ ...next, seq: 4 }); release(); await resumed;
+  expect(hooks.onAgent).toHaveBeenCalledTimes(2);
+  expect((await buildPanelState(7)).researchDetails).toBeUndefined();
+});
+
+it('publishes the running identity before executing initial and resumed research', async () => {
+  let deliver!: () => void;
+  let published = false;
+  const registration = vi.fn();
+  const stateHook = vi.fn(async () => {
+    const state = await storage.get();
+    if (state?.researchPending?.status !== 'running') return;
+    registration(state.researchPending.runId);
+    await new Promise<void>(resolve => { deliver = resolve; });
+    published = true;
+  });
+  storage.research.mockImplementation(async checkpoint => {
+    expect(published).toBe(true);
+    return waiting(checkpoint);
+  });
+  const first = handleIntent({ kind: 'ask', tabId: 7, question: '查证这一结论', network: 'force' }, { ...hooks, onState: stateHook });
+  await vi.waitFor(() => expect(registration).toHaveBeenCalledTimes(1));
+  expect(storage.research).not.toHaveBeenCalled();
+  deliver(); await first;
+  const state = (await storage.get())!; published = false;
+  const continued = handleIntent({ kind: 'resolveResearch', tabId: 7, sessionId: state.id, runId: state.run!.id, mode: 'continue', text: 'Atlas' }, { ...hooks, onState: stateHook });
+  await vi.waitFor(() => expect(registration).toHaveBeenCalledTimes(2));
+  expect(storage.research).toHaveBeenCalledTimes(1);
+  deliver(); await continued;
+  expect(storage.research).toHaveBeenCalledTimes(2);
+});
+
+it.each([false, true])('stop during delayed identity publication prevents initial/resumed execution (resume: %s)', async continued => {
+  if (continued) { storage.research.mockImplementationOnce(async checkpoint => waiting(checkpoint)); await ask(); }
+  let deliver!: () => void;
+  let publishing = false;
+  const stateHook = async () => {
+    if ((await storage.get())?.researchPending?.status !== 'running') return;
+    publishing = true;
+    await new Promise<void>(resolve => { deliver = resolve; });
+  };
+  const before = storage.research.mock.calls.length;
+  const session = (await storage.get())!;
+  const running = handleIntent(continued
+    ? { kind: 'resolveResearch', tabId: 7, sessionId: session.id, runId: session.run!.id, mode: 'continue', text: 'Atlas' }
+    : { kind: 'ask', tabId: 7, question: '查证这一结论', network: 'force' }, { ...hooks, onState: stateHook });
+  await vi.waitFor(() => expect(publishing).toBe(true));
+  abortRun(7); deliver(); await running;
+  expect(storage.research).toHaveBeenCalledTimes(before);
+  expect((await storage.get())?.researchPending?.status).toBe('stopped');
+  expect((await storage.get())?.run).toBeNull();
+  expect(hooks.onAgent).not.toHaveBeenCalled();
+});
+
+it('cleans up a resumed run if publishing its running identity fails', async () => {
+  storage.research.mockImplementationOnce(async checkpoint => waiting(checkpoint)); await ask();
+  const state = (await storage.get())!;
+  const onState = async () => {
+    if ((await storage.get())?.researchPending?.status === 'running') throw new Error('State publication failed');
+  };
+  await expect(handleIntent({ kind: 'resolveResearch', tabId: 7, sessionId: state.id, runId: state.run!.id,
+    mode: 'continue', text: 'Atlas' }, { ...hooks, onState })).resolves.toBeTruthy();
+  expect((await storage.get())?.run).toBeNull();
+  expect((await storage.get())?.researchPending?.status).toBe('interrupted');
+  expect(storage.research).toHaveBeenCalledTimes(1);
+});

@@ -77,7 +77,18 @@ export function Conversation({ active = true, updateKey, followRequest, children
       <div ref={host} className="chat-scroll" role="region" aria-label="对话记录" tabIndex={0}
         onClickCapture={(event) => {
           if (event.target instanceof Element && event.target.closest('.research-details > summary')) {
-            detailsPosition.current = host.current?.scrollTop ?? null;
+            const element = host.current;
+            if (!element || !active) return;
+            // Native focus scrolls before its queued scroll event. Capture that user
+            // movement before toggle layout preservation can mask the event. Only
+            // an explicit prior toggle anchor may preserve following across an expansion.
+            if (detailsPosition.current === null || detailsPosition.current !== element.scrollTop) {
+              saved.current = element.scrollTop;
+              following.current = element.scrollHeight - element.clientHeight - element.scrollTop < 80;
+              setAway(!following.current);
+              if (following.current) setUnread(false);
+            }
+            detailsPosition.current = element.scrollTop;
           }
         }}
         onWheel={(event) => { detailsPosition.current = null; if (event.deltaY < 0) following.current = false; }}

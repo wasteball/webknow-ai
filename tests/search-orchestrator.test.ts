@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { researchSearch } from '../src/core/search/registry';
 import { runResearch } from '../src/core/search/orchestrator';
 import { checkpointFixture, scriptedDependencies } from './helpers/research';
 import { recordSearch } from '../src/core/search/evidence';
@@ -58,6 +59,22 @@ it('orders search, fixed assessment, changed query, assessment, read, assessment
   expect(result.checkpoint.ledger.sources[0]).toMatchObject({ readStatus: 'read', decision: 'accepted', dateStatus: 'fresh' });
 });
 
+it('publishes immutable content-free live ledgers at search, assessment and read transitions', async () => {
+  const events: import('../src/core/search/agent-types').AgentEvent[] = [];
+  const deps = scriptedDependencies([search, assessment, { type: 'read_sources', sourceIds: ['sr_r1_1'], focus: 'version' }, assessment, finish, accept], {
+    search: async () => batch,
+    read: async () => [{ sourceId: 'sr_r1_1', status: 'read', text: 'PRIVATE_BODY', publishedAt: '2026-10-01', retrievedAt: batch.retrievedAt, warnings: [] }],
+    onEvent: event => { events.push(event); },
+  });
+  await run(deps);
+  expect(events.find(e => e.phase === 'searching')).toMatchObject({ searches: 1, details: { attempts: [{ action: search, status: 'pending' }] } });
+  const checking = events.filter(e => e.phase === 'checking');
+  expect(checking[0]).toMatchObject({ details: { attempts: [{ action: search, status: 'ok' }], sources: [{ decision: 'candidate', readStatus: 'not_read' }] } });
+  expect(events.find(e => e.phase === 'reading')).toMatchObject({ details: { sources: [{ decision: 'accepted', readStatus: 'not_read' }] } });
+  expect(checking[1]).toMatchObject({ details: { sources: [{ readStatus: 'read' }] } });
+  expect(JSON.stringify(events)).not.toMatch(/PRIVATE_BODY|answerPolicy|checkpoint|根据网络资料/);
+});
+
 it('closes a no-gain wording family despite changing raw queries and adding URLs', async () => {
   const deps = scriptedDependencies([], { search: vi.fn(async (action) => ({ ...batch, results: [{ ...batch.results[0]!, url: `https://example.org/${action.query}` }] })) });
   let actions = 0;
@@ -98,6 +115,48 @@ it('permits a single identical transient retry and counts it as a search', async
   const result = await run(deps);
   expect(result).toMatchObject({ kind: 'finished', degraded: false });
   expect(result.checkpoint.ledger.attempts.map(a => a.retryOf)).toEqual([undefined, 1]);
+});
+
+it.each([true, false])('recovers a composed registry timeout (abort-aware: %s) with one identical retry', async abortAware => {
+  vi.useFakeTimers(); vi.setSystemTime(start);
+  const signals: AbortSignal[] = [];
+  const fetchImpl = vi.fn<typeof fetch>(async (_url, init) => {
+    signals.push(init!.signal!);
+    if (signals.length === 1) return new Promise<Response>((_resolve, reject) => {
+      if (abortAware) init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
+    });
+    return new Response(JSON.stringify({ results: [{ title: 'Atlas', url: 'https://example.org/release', content: 'Atlas 3 is current.' }] }));
+  });
+  const deps = scriptedDependencies([search, emptyAssessment, search, assessment, { ...finish, freshness: 'date_unknown' }, { ...accept, freshness: 'date_unknown' }], {
+    now: () => Date.now(),
+    search: async (action, signal) => {
+      // Production performs asynchronous configuration/permission checks before registry entry.
+      await Promise.resolve();
+      return researchSearch({ providerId: 'tavily', config: { apiKey: 'synthetic' }, action, signal, now: () => new Date(), fetchImpl });
+    },
+  });
+  const promise = run(deps);
+  await vi.advanceTimersByTimeAsync(15_000);
+  const result = await promise;
+  expect(signals[0]?.aborted).toBe(true);
+  expect(fetchImpl).toHaveBeenCalledTimes(2);
+  expect(result).toMatchObject({ kind: 'finished', answer: { answer: finish.answer } });
+  expect(result.checkpoint.ledger.attempts.map(a => [a.status, a.retryOf])).toEqual([['transient', undefined], ['ok', 1]]);
+  expect(result.checkpoint.deadlineAt).toBe(start + 180_000);
+});
+
+it('bounds repeated nonsettling searches to one identical retry before an audited degradation', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(start);
+  const signals: AbortSignal[] = [];
+  const deps = scriptedDependencies([search, emptyAssessment, search, emptyAssessment, search, unknown, acceptUnknown], {
+    now: () => Date.now(), search: vi.fn(async (_a, signal) => { signals.push(signal); return new Promise<never>(() => {}); }),
+  });
+  const promise = run(deps);
+  await vi.advanceTimersByTimeAsync(30_000);
+  const result = await promise;
+  expect(result).toMatchObject({ kind: 'finished', answer: unknown });
+  expect(signals).toHaveLength(2); expect(signals.every(s => s.aborted)).toBe(true);
+  expect(result.checkpoint.ledger.attempts.map(a => [a.status, a.retryOf])).toEqual([['transient', undefined], ['transient', 1]]);
 });
 
 it('allows only one global format repair across pauses', async () => {
@@ -347,24 +406,19 @@ describe('async boundaries', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it.each(['search', 'read', 'assessment', 'answer', 'action'] as const)('times out stalled %s to a fixed answer without adopting late output', async phase => {
+  it.each(['read', 'assessment', 'answer', 'action'] as const)('times out stalled %s to a fixed answer without adopting late output', async phase => {
     vi.useFakeTimers();
     let captured: AbortSignal | undefined;
     const pending = (s: AbortSignal): Promise<never> => { captured = s; return new Promise(() => {}); };
-    const deps = scriptedDependencies(phase === 'action' ? [] : phase === 'search' ? [search] : phase === 'read' ? [search, assessment, { type: 'read_sources', sourceIds: ['sr_r1_1'], focus: 'version' }] : phase === 'answer' ? [search, assessment, finish] : [search], { search: async () => batch });
-    if (phase === 'search') deps.search = (_a, s) => pending(s);
-    else if (phase === 'read') deps.read = (_i, _f, _l, s) => pending(s);
+    const deps = scriptedDependencies(phase === 'action' ? [] : phase === 'read' ? [search, assessment, { type: 'read_sources', sourceIds: ['sr_r1_1'], focus: 'version' }] : phase === 'answer' ? [search, assessment, finish] : [search], { search: async () => batch });
+    if (phase === 'read') deps.read = (_i, _f, _l, s) => pending(s);
     else { const scripted = deps.callJson; deps.callJson = async (m, s) => { try { return await scripted(m, s); } catch { return pending(s); } }; }
     deps.callJson = vi.fn(deps.callJson);
     const promise = run(deps);
-    await vi.advanceTimersByTimeAsync(phase === 'search' ? 15_000 : 90_000);
+    await vi.advanceTimersByTimeAsync(90_000);
     const result = await promise;
     expect(result).toMatchObject({ kind: 'finished', degraded: true, answer: { answer: '这次没有核验成功', citations: [], references: [], freshness: 'not_applicable' } });
     expect(captured?.aborted).toBe(true);
-    if (phase === 'search') {
-      expect(result.checkpoint.ledger.attempts).toHaveLength(1);
-      expect(result.checkpoint.ledger.attempts[0]).toMatchObject({ status: 'failed', action: search });
-    }
     if (phase === 'read') expect(result.checkpoint.readIds).toEqual(['sr_r1_1']);
     expect(result.checkpoint.ledger.sources.every(s => !('content' in s))).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
