@@ -57,10 +57,48 @@ test('retry changes the actual query and adds evidence before answering', async 
   } finally { await f.close(); }
 });
 
+test('SearXNG latest research adopts unknown dates without claiming time verification', async () => {
+  const f = await launchResearchFixture({ scenario: 'searxng-date-unknown' });
+  try {
+    await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    const records = await f.records();
+    const searches = records.filter(r => r.url.includes('/search') || r.url.endsWith('/v1/web-search'));
+    expect(searches).toHaveLength(1);
+    const url = new URL(searches[0]!.url);
+    expect(url.origin).toBe(new URL(f.article.url()).origin);
+    expect(url.pathname).toBe('/search');
+    expect(url.searchParams.get('q')).toMatch(/^Atlas 当前版本 after:\d{4}-\d{2}-\d{2} before:\d{4}-\d{2}-\d{2}$/);
+    expect(url.searchParams.get('format')).toBe('json');
+    expect(url.searchParams.has('time_range')).toBe(false);
+    expect(searches[0]).toMatchObject({ method: 'GET', body: '' });
+    expect(searches[0]!.headers).not.toHaveProperty('authorization');
+    expect(searches[0]!.url).not.toMatch(/三个团队|四周|history|sk-synthetic/);
+    const modelContexts = records.filter(r => r.url.includes('/chat/completions')).slice(1).map(r => {
+      const content = JSON.parse(r.body).messages.at(-1).content as string;
+      return JSON.parse(content.slice(content.indexOf('{'), content.lastIndexOf('}') + 1));
+    });
+    expect(modelContexts.find(p => p.sources)?.sources[0]).toMatchObject({ provider: 'searxng', publishedAt: null, dateStatus: 'date_unknown' });
+    expect(modelContexts.find(p => p.candidate)?.candidate.freshness).toBe('date_unknown');
+    const complete = (await f.session()).chat[0];
+    expect(complete?.research).toMatchObject({ freshness: 'date_unknown', degraded: true, sources: [
+      { provider: 'searxng', publishedAt: null, dateStatus: 'date_unknown', decision: 'accepted' },
+    ] });
+    expect(complete?.webReferences).toMatchObject([{ publishedAt: null, url: 'https://example.org/atlas/release' }]);
+    await expect(f.panel.locator('#mode-panel-qa .msg.ai .said:not(.said-guide)').last()).toContainText('日期未知，无法确认最新版本');
+    await f.panel.locator('#mode-panel-qa .research-details summary').click();
+    await expect(f.panel.getByText(/发布时间未知，未完成时间核验/)).toBeVisible();
+    await expect(f.panel.getByText(/发布时间：日期未知/)).toBeVisible();
+    expect(f.unexpected).toEqual([]);
+  } finally { await f.close(); }
+});
+
 test('provider content failure only reads selected source and returns to honest summary', async () => {
   const f = await launchResearchFixture({ scenario: 'content-failure' });
   try {
     await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    const sources = (await f.session()).chat[0]?.research?.sources;
+    expect(sources?.map(s => s.url)).toEqual(['https://example.org/atlas/release', 'https://example.net/atlas/mirror']);
+    expect(sources?.map(s => s.readStatus)).toEqual(['unavailable', 'not_read']);
     const reads = (await f.records()).filter(r => r.url.endsWith('/v2/scrape'));
     expect(reads).toHaveLength(1);
     expect(JSON.parse(reads[0]!.body)).toEqual({ url: 'https://example.org/atlas/release', formats: ['markdown'] });
@@ -68,6 +106,7 @@ test('provider content failure only reads selected source and returns to honest 
     expect(reads[0]!.headers).not.toHaveProperty('authorization');
     expect(reads[0]!.headers).not.toHaveProperty('cookie');
     expect((await f.records()).some(r => r.url === 'https://example.org/atlas/release')).toBe(false);
+    expect((await f.records()).some(r => r.url === 'https://example.net/atlas/mirror')).toBe(false);
     await f.panel.locator('#mode-panel-qa .research-details summary').click();
     await expect(f.panel.getByText(/正文不可读取，仅搜索摘要/)).toBeVisible();
     await expect(f.panel.getByText(/日期未知，无法确认最新版本/).first()).toBeVisible();
@@ -93,17 +132,19 @@ test('clarification resumes the same frozen run with intent visible to both audi
   try {
     await f.ask('今天最新版本是什么？', 'force');
     await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
-    const read = () => f.worker.evaluate(async id => (await chrome.storage.session.get(`sess:${id}`))[`sess:${id}`], f.tabId);
-    const waiting = await read();
+    const waiting = await f.session();
+    const checkpoint = waiting.researchCheckpoint;
+    if (!checkpoint) throw new Error('Waiting research checkpoint missing');
     const before = (await f.records()).length;
     await f.panel.getByLabel('补充条件').fill('Atlas 数据库');
     await f.panel.getByRole('button', { name: '继续', exact: true }).click();
     await f.waitFinished();
     const bodies = (await f.records()).slice(before).filter(r => r.url.includes('/chat/completions'));
     for (const r of bodies) expect(r.body).toContain('Atlas 数据库');
-    const complete = await read();
-    expect(complete.chat[0].research.sources[0].sourceId).toBe(`sr_${waiting.researchCheckpoint.snapshot.identity.runId}_1`);
-    expect(complete.chat[0].research.sources[0].publishedAt).toBe(waiting.researchCheckpoint.snapshot.gate.time.localDate);
+    const research = (await f.session()).chat[0]?.research;
+    if (!research) throw new Error('Completed research metadata missing');
+    expect(research.sources[0]?.sourceId).toBe(`sr_${checkpoint.snapshot.identity.runId}_1`);
+    expect(research.sources[0]?.publishedAt).toBe(checkpoint.snapshot.gate.time.localDate);
   } finally { await f.close(); }
 });
 
@@ -124,7 +165,7 @@ for (const phase of ['deciding', 'searching', 'reading', 'checking', 'answering'
       await expect.poll(() => f.worker.evaluate(() => (globalThis as any).__research.aborted)).toBe(1);
       await f.release();
       await expect.poll(async () => (await f.records()).length).toBe(after);
-      expect(await f.worker.evaluate(async id => (await chrome.storage.session.get(`sess:${id}`))[`sess:${id}`].chat.length, f.tabId)).toBe(0);
+      expect((await f.session()).chat).toHaveLength(0);
       await expect(f.panel.getByLabel('向这篇文章提问')).toHaveValue('下一题草稿');
     } finally { await f.close(); }
   });
@@ -154,12 +195,14 @@ test('native source details preserve bottom and review scroll positions, then la
     await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
 
     // Layout fixture retains an actually accepted research result and its safe metadata.
-    await f.worker.evaluate(async id => {
-      const key = `sess:${id}`; const stored = await chrome.storage.session.get(key); const session = stored[key];
-      session.chat = Array.from({ length: 8 }, (_, index) => ({ ...session.chat[0], id: `layout-${index}`,
+    const session = await f.session();
+    const accepted = session.chat[0];
+    if (!accepted?.research) throw new Error('Accepted research turn missing for layout fixture');
+    session.chat = Array.from({ length: 8 }, (_, index) => ({ ...accepted, id: `layout-${index}`,
         question: `第 ${index + 1} 题`, answer: '根据网络资料，Atlas 当前版本为 3。'.repeat(20) }));
-      await chrome.storage.session.set({ [key]: session });
-    }, f.tabId);
+    await f.worker.evaluate(async ({ tabId, session }) => {
+      await chrome.storage.session.set({ [`sess:${tabId}`]: session });
+    }, { tabId: f.tabId, session });
 
     await f.panel.reload();
     const area = f.panel.locator('#mode-panel-qa .chat-scroll');
@@ -224,8 +267,8 @@ for (const change of ['navigation', 'body edit', 'model switch'] as const) {
       // Navigation/edit invalidates either eagerly or at the next physical/writeback boundary.
       await f.release();
       await f.stopped();
-      await expect.poll(() => f.worker.evaluate(async id => (await chrome.storage.session.get(`sess:${id}`))[`sess:${id}`]?.run == null, f.tabId)).toBe(true);
-      expect(await f.worker.evaluate(async id => (await chrome.storage.session.get(`sess:${id}`))[`sess:${id}`]?.chat.length ?? 0, f.tabId)).toBe(0);
+      await expect.poll(async () => (await f.session()).run).toBeNull();
+      expect((await f.session()).chat).toHaveLength(0);
       expect(f.unexpected).toEqual([]);
     } finally { await f.close(); }
   });
@@ -237,15 +280,18 @@ test('panel reconnect and worker restart interrupt without automatically resendi
     await f.ask('今天最新版本是什么？', 'force');
     await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
     const before = (await f.records()).length;
-    const original = await f.worker.evaluate(async id => (await chrome.storage.session.get(`sess:${id}`))[`sess:${id}`].researchPending.runId, f.tabId);
+    const original = (await f.session()).researchPending?.runId;
+    if (!original) throw new Error('Waiting run ID missing');
     await f.panel.reload();
     await expect(f.panel.getByRole('region', { name: '研究已停止' })).toBeVisible();
     await expect(f.panel.getByRole('button', { name: '继续', exact: true })).toHaveCount(0);
     expect((await f.records()).length).toBe(before);
-    expect(await f.worker.evaluate(async id => (await chrome.storage.session.get(`sess:${id}`))[`sess:${id}`].researchCheckpoint ?? null, f.tabId)).toBeNull();
+    expect((await f.session()).researchCheckpoint ?? null).toBeNull();
     await f.panel.getByRole('button', { name: '重新研究这个问题' }).click();
     await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
-    expect(await f.worker.evaluate(async id => (await chrome.storage.session.get(`sess:${id}`))[`sess:${id}`].researchPending.runId, f.tabId)).not.toBe(original);
+    const restarted = (await f.session()).researchPending?.runId;
+    if (!restarted) throw new Error('Restarted run ID missing');
+    expect(restarted).not.toBe(original);
     expect((await f.records()).length).toBe(before + 1);
     const debugging = await f.context.newCDPSession(f.panel);
     let versionId: string | undefined;
@@ -253,6 +299,7 @@ test('panel reconnect and worker restart interrupt without automatically resendi
       versionId = event.versions.find(v => v.scriptURL.includes(f.extensionId))?.versionId ?? versionId;
     });
     await debugging.send('ServiceWorker.enable'); await expect.poll(() => versionId).toBeTruthy();
+    if (!versionId) throw new Error('Extension worker version missing after poll');
     await debugging.send('ServiceWorker.stopWorker', { versionId });
     await expect(f.panel.getByRole('region', { name: '研究已停止' })).toBeVisible({ timeout: 15_000 });
     await expect(f.panel.getByRole('button', { name: '继续', exact: true })).toHaveCount(0);
@@ -265,7 +312,9 @@ test('editing/restoring research policy and clearing sessions leave credentials 
   const f = await launchResearchFixture();
   try {
     await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
-    const initial = await f.worker.evaluate(async () => (await chrome.storage.local.get('config')).config);
+    const initial = await f.config();
+    expect(initial.apiKeys?.deepseek).toBe('sk-synthetic-model-only');
+    expect(initial.search?.credentials?.bocha?.apiKey).toBe('sk-synthetic-search-only');
     const settings = await f.context.newPage();
     await settings.goto(`chrome-extension://${f.extensionId}/options.html?tab=${f.tabId}#search`);
     const policy = settings.getByLabel('联网 Agent 策略', { exact: true });
@@ -273,21 +322,21 @@ test('editing/restoring research policy and clearing sessions leave credentials 
     const builtIn = await policy.inputValue();
     await policy.fill('只查原始发布者，日期未知时明确说明。');
     await settings.getByRole('button', { name: '保存联网策略', exact: true }).click();
-    const config = () => f.worker.evaluate(async () => (await chrome.storage.local.get('config')).config);
-    await expect.poll(async () => (await config()).search.agent.policy).toBe('只查原始发布者，日期未知时明确说明。');
+    const config = f.config;
+    await expect.poll(async () => (await config()).search?.agent?.policy).toBe('只查原始发布者，日期未知时明确说明。');
     expect((await config()).apiKeys).toEqual(initial.apiKeys);
-    expect((await config()).search.credentials).toEqual(initial.search.credentials);
-    expect(await f.worker.evaluate(async id => (await chrome.storage.session.get(`sess:${id}`))[`sess:${id}`].chat.length, f.tabId)).toBe(1);
+    expect((await config()).search?.credentials).toEqual(initial.search?.credentials);
+    expect((await f.session()).chat).toHaveLength(1);
     await settings.getByRole('button', { name: '恢复默认联网策略', exact: true }).click();
     await expect(policy).toHaveValue(builtIn);
-    await expect.poll(async () => (await config()).search.agent.policy ?? '').toBe('');
+    await expect.poll(async () => (await config()).search?.agent?.policy ?? '').toBe('');
     await settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '清除', exact: true }).click();
     await settings.getByRole('button', { name: '全部清掉', exact: true }).click();
     await expect.poll(() => f.worker.evaluate(async () => Object.keys(await chrome.storage.session.get(null)).filter(k => k.startsWith('sess:')))).toEqual([]);
     expect((await config()).apiKeys).toEqual(initial.apiKeys);
-    expect((await config()).search.credentials).toEqual(initial.search.credentials);
-    expect((await config()).search.agent.enabled).toBe(true);
-    expect((await config()).search.agent.policy ?? '').toBe('');
+    expect((await config()).search?.credentials).toEqual(initial.search?.credentials);
+    expect((await config()).search?.agent?.enabled).toBe(true);
+    expect((await config()).search?.agent?.policy ?? '').toBe('');
     expect(f.unexpected).toEqual([]);
   } finally { await f.close(); }
 });

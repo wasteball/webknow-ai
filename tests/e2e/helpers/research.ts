@@ -2,12 +2,36 @@ import { createServer } from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { chromium, expect, type Page } from '@playwright/test';
+import { chromium, expect, type Worker } from '@playwright/test';
+import type { PageSession } from '../../../src/core/session';
+import type { Config as AppConfig } from '../../../src/background/store';
 import type { NetworkMode } from '../../../src/core/search/agent-types';
 import { outboundFixture } from './consent';
 
-export type Scenario = 'latest' | 'retry' | 'ambiguous' | 'stale' | 'conflict' | 'empty' | 'injection' | 'content-failure';
+export type Scenario = 'latest' | 'retry' | 'ambiguous' | 'stale' | 'conflict' | 'empty' | 'injection' | 'content-failure' | 'searxng-date-unknown';
 export type TransportRecord = { url: string; body: string; method: string; credentials?: string; redirect?: string; headers: Record<string, string> };
+
+/** Read the real fixture store with its production shape; missing setup is a failure. */
+export async function readFixtureSession(worker: Worker, tabId: number): Promise<PageSession> {
+  return worker.evaluate(async id => {
+    const key = `sess:${id}`;
+    const stored = await chrome.storage.session.get(key);
+    const session = stored[key];
+    if (!session || typeof session !== 'object' || !('tabId' in session) || session.tabId !== id ||
+      !('chat' in session) || !Array.isArray(session.chat) || !('run' in session)) {
+      throw new Error(`Fixture session missing or invalid for tab ${id}`);
+    }
+    return session as PageSession;
+  }, tabId);
+}
+
+export async function readFixtureConfig(worker: Worker): Promise<AppConfig> {
+  return worker.evaluate(async () => {
+    const { config } = await chrome.storage.local.get('config');
+    if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('Fixture config missing or invalid');
+    return config as AppConfig;
+  });
+}
 const ARTICLE = '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>城市配送试点研究</title><body><article><h1>城市配送试点研究</h1><p>本研究观察三个配送团队四周，比较新的路径方案与原有方案的处理时间。</p><p>试点期间，新方案的平均处理时间为八十分钟，原方案为一百分钟。</p><p>仅三个团队不能证明所有城市均适用。</p></article></body></html>';
 
 /** Real packaged extraction/router/runner/actions/auditors; only worker fetch is scripted.
@@ -30,8 +54,8 @@ export async function launchResearchFixture(options: { scenario?: Scenario; enab
     const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
     const extensionId = new URL(worker.url()).host;
     const config = { apiKeys: { deepseek: 'sk-synthetic-model-only' }, appearance: { fontSize: options.large ? 'large' : 'normal' },
-      search: { providerId: scenario === 'content-failure' ? 'firecrawl' : 'bocha',
-        credentials: { bocha: { apiKey: 'sk-synthetic-search-only' } }, agent: { enabled: options.enabled ?? true } } };
+      search: { providerId: scenario === 'content-failure' ? 'firecrawl' : scenario === 'searxng-date-unknown' ? 'searxng' : 'bocha',
+        credentials: { bocha: { apiKey: 'sk-synthetic-search-only' }, ...(scenario === 'searxng-date-unknown' ? { searxng: { baseUrl: origin } } : {}) }, agent: { enabled: options.enabled ?? true } } };
     await worker.evaluate(async config => chrome.storage.local.set({ config }), { ...config, outbound: outboundFixture(config) });
     const panel = await context.newPage();
     await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
@@ -57,8 +81,9 @@ export async function launchResearchFixture(options: { scenario?: Scenario; enab
           await hold('searching'); state.searches++;
           const results = scenario === 'empty' || (scenario === 'retry' && state.searches === 1) ? [] : [
             { title: 'Atlas 官方版本公告', url: 'https://example.org/atlas/release', content: 'Atlas 当前版本为 3。', description: 'Atlas 当前版本为 3。',
-              publishedDate: scenario === 'stale' ? '2020-01-01' : state.time!.localDate },
+              publishedDate: scenario === 'searxng-date-unknown' ? undefined : scenario === 'stale' ? '2020-01-01' : state.time!.localDate },
             ...(scenario === 'conflict' ? [{ title: 'Atlas 另一公告', url: 'https://example.net/atlas/release', content: 'Atlas 当前版本为 2。', publishedDate: state.time!.localDate }] : []),
+            ...(scenario === 'content-failure' ? [{ title: 'Atlas 发布摘要镜像', url: 'https://example.net/atlas/mirror', content: 'Atlas 公告记载版本 3。', description: 'Atlas 公告记载版本 3。', publishedDate: state.time!.localDate }] : []),
           ];
           return url.endsWith('/v2/search') ? json({ data: { web: results } }) : url.endsWith('/v1/web-search') ? json({ data: { webPages: { value: results.map(r => ({ name: r.title, url: r.url, summary: r.content, datePublished: r.publishedDate })) } } }) : json({ results });
         }
@@ -96,7 +121,7 @@ export async function launchResearchFixture(options: { scenario?: Scenario; enab
             else if (scenario === 'content-failure' && !data.progress.readIds.length) output = { type: 'read_sources', sourceIds: ids.slice(0, 1), focus: '核对版本' };
             else {
               const uncertain = scenario === 'empty' || scenario === 'conflict';
-              const stale = scenario === 'stale'; const unknownDate = scenario === 'content-failure';
+              const stale = scenario === 'stale'; const unknownDate = scenario === 'content-failure' || scenario === 'searxng-date-unknown';
               output = { type: 'finish_answer', answer: uncertain ? (scenario === 'conflict' ? '两份公告版本冲突，无法确认最新版本。' : '未找到资料，无法确认最新版本。')
                 : stale ? '2020 年公告记载版本 3；资料较旧，无法确认最新版本。'
                   : unknownDate ? '根据网络摘要，公告记载版本 3；日期未知，无法确认最新版本。'
@@ -123,23 +148,23 @@ export async function launchResearchFixture(options: { scenario?: Scenario; enab
     const syncHits = async () => {
       hits.splice(0, hits.length, ...(await records()).filter(r => r.url.includes('/search') || r.url.includes('/web-search')).map(r => r.body || new URL(r.url).searchParams.get('q') || ''));
     };
-    return { panel, article, context, worker, tabId, extensionId, hits, records, unexpected,
+    const session = () => readFixtureSession(worker, tabId);
+    const storedConfig = () => readFixtureConfig(worker);
+    return { panel, article, context, worker, tabId, extensionId, hits, records, unexpected, session, config: storedConfig,
       async ask(question: string, mode: NetworkMode) {
-        completedTurns = await worker.evaluate(async id => (await chrome.storage.session.get(`sess:${id}`))[`sess:${id}`]?.chat.length ?? 0, tabId);
+        completedTurns = (await session()).chat.length;
         await panel.getByLabel('本题联网方式').selectOption(mode);
         await panel.getByLabel('向这篇文章提问').fill(question);
         await panel.getByRole('button', { name: '发送', exact: true }).click();
       },
       async waitFinished() {
-        await expect.poll(async () => worker.evaluate(async ({ tabId, completedTurns }) => {
-          const saved = await chrome.storage.session.get(`sess:${tabId}`); return saved[`sess:${tabId}`]?.chat.length > completedTurns && saved[`sess:${tabId}`]?.run == null;
-        }, { tabId, completedTurns })).toBe(true);
+        await expect.poll(async () => {
+          const saved = await session(); return saved.chat.length > completedTurns && saved.run === null;
+        }).toBe(true);
         completedTurns++;
         await expect(panel.locator('#mode-panel-qa .msg.ai .said:not(.said-guide)').last()).toBeVisible();
         await expect(panel.getByRole('button', { name: '停止', exact: true })).toBeHidden();
-        await expect.poll(async () => worker.evaluate(async id => {
-          const saved = await chrome.storage.session.get(`sess:${id}`); return saved[`sess:${id}`]?.run == null;
-        }, tabId)).toBe(true);
+        await expect.poll(async () => (await session()).run).toBeNull();
         await syncHits();
       },
       async hold(phase: string) { await worker.evaluate(phase => { (globalThis as any).__research.hold = phase; (globalThis as any).__research.phases = []; }, phase); },
