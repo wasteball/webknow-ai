@@ -1,3 +1,4 @@
+import { outboundFixture } from './helpers/consent';
 import { createServer, type Server } from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -16,8 +17,8 @@ test.beforeAll(async () => {
     channel: 'chromium', args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
   });
   const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker'); extensionId = new URL(worker.url()).host;
-  await worker.evaluate(async () => chrome.storage.local.set({ config: { apiKeys: { deepseek: 'sk-test-not-real' },
-    outbound: { version: '2026-09-19.2', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' } } }));
+  await worker.evaluate(async (outbound) => chrome.storage.local.set({ config: { apiKeys: { deepseek: 'sk-test-not-real' },
+    outbound } }), outboundFixture());
 });
 test.afterAll(async () => { await context?.close(); await new Promise<void>((done) => server.close(() => done())); });
 

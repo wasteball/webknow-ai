@@ -1,3 +1,4 @@
+import { outboundFixture } from './helpers/consent';
 import { createServer, type Server } from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -44,14 +45,14 @@ test.beforeAll(async () => {
   });
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
   extensionId = new URL(worker.url()).host;
-  await worker.evaluate(async () => {
+  await worker.evaluate(async (outbound) => {
     await chrome.storage.local.set({
       config: {
         apiKeys: { deepseek: 'sk-test-not-real' },
-        outbound: { version: '2026-09-19.2', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+        outbound,
       },
     });
-  });
+  }, outboundFixture());
 });
 
 test.afterAll(async () => {
@@ -70,7 +71,7 @@ test('无效回答后能继续提问，含 Mermaid 的有效回答画成图', as
       ? { summary: '试点缩短了平均配送时间。', bubbles: [] }
       : requests.length === 2
         ? '{INVALID JSON'
-        : { answer: ANSWER, source: 'supplement', citations: [], unanswered: [], followUps: [] };
+        : { answer: ANSWER, source: 'unknown', citations: [], unanswered: ['仅用于图表排版的合成回答。'], references: [], followUps: [] };
     const text = typeof output === 'string' ? output : JSON.stringify(output);
     await route.fulfill({
       status: 200,

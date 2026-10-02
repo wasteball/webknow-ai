@@ -1,3 +1,4 @@
+import { outboundFixture } from './helpers/consent';
 import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { mkdtempSync } from 'node:fs';
@@ -77,14 +78,14 @@ test('首屏摘要与话题', async () => {
   const worker = context.serviceWorkers()[0];
   if (!worker) throw new Error('缺少 service worker');
 
-  await worker.evaluate(async (key) => {
+  await worker.evaluate(async ({ key, outbound }) => {
     await chrome.storage.local.set({
       config: {
         apiKey: key,
-        outbound: { version: '2026-09-19.2', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+        outbound,
       },
     });
-  }, liveKey);
+  }, { key: liveKey, outbound: outboundFixture() });
 
   panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);

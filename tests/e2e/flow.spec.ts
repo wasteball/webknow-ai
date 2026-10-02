@@ -1,3 +1,4 @@
+import { outboundFixture } from './helpers/consent';
 import { createServer } from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -52,14 +53,14 @@ test.describe('主路径', () => {
     extensionId = new URL(worker.url()).host;
 
     // 预置 Key 与外发告知状态；Key 只进扩展本地存储（与产品路径一致）。
-    await worker.evaluate(async (key) => {
+    await worker.evaluate(async ({ key, outbound }) => {
       await chrome.storage.local.set({
         config: {
           apiKey: key,
-          outbound: { version: '2026-09-19.2', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+          outbound,
         },
       });
-    }, apiKey);
+    }, { key: apiKey, outbound: outboundFixture() });
 
     panel = await context.newPage();
     await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);

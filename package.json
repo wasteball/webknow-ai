@@ -1,6 +1,6 @@
 {
   "name": "webknow-ai",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "type": "module",
   "description": "WebKnow AI：在公开网页旁提供摘要、连续问答和 AI 主动提问的网页伴随式 AI",

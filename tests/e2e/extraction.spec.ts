@@ -1,3 +1,4 @@
+import { outboundFixture } from './helpers/consent';
 import { createServer } from 'node:http';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -155,14 +156,14 @@ test.describe('提取覆盖面', () => {
 
   test('点击侧栏里的看看原文会经后台定位公众号正文', async () => {
     const worker: Worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
-    await worker.evaluate(async () => {
+    await worker.evaluate(async (outbound) => {
       await chrome.storage.local.set({
         config: {
           apiKeys: { deepseek: 'sk-test-not-real' },
-          outbound: { version: '2026-09-19.2', acceptedAt: Date.now(), receiver: 'DeepSeek（深度求索）' },
+          outbound,
         },
       });
-    });
+    }, outboundFixture());
     let requests = 0;
     await context.route('https://api.deepseek.com/chat/completions', async (route) => {
       const output = requests++ === 0
