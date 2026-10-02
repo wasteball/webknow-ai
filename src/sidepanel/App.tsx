@@ -56,9 +56,18 @@ export function App() {
           ? { ...current, quote: event.quote } : current),
       onProgress: (chars, draft, reasoning) => {
         setState((current) =>
-          current?.busy ? { ...current, busy: { ...current.busy, chars, draft, reasoning } } : current,
+          current?.busy && !current.busy.agent && !['running', 'waiting'].includes(current.researchPending?.status ?? '')
+            ? { ...current, busy: { ...current.busy, chars, draft, reasoning } } : current,
         );
       },
+      onAgent: (event) => setState((current) => {
+        if (current?.tabId !== event.identity.tabId || current.sessionId !== event.identity.sessionId ||
+            current.pageUrl !== event.identity.url || current.settings.provider !== event.identity.modelProvider ||
+            current.busy?.kind !== 'answer' || current.researchPending?.runId !== event.identity.runId ||
+            !['running', 'waiting'].includes(current.researchPending.status) ||
+            (current.busy.agent && event.seq <= current.busy.agent.seq)) return current;
+        return { ...current, busy: { ...current.busy, agent: event, draft: '', reasoning: '' } };
+      }),
     });
     clientRef.current = client;
     return () => client.dispose();

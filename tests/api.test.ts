@@ -18,6 +18,8 @@ const transport = vi.hoisted(() => {
 vi.mock('wxt/browser', () => ({ browser: { runtime: { connect: transport.connect } } }));
 
 import { createClient, type Client } from '../src/sidepanel/api';
+import { panel } from './helpers/panel';
+import { snapshotFixture } from './helpers/research';
 
 let client: Client;
 beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); transport.ports.length = 0; });
@@ -80,4 +82,64 @@ it('reconnects after a clarification command without replaying its same-run cont
   transport.ports[0]!.disconnect(); expect((await resuming).ok).toBe(false);
   await vi.advanceTimersByTimeAsync(250);
   expect(transport.ports[1]!.postMessage.mock.calls.map(([message]) => message.command)).toEqual([{ type: 'attach', tabId: 7 }]);
+});
+
+it('accepts only current research identity and increasing event sequence and hides research draft progress', async () => {
+  const onAgent = vi.fn();
+  const onProgress = vi.fn();
+  const onState = vi.fn();
+  client = createClient({ onState, onProgress, onAgent });
+  const attaching = client.send({ type: 'attach', tabId: 7 }); reply(transport.ports[0]!); await attaching;
+  const port = transport.ports[0]!;
+  const identity = snapshotFixture().identity;
+  const event = { identity, seq: 2, phase: 'searching' as const, searches: 1, reads: 0, reason: 'initial' as const };
+  const state = panel({ sessionId: 's1', pageUrl: identity.url, researchPending: { runId: 'r1', question: '最新版本', quote: null, status: 'running' },
+    busy: { kind: 'answer', chars: 0, draft: '', reasoning: '', agent: { ...event, seq: 1 } } });
+  port.emit({ type: 'state', state });
+  port.emit({ type: 'agent', event });
+  expect(onAgent).toHaveBeenCalledOnce();
+  port.emit({ type: 'agent', event });
+  port.emit({ type: 'agent', event: { ...event, seq: 1 } });
+  for (const identityChange of [{ runId: 'old' }, { sessionId: 'old' }, { tabId: 9 }, { fingerprint: 'old' }, { url: 'https://example.org/old' }, { modelId: 'old' }, { modelProvider: 'zhipu' }]) {
+    port.emit({ type: 'agent', event: { ...event, identity: { ...identity, ...identityChange }, seq: 3 } });
+  }
+  expect(onAgent).toHaveBeenCalledOnce();
+  port.emit({ type: 'progress', chars: 50, draft: 'raw JSON', reasoning: 'private' });
+  expect(onProgress).not.toHaveBeenCalled();
+  port.emit({ type: 'state', state: { ...state, busy: null, researchPending: { ...state.researchPending!, status: 'interrupted' } } });
+  port.emit({ type: 'agent', event: { ...event, seq: 4 } });
+  expect(onAgent).toHaveBeenCalledOnce();
+});
+
+it('retains monotonic agent progress across a same-run state refresh without an event snapshot', async () => {
+  const onState = vi.fn();
+  const onAgent = vi.fn();
+  client = createClient({ onState, onAgent, onProgress: vi.fn() });
+  const attaching = client.send({ type: 'attach', tabId: 7 }); reply(transport.ports[0]!); await attaching;
+  const port = transport.ports[0]!;
+  const identity = snapshotFixture().identity;
+  const event = { identity, seq: 5, phase: 'reading' as const, searches: 2, reads: 1, reason: 'initial' as const };
+  const state = panel({ sessionId: 's1', pageUrl: identity.url, researchPending: { runId: 'r1', question: '最新版本', quote: null, status: 'running' },
+    busy: { kind: 'answer', chars: 0, draft: '', reasoning: '', agent: event } });
+  port.emit({ type: 'state', state });
+  port.emit({ type: 'state', state: { ...state, busy: { kind: 'answer', chars: 0, draft: '', reasoning: '' } } });
+  expect(onState.mock.lastCall?.[0].busy.agent?.seq).toBe(5);
+  port.emit({ type: 'agent', event: { ...event, seq: 4 } });
+  expect(onAgent).not.toHaveBeenCalled();
+});
+
+it('rejects a first research event from the wrong page or receiver even without an event snapshot', async () => {
+  const onAgent = vi.fn();
+  client = createClient({ onState: vi.fn(), onProgress: vi.fn(), onAgent });
+  const attaching = client.send({ type: 'attach', tabId: 7 }); reply(transport.ports[0]!); await attaching;
+  const port = transport.ports[0]!;
+  const identity = snapshotFixture().identity;
+  const state = panel({ sessionId: 's1', pageUrl: identity.url, researchPending: { runId: 'r1', question: '最新版本', quote: null, status: 'running' }, busy: { kind: 'answer', chars: 0, draft: '', reasoning: '' } });
+  port.emit({ type: 'state', state });
+  const event = { identity, seq: 1, phase: 'deciding' as const, searches: 0, reads: 0, reason: 'initial' as const };
+  port.emit({ type: 'agent', event: { ...event, identity: { ...identity, url: 'https://other.org/old' } } });
+  port.emit({ type: 'agent', event: { ...event, identity: { ...identity, modelProvider: 'zhipu' } } });
+  expect(onAgent).not.toHaveBeenCalled();
+  port.emit({ type: 'agent', event });
+  expect(onAgent).toHaveBeenCalledWith(event);
 });

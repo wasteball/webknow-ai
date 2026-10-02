@@ -102,7 +102,7 @@ describe('发出去的话立刻出现', () => {
 
     expect(document.querySelector('.bubble.user')?.textContent).toContain('这句话什么意思');
     expect(box.value).toBe('');
-    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 1, question: '这句话什么意思', search: false, quote: null });
+    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 1, question: '这句话什么意思', network: 'auto', quote: null });
 
     fireEvent.change(box, { target: { value: '下一句' } });
     await act(async () => {
@@ -218,4 +218,16 @@ describe('对话里的发送和停止', () => {
     expect(document.querySelector('.busy')?.querySelector('button')).toBeNull();
     expect(document.querySelector('.composer-field')?.contains(screen.getByRole('button', { name: '停止' }))).toBe(true);
   });
+});
+
+it('research actions replace unreviewed draft while preserving composer stop and draft', () => {
+  const state = panel({ sessionId: 's1', busy: { kind: 'answer', chars: 10, draft: '未审查的回答', reasoning: '隐含推理', agent: {
+    identity: { tabId: 1, sessionId: 's1', runId: 'r1', url: 'https://example.com/a', fingerprint: 'fp', modelProvider: 'deepseek', modelId: 'deepseek-flash' },
+    seq: 1, phase: 'checking', searches: 1, reads: 1, reason: 'conflict',
+  } }, researchPending: { runId: 'r1', question: '产品最新版本', quote: null, status: 'running' } });
+  render(<Reading state={state} send={vi.fn(async () => ({ ok: true as const }))} />);
+  expect(screen.queryByText('未审查的回答')).toBeNull();
+  expect(screen.queryByText('隐含推理')).toBeNull();
+  expect(screen.getByText(/正在核对证据和时间/)).toBeTruthy();
+  expect(document.querySelector('.composer-field')?.contains(screen.getByRole('button', { name: '停止' }))).toBe(true);
 });

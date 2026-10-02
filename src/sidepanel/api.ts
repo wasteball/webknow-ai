@@ -2,6 +2,7 @@ import { browser } from 'wxt/browser';
 
 import { appError } from '../core/errors';
 import type { Command, Event, PanelState, Reply } from '../core/protocol';
+import type { AgentEvent, RunIdentity } from '../core/search/agent-types';
 import { diagramIdFromUrl, diagramKey, matchesDiagramViewer, parseDiagramRecord } from '../core/diagram-record';
 
 /**
@@ -17,12 +18,15 @@ export type Client = {
 export function createClient(handlers: {
   onState: (state: PanelState) => void;
   onProgress: (chars: number, draft: string, reasoning: string) => void;
+  onAgent?: (event: AgentEvent) => void;
   onQuote?: (event: Extract<Event, { type: 'quote' }>) => void;
 }): Client {
   let port: ReturnType<typeof browser.runtime.connect> | null = null;
   let nextId = 1;
   let disposed = false;
   let attachment: Extract<Command, { type: 'attach' }> | null = null;
+  let state: PanelState | null = null;
+  let latestAgent: AgentEvent | null = null;
   const pending = new Map<number, (reply: Reply) => void>();
 
   const connect = () => {
@@ -33,9 +37,41 @@ export function createClient(handlers: {
       if (disposed || port !== current) return;
       const event = raw as Event;
       if (event.type === 'state') {
-        if (!attachment || event.state.tabId === attachment.tabId) handlers.onState(event.state);
+        if (!attachment || event.state.tabId === attachment.tabId) {
+          let nextState = event.state;
+          const incoming = nextState.busy?.agent;
+          const remembered = latestAgent;
+          const stillCurrent = remembered && nextState.busy?.kind === 'answer' &&
+            nextState.tabId === remembered.identity.tabId && nextState.sessionId === remembered.identity.sessionId &&
+            nextState.pageUrl === remembered.identity.url && nextState.settings.provider === remembered.identity.modelProvider &&
+            nextState.researchPending?.runId === remembered.identity.runId &&
+            ['running', 'waiting'].includes(nextState.researchPending.status);
+          if (remembered && nextState.busy && stillCurrent &&
+              (!incoming || (sameRun(incoming.identity, remembered.identity) && incoming.seq < remembered.seq))) {
+            nextState = { ...nextState, busy: { ...nextState.busy, agent: remembered } };
+          } else latestAgent = incoming ?? null;
+          state = nextState;
+          handlers.onState(nextState);
+        }
       }
-      else if (event.type === 'progress') handlers.onProgress(event.chars, event.draft, event.reasoning);
+      else if (event.type === 'agent') {
+        const next = event.event;
+        const pendingResearch = state?.researchPending;
+        if (attachment?.tabId !== next.identity.tabId || state?.tabId !== next.identity.tabId ||
+            state.sessionId !== next.identity.sessionId || state.busy?.kind !== 'answer' ||
+            state.pageUrl !== next.identity.url || state.settings.provider !== next.identity.modelProvider ||
+            pendingResearch?.runId !== next.identity.runId ||
+            !['running', 'waiting'].includes(pendingResearch.status) ||
+            (latestAgent && (!sameRun(latestAgent.identity, next.identity) || next.seq <= latestAgent.seq))) return;
+        latestAgent = next;
+        state = { ...state, busy: { ...state.busy, agent: next, draft: '', reasoning: '' } };
+        handlers.onAgent?.(next);
+      }
+      else if (event.type === 'progress') {
+        if (!state?.busy?.agent && !['running', 'waiting'].includes(state?.researchPending?.status ?? '')) {
+          handlers.onProgress(event.chars, event.draft, event.reasoning);
+        }
+      }
       else if (event.type === 'quote' && event.tabId === attachment?.tabId) handlers.onQuote?.(event);
       else if (event.type === 'reply') {
         pending.get(event.id)?.(event.reply);
@@ -45,6 +81,8 @@ export function createClient(handlers: {
     current.onDisconnect.addListener(() => {
       if (port !== current) return;
       port = null;
+      state = null;
+      latestAgent = null;
       for (const resolve of pending.values()) {
         resolve({
           ok: false,
@@ -62,7 +100,7 @@ export function createClient(handlers: {
 
   return {
     send(command) {
-      if (command.type === 'attach') attachment = command;
+      if (command.type === 'attach') { attachment = command; state = null; latestAgent = null; }
       if (!port) {
         return Promise.resolve({
           ok: false,
@@ -86,6 +124,12 @@ export function createClient(handlers: {
       port = null;
     },
   };
+}
+
+function sameRun(left: RunIdentity, right: RunIdentity): boolean {
+  return left.tabId === right.tabId && left.sessionId === right.sessionId && left.runId === right.runId &&
+    left.url === right.url && left.fingerprint === right.fingerprint &&
+    left.modelProvider === right.modelProvider && left.modelId === right.modelId;
 }
 
 /** 当前阅读标签页；从文章打开的设置页继续关联来源文章。 */

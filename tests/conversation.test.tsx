@@ -153,3 +153,60 @@ describe('学习也是对话流', () => {
     expect(send).not.toHaveBeenCalled();
   });
 });
+
+it('opening completed research details preserves scroll position, draft and local citation jumping', () => {
+  const send = vi.fn(async () => ({ ok: true as const }));
+  const reference = { sourceId: 's1', title: '官方发布说明', url: 'https://example.org/release', domain: 'example.org', publishedAt: '2026-10-01', retrievedAt: '2026-10-02T08:00:00Z', readStatus: 'read' as const };
+  render(<Reading state={panel({ chat: [{ id: 't1', question: '最新版本？', answer: '可以确认的版本', source: 'extended', citations: [{ blockId: 'b_1' }], references: [reference.url], webReferences: [reference], unanswered: [], at: 1 }] })} send={send} />);
+  const input = screen.getByLabelText('向这篇文章提问') as HTMLTextAreaElement;
+  fireEvent.change(input, { target: { value: '保留草稿' } });
+  const scroll = screen.getByRole('region', { name: '对话记录' });
+  Object.defineProperties(scroll, { scrollHeight: { value: 2000 }, clientHeight: { value: 400 } });
+  scroll.scrollTop = 150;
+  fireEvent.scroll(scroll);
+  const summary = screen.getByText('本轮搜索详情');
+  fireEvent.click(summary);
+  expect(scroll.scrollTop).toBe(150);
+  expect(input.value).toBe('保留草稿');
+  expect(screen.getByRole('link', { name: '官方发布说明' }).getAttribute('href')).toBe(reference.url);
+  fireEvent.click(screen.getByText('查看依据'));
+  fireEvent.click(screen.getByRole('button', { name: '回到文中 1' }));
+  expect(send).toHaveBeenCalledWith({ type: 'jump', tabId: 7, blockId: 'b_1' });
+});
+
+it.each([600, 150])('details resize preserves scroll %s while messages and latest keep their normal behavior', (position) => {
+  let resize = () => {};
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(private callback: ResizeObserverCallback) {}
+    observe(target: Element) { if (target.classList.contains('chat-scroll')) resize = () => this.callback([], this as unknown as ResizeObserver); }
+    disconnect() {}
+  });
+  try {
+    const reference = { sourceId: 's1', title: '官方发布说明', url: 'https://example.org/release', domain: 'example.org', publishedAt: null, retrievedAt: '2026-10-02', readStatus: 'read' as const };
+    const turn = { id: 't1', question: '最新版本？', answer: '答案', source: 'extended' as const, citations: [], references: [reference.url], webReferences: [reference], unanswered: [], at: 1 };
+    const state = panel({ chat: [turn] });
+    const send = vi.fn(async () => ({ ok: true as const }));
+    const { rerender } = render(<Reading state={state} send={send} />);
+    const scroll = screen.getByRole('region', { name: '对话记录' });
+    let height = 1000;
+    Object.defineProperties(scroll, { scrollHeight: { get: () => height }, clientHeight: { value: 400 } });
+    scroll.scrollTop = position;
+    fireEvent.scroll(scroll);
+    const summary = screen.getByText('本轮搜索详情');
+    fireEvent.click(summary);
+    height = 1600;
+    act(resize);
+    expect(scroll.scrollTop).toBe(position);
+    fireEvent.click(summary);
+    height = 1000;
+    act(resize);
+    expect(scroll.scrollTop).toBe(position);
+    height = 1800;
+    rerender(<Reading state={{ ...state, chat: [...state.chat, { ...turn, id: 't2', webReferences: [] }] }} send={send} />);
+    expect(scroll.scrollTop).toBe(position === 600 ? 1800 : 150);
+    if (position === 150) {
+      fireEvent.click(screen.getByRole('button', { name: '回到最新消息' }));
+      expect(scroll.scrollTop).toBe(1800);
+    }
+  } finally { vi.unstubAllGlobals(); }
+});

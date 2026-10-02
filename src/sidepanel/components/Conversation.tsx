@@ -12,6 +12,9 @@ export function Conversation({ active = true, updateKey, followRequest, children
   const following = useRef(true);
   const saved = useRef(0);
   const hiddenUpdate = useRef(false);
+  // Source details change layout, not the message stream. Preserve the current
+  // position through their resize notifications until a message or user scroll.
+  const detailsPosition = useRef<number | null>(null);
   const seen = useRef<{ active: boolean; key: string; request: number } | null>(null);
   const [unread, setUnread] = useState(false);
   const [away, setAway] = useState(false);
@@ -19,6 +22,7 @@ export function Conversation({ active = true, updateKey, followRequest, children
   const latest = () => {
     const element = host.current;
     if (!element) return;
+    detailsPosition.current = null;
     following.current = true;
     element.scrollTop = element.scrollHeight;
     saved.current = element.scrollTop;
@@ -33,6 +37,7 @@ export function Conversation({ active = true, updateKey, followRequest, children
     seen.current = { active, key: updateKey, request: followRequest };
     if (!previous) { if (active) latest(); return; }
     const changed = previous.key !== updateKey || previous.request !== followRequest;
+    if (changed) detailsPosition.current = null;
     if (!active) {
       hiddenUpdate.current ||= changed;
       return;
@@ -54,7 +59,12 @@ export function Conversation({ active = true, updateKey, followRequest, children
     const element = host.current;
     if (!active || !element || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
-      if (following.current) latest();
+      if (detailsPosition.current !== null) {
+        // Collapsing can lower the maximum scroll offset; the browser clamps it.
+        element.scrollTop = Math.min(detailsPosition.current, Math.max(0, element.scrollHeight - element.clientHeight));
+        detailsPosition.current = element.scrollTop;
+        saved.current = element.scrollTop;
+      } else if (following.current) latest();
       else setAway(element.scrollHeight - element.clientHeight - element.scrollTop >= 80);
     });
     observer.observe(element);
@@ -65,10 +75,17 @@ export function Conversation({ active = true, updateKey, followRequest, children
   return (
     <div className="conversation">
       <div ref={host} className="chat-scroll" role="region" aria-label="对话记录" tabIndex={0}
-        onWheel={(event) => { if (event.deltaY < 0) following.current = false; }}
+        onClickCapture={(event) => {
+          if (event.target instanceof Element && event.target.closest('.research-details > summary')) {
+            detailsPosition.current = host.current?.scrollTop ?? null;
+          }
+        }}
+        onWheel={(event) => { detailsPosition.current = null; if (event.deltaY < 0) following.current = false; }}
         onScroll={() => {
           const element = host.current;
           if (!element || !active) return;
+          if (detailsPosition.current === element.scrollTop) return;
+          detailsPosition.current = null;
           saved.current = element.scrollTop;
           following.current = element.scrollHeight - element.clientHeight - element.scrollTop < 80;
           setAway(!following.current);

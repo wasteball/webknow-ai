@@ -44,3 +44,19 @@ body.sidepanel .dock .composer-field textarea { max-height: clamp(52px, 24vh, 18
 .scope-details p { margin: 6px 0 0; }
 .scope-details .link { font-size: inherit; line-height: inherit; text-align: left; }
 .citations summary { margin-bottom: 4px; }
+
+.research-progress, .research-clarification, .research-details { color: var(--ink); font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; margin: 12px 0; }
+.research-progress p, .research-details p, .research-clarification p { margin: 6px 0; }
+.research-details { border-top: 1px solid var(--line); padding-top: 8px; }
+.research-details > summary { cursor: pointer; min-height: 36px; display: list-item; padding: 6px 0; }
+.research-details h4 { margin: 12px 0 4px; }
+.research-details ul, .research-details ol, .research-clarification ul { padding-left: 20px; }
+.research-details li { margin: 8px 0; }
+.research-details a { color: var(--ink); text-decoration: underline; }
+.research-clarification { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--paper); }
+.research-clarification textarea { display: block; width: 100%; box-sizing: border-box; max-height: 160px; margin: 6px 0; font: inherit; color: var(--ink); background: var(--paper); }
+.research-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.research-controls button { min-height: 44px; flex: 1 1 auto; }
+.network-mode { min-width: 0; max-width: 100%; }
+.network-mode select { max-width: 100%; min-height: 36px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 12px; padding: 4px; }
+.research-details summary:focus-visible, .network-mode select:focus-visible, .research-clarification textarea:focus-visible, .research-clarification button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }

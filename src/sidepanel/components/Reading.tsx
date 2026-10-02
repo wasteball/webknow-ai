@@ -1,6 +1,9 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
 
 import type { ChatTurn } from '../../core/session';
+import type { Quote } from '../../core/quote';
+import type { NetworkMode } from '../../core/search/agent-types';
+import { evaluateSearchGate } from '../../core/search/gate';
 import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { shouldSubmitComposer } from '../composer';
@@ -9,6 +12,9 @@ import { Busy, ComposerField, ComposerTextarea, Drafting, SourceTag, SuggestRow,
 import { Icon } from './Icon';
 import { Rich } from './Rich';
 import { Conversation } from './Conversation';
+import { SearchProgress } from './SearchProgress';
+import { SearchSources } from './SearchSources';
+import { ResearchClarification } from './ResearchClarification';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
@@ -22,15 +28,20 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
   const [draft, setDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [followRequest, setFollowRequest] = useState(0);
-  const [searchOn, setSearchOn] = useState(false);
+  const [network, setNetwork] = useState<NetworkMode>('auto');
   const [hidingSuggests, setHidingSuggests] = useState(false);
   const [hiddenAtTurns, setHiddenAtTurns] = useState(0);
   const [pending, setPending] = useState<{ question: string; quoteText: string | null; at: number } | null>(null);
   const tabId = state.tabId;
   const progress = state.busy?.kind === 'answer' ? state.busy : null;
-  const busy = Boolean(progress) || submitting;
+  const researchPending = state.researchPending;
+  const currentPending = state.sessionId && researchPending &&
+    (!progress?.agent || (progress.agent.identity.sessionId === state.sessionId && progress.agent.identity.runId === researchPending.runId && progress.agent.identity.tabId === tabId))
+    ? researchPending : undefined;
+  const researching = Boolean(progress?.agent || currentPending?.status === 'running' || currentPending?.status === 'waiting');
+  const busy = Boolean(progress) || submitting || currentPending?.status === 'waiting';
   const blocked = state.busy !== null && state.busy.kind !== 'answer';
-  const searchEnabled = state.settings.search.enabled;
+  const searchEnabled = state.settings.search.agent.enabled;
   const diagrams = state.settings.diagrams === 'auto';
   const guide = state.guide;
   const lastTurn = state.chat[state.chat.length - 1];
@@ -49,6 +60,13 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
   const quote = quoteKey !== consumedQuote ? state.quote : null;
   const outgoing = pending && pending.at === state.chat.length ? pending : null;
 
+  const verificationQuestion = draft.trim() || currentPending?.question || outgoing?.question || lastTurn?.question || '';
+  const needsVerification = !searchEnabled && Boolean(verificationQuestion) && evaluateSearchGate({
+    question: verificationQuestion, pageTitle: state.pageTitle, quote: quote?.text ?? null, mode: network,
+    enabled: false, freshness: state.settings.search.agent.freshness, now: new Date(),
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }).level === 'required';
+
   const updateKey = `${state.chat.length}:${busy}:${progress?.draft.length ?? 0}:${progress?.reasoning.length ?? 0}:${outgoing?.question ?? ''}:${row.next.length}`;
 
   useEffect(() => {
@@ -62,21 +80,22 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
   const stop = () => {
     if (tabId) void send({ type: 'stop', tabId });
   };
-  const sendQuestion = async (question: string) => {
+  const sendQuestion = async (question: string, sentQuote: Quote | null = quote, retry = false) => {
     if (!tabId || !question.trim() || busy || blocked) return;
     const text = question.trim();
     concealSuggests();
-    setPending({ question: text, quoteText: quote?.text ?? null, at: state.chat.length });
-    setConsumedQuote(quoteKey);
-    setDraft((current) => (current.trim() === text ? '' : current));
+    setPending({ question: text, quoteText: sentQuote?.text ?? null, at: state.chat.length });
+    const sentQuoteKey = sentQuote?.id ?? sentQuote?.text ?? null;
+    if (!retry || sentQuoteKey === quoteKey) setConsumedQuote(sentQuoteKey);
+    if (!retry) setDraft((current) => (current.trim() === text ? '' : current));
     setSubmitting(true);
     setFollowRequest((n) => n + 1);
-    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && searchOn, quote: quote?.text ?? null, ...(quote?.id ? { quoteId: quote.id } : {}) }).finally(() => setSubmitting(false));
+    const reply = await send({ type: 'ask', tabId, question: text, network, quote: sentQuote?.text ?? null, ...(sentQuote?.id ? { quoteId: sentQuote.id } : {}) }).finally(() => setSubmitting(false));
     if (reply?.ok) return;
-    setConsumedQuote((current) => current === quoteKey ? null : current);
+    setConsumedQuote((current) => current === sentQuoteKey ? null : current);
     setPending((current) => (current?.question === text ? null : current));
     setHidingSuggests(false);
-    setDraft((current) => (current.trim() ? current : text));
+    if (!retry) setDraft((current) => (current.trim() ? current : text));
   };
   const ask = (question: string) => void sendQuestion(question);
 
@@ -141,15 +160,23 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
             </div>
           </article>
         )}
-        {busy &&
+        {currentPending && state.sessionId && tabId !== null && <ResearchClarification
+          key={`${state.sessionId}:${currentPending.runId}:${currentPending.status}`}
+          pending={currentPending} tabId={tabId} sessionId={state.sessionId}
+          capabilities={state.settings.search.sourceCapabilities} send={send}
+          retryDisabled={busy || blocked} onRetry={() => void sendQuestion(currentPending.question, currentPending.quote, true)}
+        />}
+        {state.researchDetails && researching && <SearchSources references={[]} research={state.researchDetails} />}
+        {busy && (researching ? (progress?.agent ? <SearchProgress event={progress.agent} /> : <Busy label="正在判断是否需要联网" chars={0} />) :
           (state.busy?.draft || state.busy?.reasoning ? (
             <Drafting text={state.busy?.draft ?? ''} reasoning={state.busy?.reasoning ?? ''} />
           ) : (
             <Busy label="正在回答" chars={state.busy?.chars ?? 0} />
-          ))}
+          )))}
       </Conversation>
 
       <div className="dock">
+        {needsVerification && <p className="composer-notice" role="status">联网总开关已关闭，本题需要实时核验，当前未核验。{onSearchSettings && <button type="button" className="link" onClick={onSearchSettings}>联网设置</button>}</p>}
         {blocked && <p className="composer-notice" role="status">AI 问正在生成，结束后可以继续提问。</p>}
         <form
           className="composer"
@@ -199,20 +226,15 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
                 </blockquote>
               </div>
             )}
-            tools={(searchEnabled || onSearchSettings) && (
-              <button
-                type="button"
-                className="search-chip"
-                aria-pressed={searchEnabled && searchOn}
-                title={searchEnabled
-                  ? `打开后，只把搜索词发给${state.settings.search.providerName ?? '搜索服务'}，不发这一页正文`
-                  : '先选择一个联网搜索服务'}
-                onClick={() => searchEnabled ? setSearchOn((current) => !current) : onSearchSettings?.()}
-              >
-                <Icon name="globe" small />
-                联网搜索
-                {searchEnabled && searchOn && <Icon name="check" small />}
-              </button>
+            tools={(
+              <label className="network-mode">
+                <span className="sr-only">本题联网方式</span>
+                <select value={network} onChange={event => setNetwork(event.target.value as NetworkMode)}>
+                  <option value="auto">智能联网</option>
+                  <option value="force">本题联网</option>
+                  <option value="article">只依据文章</option>
+                </select>
+              </label>
             )}
           >
             <ComposerTextarea
@@ -272,17 +294,7 @@ function Turn({
               ))}
             </details>
           )}
-          {turn.references.length > 0 && (
-            <p className="citations">
-              网络资料：
-              {turn.references.map((url, index) => (
-                <a key={url} href={url} target="_blank" rel="noreferrer" className="link">
-                  链接{index + 1}
-                  <Icon name="external" small />
-                </a>
-              ))}
-            </p>
-          )}
+          <SearchSources references={turn.webReferences ?? []} research={turn.research} />
           {turn.unanswered.length > 0 && (
             <ul className="unanswered">
               {turn.unanswered.map((item) => (
