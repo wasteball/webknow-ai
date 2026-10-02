@@ -4,15 +4,20 @@ set -u
 
 pnpm exec playwright install --with-deps chromium
 
-mkdir -p test-results
+# Playwright starts by deleting test-results. Keep the open log outside it.
+log_file=$(mktemp) || exit 1
+trap 'rm -f -- "$log_file"' EXIT
 set +e
-pnpm test:e2e > test-results/e2e.log 2>&1
+pnpm test:e2e > "$log_file" 2>&1
 code=$?
+mkdir -p test-results
+cp -- "$log_file" test-results/e2e.log
 set -e
 if [ "$code" -ne 0 ]; then
   # 不要把整份日志倒进 Actions 输出：太大时后面的检查注释会被丢掉。
   echo "::error::e2e failed with exit ${code}"
-  python3 - test-results/e2e.log << 'PY'
+  # Diagnostic extraction must not replace the original failing process status.
+  python3 - "$log_file" << 'PY' || true
 import os, pathlib, re, sys
 text = pathlib.Path(sys.argv[1]).read_text(errors="replace")
 pathlib.Path("e2e-failure.txt").write_text(text)
