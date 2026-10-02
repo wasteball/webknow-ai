@@ -95,7 +95,21 @@ type LegacyConfig = Config & {
   skillChoices?: Partial<Record<SkillTarget, string>>;
 };
 
-export async function readConfig(): Promise<Config> {
+// All local config operations share one ordering boundary, including migration reads.
+// A failed operation rejects its caller but cannot poison the following operation.
+let configOperations: Promise<void> = Promise.resolve();
+function serializeConfig<T>(operation: () => Promise<T>): Promise<T> {
+  const result = configOperations.then(operation);
+  configOperations = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+export function readConfig(): Promise<Config> {
+  return serializeConfig(readStoredConfig);
+}
+
+/** Call only inside serializeConfig, so migration writes never bypass configuration mutations. */
+async function readStoredConfig(): Promise<Config> {
   const stored = await storage.getItem<LegacyConfig>(CONFIG_KEY);
   if (!stored) return {};
   // 一次性迁移：旧版只有教学提示词覆盖（teachingPrompt），新版是三板块 prompts.learn。
@@ -140,8 +154,10 @@ export async function readConfig(): Promise<Config> {
 }
 
 export async function writeConfig(patch: Partial<Config>): Promise<void> {
-  const current = await readConfig();
-  await storage.setItem(CONFIG_KEY, { ...current, ...patch });
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    await storage.setItem(CONFIG_KEY, { ...current, ...patch });
+  });
 }
 
 /** 仅在 background 的网络边界内调用；返回值不得进入界面、日志或提示词（FR-032）。 */
@@ -156,31 +172,37 @@ export async function hasApiKey(provider: ProviderId): Promise<boolean> {
 }
 
 export async function saveApiKey(provider: ProviderId, key: string): Promise<void> {
-  const current = await readConfig();
-  await storage.setItem(CONFIG_KEY, {
-    ...current,
-    apiKeys: { ...(current.apiKeys ?? {}), [provider]: key.trim() },
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    await storage.setItem(CONFIG_KEY, {
+      ...current,
+      apiKeys: { ...(current.apiKeys ?? {}), [provider]: key.trim() },
+    });
   });
 }
 
 /** 只删这一家的钥匙，另一家的不动（独立清除，FR-033）。 */
 export async function deleteApiKey(provider: ProviderId): Promise<void> {
-  const current = await readConfig();
-  const apiKeys = { ...(current.apiKeys ?? {}) };
-  delete apiKeys[provider];
-  const next: Config = { ...current };
-  if (Object.keys(apiKeys).length) next.apiKeys = apiKeys;
-  else delete next.apiKeys;
-  await storage.setItem(CONFIG_KEY, next);
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    const apiKeys = { ...(current.apiKeys ?? {}) };
+    delete apiKeys[provider];
+    const next: Config = { ...current };
+    if (Object.keys(apiKeys).length) next.apiKeys = apiKeys;
+    else delete next.apiKeys;
+    await storage.setItem(CONFIG_KEY, next);
+  });
 }
 
 /** 清除单个板块的提示词覆盖（恢复默认）；不触碰 Key、会话与其他设置。 */
 export async function clearPromptOverride(target: SkillTarget): Promise<void> {
-  const current = await readConfig();
-  if (!current.prompts || !(target in current.prompts)) return;
-  const { [target]: _removed, ...rest } = current.prompts;
-  const prompts = Object.keys(rest).length ? rest : undefined;
-  await storage.setItem(CONFIG_KEY, prompts ? { ...current, prompts } : { ...current, prompts: undefined });
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    if (!current.prompts || !(target in current.prompts)) return;
+    const { [target]: _removed, ...rest } = current.prompts;
+    const prompts = Object.keys(rest).length ? rest : undefined;
+    await storage.setItem(CONFIG_KEY, prompts ? { ...current, prompts } : { ...current, prompts: undefined });
+  });
 }
 
 /** 保存搜索供应商配置（F3）：providerId=null 表示停用；凭证按供应商合并保存。 */
@@ -188,24 +210,26 @@ export async function saveSearchConfig(input: {
   providerId: string | null;
   credentials?: Record<string, string>;
 }): Promise<void> {
-  const current = await readConfig();
-  const search = { ...current.search };
-  if (input.credentials) {
-    const clean: Record<string, string> = {};
-    for (const [key, value] of Object.entries(input.credentials)) {
-      if (typeof value === 'string' && value.trim() && key.length <= 40) {
-        clean[key] = value.trim().slice(0, 500);
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    const search = { ...current.search };
+    if (input.credentials) {
+      const clean: Record<string, string> = {};
+      for (const [key, value] of Object.entries(input.credentials)) {
+        if (typeof value === 'string' && value.trim() && key.length <= 40) {
+          clean[key] = value.trim().slice(0, 500);
+        }
       }
+      search.credentials = { ...(search.credentials ?? {}) };
+      if (Object.keys(clean).length) search.credentials[input.providerId ?? ''] = clean;
     }
-    search.credentials = { ...(search.credentials ?? {}) };
-    if (Object.keys(clean).length) search.credentials[input.providerId ?? ''] = clean;
-  }
-  if (input.providerId === null) delete search.providerId;
-  else search.providerId = input.providerId;
-  const next: Config = { ...current, search };
-  if (!next.search?.providerId && !next.search?.credentials && !next.search?.agent) delete next.search;
-  if (outboundScope(current) !== outboundScope(next)) delete next.outbound;
-  await storage.setItem(CONFIG_KEY, next);
+    if (input.providerId === null) delete search.providerId;
+    else search.providerId = input.providerId;
+    const next: Config = { ...current, search };
+    if (!next.search?.providerId && !next.search?.credentials && !next.search?.agent) delete next.search;
+    if (outboundScope(current) !== outboundScope(next)) delete next.outbound;
+    await storage.setItem(CONFIG_KEY, next);
+  });
 }
 
 /** 读取指定供应商的凭证（仅 background 边界内）。 */
@@ -222,38 +246,46 @@ export async function saveImaConfig(patch: {
   kbId?: string;
   kbName?: string;
 }): Promise<void> {
-  const current = await readConfig();
-  const ima = { ...current.ima };
-  for (const key of ['clientId', 'apiKey', 'kbId', 'kbName'] as const) {
-    const value = patch[key]?.trim();
-    if (value) ima[key] = value.slice(0, 500);
-  }
-  const next: Config = { ...current, ima };
-  if (!Object.keys(next.ima ?? {}).length) delete next.ima;
-  await storage.setItem(CONFIG_KEY, next);
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    const ima = { ...current.ima };
+    for (const key of ['clientId', 'apiKey', 'kbId', 'kbName'] as const) {
+      const value = patch[key]?.trim();
+      if (value) ima[key] = value.slice(0, 500);
+    }
+    const next: Config = { ...current, ima };
+    if (!Object.keys(next.ima ?? {}).length) delete next.ima;
+    await storage.setItem(CONFIG_KEY, next);
+  });
 }
 
 /** 删除 ima 凭证与默认知识库（独立操作，不触碰 Key、会话与其他设置）。 */
 export async function clearImaConfig(): Promise<void> {
-  const current = await readConfig();
-  if (!current.ima) return;
-  const { ima: _removed, ...rest } = current;
-  await storage.setItem(CONFIG_KEY, rest);
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    if (!current.ima) return;
+    const { ima: _removed, ...rest } = current;
+    await storage.setItem(CONFIG_KEY, rest);
+  });
 }
 
 /** 保存写法模板：同 id 覆盖更新，其余模板不动。 */
 export async function saveCustomSkill(skill: Skill): Promise<void> {
-  const current = await readConfig();
-  const skills = (current.skills ?? []).filter((item) => item.id !== skill.id);
-  skills.push(skill);
-  await storage.setItem(CONFIG_KEY, { ...current, skills });
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    const skills = (current.skills ?? []).filter((item) => item.id !== skill.id);
+    skills.push(skill);
+    await storage.setItem(CONFIG_KEY, { ...current, skills });
+  });
 }
 
 /** 删除写法模板。已经填进编辑框的文字不受影响——那段文字是用户自己的了。 */
 export async function deleteCustomSkill(id: string): Promise<void> {
-  const current = await readConfig();
-  const skills = (current.skills ?? []).filter((item) => item.id !== id);
-  await storage.setItem(CONFIG_KEY, { ...current, skills });
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    const skills = (current.skills ?? []).filter((item) => item.id !== id);
+    await storage.setItem(CONFIG_KEY, { ...current, skills });
+  });
 }
 
 /**
@@ -262,45 +294,47 @@ export async function deleteCustomSkill(id: string): Promise<void> {
  * 数值范围与格式由 core/settings.normalizeSettings 归一化，非法条目被丢弃。
  */
 export async function applySettings(patch: SettingsPatch): Promise<boolean> {
-  const current = await readConfig();
-  const clean = normalizeSettings(patch);
-  const next: Config = { ...current };
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    const clean = normalizeSettings(patch);
+    const next: Config = { ...current };
 
-  const providerChanged = clean.provider !== undefined && clean.provider !== findProvider(current.provider).id;
-  if (clean.provider !== undefined) next.provider = clean.provider;
-  if (providerChanged) delete next.outbound;
-  // 模型按供应商存：切供应商时各自记住各自的选择。
-  if (clean.model !== undefined) {
-    const provider = findProvider(next.provider).id;
-    next.models = { ...(next.models ?? {}), [provider]: clean.model };
-  }
-  if (clean.learningStyle !== undefined) next.learningStyle = clean.learningStyle;
-  if (clean.maxBubbles !== undefined) next.maxBubbles = clean.maxBubbles;
-  if (clean.summaryLength !== undefined) next.summaryLength = clean.summaryLength;
-  if (clean.fontSize !== undefined) next.appearance = { ...current.appearance, fontSize: clean.fontSize };
-  if (clean.diagrams !== undefined) next.diagrams = clean.diagrams;
-  if (clean.thinking !== undefined) {
-    const thinking = rememberThinking(
-      { provider: next.provider, models: next.models, thinking: next.thinking },
-      { provider: next.provider, model: clean.model, thinking: clean.thinking },
-    );
-    if (thinking) next.thinking = thinking;
-  }
-
-  if (patch.prompts !== undefined) {
-    const merged: PromptOverrides = { ...current.prompts };
-    for (const target of ['guide', 'answer', 'learn'] as const) {
-      if (typeof patch.prompts[target] !== 'string') continue;
-      const kept = clean.prompts?.[target];
-      if (kept) merged[target] = kept;
-      else delete merged[target];
+    const providerChanged = clean.provider !== undefined && clean.provider !== findProvider(current.provider).id;
+    if (clean.provider !== undefined) next.provider = clean.provider;
+    if (providerChanged) delete next.outbound;
+    // 模型按供应商存：切供应商时各自记住各自的选择。
+    if (clean.model !== undefined) {
+      const provider = findProvider(next.provider).id;
+      next.models = { ...(next.models ?? {}), [provider]: clean.model };
     }
-    if (Object.keys(merged).length) next.prompts = merged;
-    else delete next.prompts;
-  }
+    if (clean.learningStyle !== undefined) next.learningStyle = clean.learningStyle;
+    if (clean.maxBubbles !== undefined) next.maxBubbles = clean.maxBubbles;
+    if (clean.summaryLength !== undefined) next.summaryLength = clean.summaryLength;
+    if (clean.fontSize !== undefined) next.appearance = { ...current.appearance, fontSize: clean.fontSize };
+    if (clean.diagrams !== undefined) next.diagrams = clean.diagrams;
+    if (clean.thinking !== undefined) {
+      const thinking = rememberThinking(
+        { provider: next.provider, models: next.models, thinking: next.thinking },
+        { provider: next.provider, model: clean.model, thinking: clean.thinking },
+      );
+      if (thinking) next.thinking = thinking;
+    }
 
-  await storage.setItem(CONFIG_KEY, next);
-  return providerChanged;
+    if (patch.prompts !== undefined) {
+      const merged: PromptOverrides = { ...current.prompts };
+      for (const target of ['guide', 'answer', 'learn'] as const) {
+        if (typeof patch.prompts[target] !== 'string') continue;
+        const kept = clean.prompts?.[target];
+        if (kept) merged[target] = kept;
+        else delete merged[target];
+      }
+      if (Object.keys(merged).length) next.prompts = merged;
+      else delete next.prompts;
+    }
+
+    await storage.setItem(CONFIG_KEY, next);
+    return providerChanged;
+  });
 }
 
 export async function getSession(tabId: number): Promise<PageSession | null> {
@@ -347,10 +381,12 @@ export async function clearPending(tabId: number): Promise<void> {
 
 /** Merge a partial validated patch; invalid fields preserve the saved value. */
 export async function saveSearchAgentSettings(patch: Partial<AgentSettings>): Promise<void> {
-  const current = await readConfig();
-  const agent = { ...current.search?.agent, ...normalizeAgentSettings(patch) };
-  if (agent.policy === '') delete agent.policy;
-  const next: Config = { ...current, search: { ...current.search, agent } };
-  if (outboundScope(current) !== outboundScope(next)) delete next.outbound;
-  await storage.setItem(CONFIG_KEY, next);
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    const agent = { ...current.search?.agent, ...normalizeAgentSettings(patch) };
+    if (agent.policy === '') delete agent.policy;
+    const next: Config = { ...current, search: { ...current.search, agent } };
+    if (outboundScope(current) !== outboundScope(next)) delete next.outbound;
+    await storage.setItem(CONFIG_KEY, next);
+  });
 }

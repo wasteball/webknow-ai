@@ -1,11 +1,17 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 const data = new Map<string, unknown>();
-vi.mock('wxt/utils/storage', () => ({ storage: { getItem: async (key: string) => data.get(key), setItem: async (key: string, value: unknown) => data.set(key, value), snapshot: async (area: string) => Object.fromEntries([...data].filter(([key]) => key.startsWith(area + ':')).map(([key, value]) => [key.slice(area.length + 1), value])), removeItems: async (keys: string[]) => keys.forEach(key => data.delete(key)) } }));
-import { readConfig, saveSearchAgentSettings, hasOutboundConfirmation, deleteApiKey, clearAllSessions } from '../src/background/store';
+vi.mock('wxt/utils/storage', () => ({ storage: {
+  getItem: vi.fn(async (key: string) => structuredClone(data.get(key))),
+  setItem: vi.fn(async (key: string, value: unknown) => { data.set(key, structuredClone(value)); }),
+  snapshot: async (area: string) => Object.fromEntries([...data].filter(([key]) => key.startsWith(area + ':')).map(([key, value]) => [key.slice(area.length + 1), value])),
+  removeItems: async (keys: string[]) => keys.forEach(key => data.delete(key)),
+} }));
+import { storage } from 'wxt/utils/storage';
+import { readConfig, saveSearchAgentSettings, hasOutboundConfirmation, deleteApiKey, clearAllSessions, saveSearchConfig, applySettings, writeConfig, saveApiKey } from '../src/background/store';
 import { outboundScope } from '../src/core/settings';
 import { effectiveAgentSettings, runtimeAgentSettings } from '../src/core/search/agent-policy';
 import { DEFAULT_SEARCH_AGENT_POLICY } from '../src/core/prompts/search-agent';
-beforeEach(() => data.clear());
+beforeEach(() => { data.clear(); vi.mocked(storage.setItem).mockReset().mockImplementation(async (key, value) => { data.set(key, structuredClone(value)); }); });
 it('keeps legacy credentials and defaults off with the unique effective policy', async () => {
   data.set('local:config', { search: { providerId: 'tavily', credentials: { tavily: { apiKey: 'secret' } } } });
   expect(effectiveAgentSettings(await readConfig())).toMatchObject({ enabled: false, policy: DEFAULT_SEARCH_AGENT_POLICY });
@@ -54,4 +60,68 @@ it('policy restore, key deletion and session clearing remain independent', async
   expect(await clearAllSessions()).toBe(1);
   expect((await readConfig()).search?.credentials?.tavily?.apiKey).toBe('search-private');
   expect((await readConfig()).prompts?.answer).toBe('answer policy');
+});
+
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+/** Hold the first physical write while another accepted operation is requested. */
+function holdFirstWrite() {
+  const started = deferred(); const release = deferred();
+  vi.mocked(storage.setItem).mockImplementationOnce(async (key, value) => {
+    started.resolve(); await release.promise; data.set(key, structuredClone(value));
+  });
+  return { started: started.promise, release: release.resolve };
+}
+
+describe('shared configuration transactions', () => {
+  it('preserves independent language and region patches through delayed overlapping writes', async () => {
+    data.set('local:config', { search: { agent: { enabled: true, language: '', region: '' } } });
+    const held = holdFirstWrite();
+    const language = saveSearchAgentSettings({ language: 'fr' }); await held.started;
+    const region = saveSearchAgentSettings({ region: 'CA' });
+    await Promise.resolve(); held.release(); await Promise.all([language, region]);
+    expect((await readConfig()).search?.agent).toMatchObject({ enabled: true, language: 'fr', region: 'CA' });
+  });
+  it.each([
+    ['search provider', () => saveSearchConfig({ providerId: 'tavily', credentials: { apiKey: 'search-private' } }), { search: { providerId: 'tavily', credentials: { tavily: { apiKey: 'search-private' } } } }],
+    ['model provider', () => applySettings({ provider: 'zhipu' }), { provider: 'zhipu' }],
+    ['general configuration', () => writeConfig({ diagrams: 'off' }), { diagrams: 'off' }],
+    ['model key', () => saveApiKey('zhipu', 'new-private'), { apiKeys: { zhipu: 'new-private' } }],
+  ] as const)('preserves accepted agent preference during overlapping %s save', async (_name, saveOther, expected) => {
+    data.set('local:config', { apiKeys: { deepseek: 'model-private' }, search: { agent: { enabled: true } } });
+    const held = holdFirstWrite();
+    const agent = saveSearchAgentSettings({ language: 'fr' }); await held.started;
+    const other = saveOther(); await Promise.resolve(); held.release(); await Promise.all([agent, other]);
+    const config = await readConfig();
+    expect(config.search?.agent).toMatchObject({ enabled: true, language: 'fr' });
+    expect(config).toMatchObject(expected);
+    expect(config.apiKeys?.deepseek).toBe('model-private');
+  });
+  it('serializes migration writes with a concurrently requested preference save', async () => {
+    data.set('local:config', { apiKey: 'legacy-private', model: 'legacy-model' });
+    const held = holdFirstWrite();
+    const migration = readConfig(); await held.started;
+    const preference = saveSearchAgentSettings({ region: 'CA' });
+    await Promise.resolve(); held.release(); await Promise.all([migration, preference]);
+    expect(await readConfig()).toMatchObject({ apiKeys: { deepseek: 'legacy-private' }, models: { deepseek: 'legacy-model' }, search: { agent: { region: 'CA' } } });
+    expect(await readConfig()).not.toHaveProperty('apiKey');
+  });
+  it('rejects a failed queued save while later queued patches still succeed', async () => {
+    data.set('local:config', { search: { agent: { enabled: true } } });
+    const held = deferred(); const started = deferred();
+    vi.mocked(storage.setItem).mockImplementationOnce(async () => { started.resolve(); await held.promise; throw new Error('write failed'); });
+    const failed = saveSearchAgentSettings({ language: 'fr' });
+    const rejection = expect(failed).rejects.toThrow('write failed'); await started.promise;
+    const accepted = saveSearchAgentSettings({ region: 'CA' }); held.resolve();
+    await Promise.all([rejection, accepted]);
+    expect((await readConfig()).search?.agent).toMatchObject({ enabled: true, region: 'CA' });
+    expect((await readConfig()).search?.agent?.language).toBeUndefined();
+    await saveSearchAgentSettings({ depth: 'quick' });
+    expect((await readConfig()).search?.agent?.depth).toBe('quick');
+  });
 });
