@@ -249,7 +249,7 @@ test('划词、搜索和发送在同一个输入框内，长问题不会挤走�
   await panel.getByLabel('向这篇文章提问').fill('配置搜索后继续发送的问题');
   const [searchSettings] = await Promise.all([
     context.waitForEvent('page'),
-    panel.getByRole('button', { name: '设置', exact: true }).click(),
+    panel.getByRole('button', { name: '联网搜索', exact: true }).click(),
   ]);
   await expect(searchSettings).toHaveURL(/options\.html/);
   await searchSettings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '联网搜索' }).click();
@@ -281,7 +281,7 @@ test('划词、搜索和发送在同一个输入框内，长问题不会挤走�
   await expect(input).toBeVisible();
   const composer = panel.locator('#mode-panel-qa .composer-field');
   await expect(composer.getByRole('button', { name: /新方案把平均处理时间/ })).toBeVisible();
-  await expect(composer.getByLabel('本题联网方式')).toBeVisible();
+  await expect(composer.getByRole('button', { name: '联网搜索', exact: true })).toBeVisible();
 
   for (const width of [360, 560]) {
     await panel.setViewportSize({ width, height: 640 });
@@ -291,7 +291,7 @@ test('划词、搜索和发送在同一个输入框内，长问题不会挤走�
     const expanded = await input.boundingBox();
     expect(expanded!.height).toBeGreaterThan(short!.height);
     const outer = await composer.boundingBox();
-    for (const button of [composer.getByLabel('本题联网方式'), composer.getByRole('button', { name: '发送' })]) {
+    for (const button of [composer.getByRole('button', { name: '联网搜索', exact: true }), composer.getByRole('button', { name: '发送' })]) {
       const bounds = await button.boundingBox();
       expect(bounds!.y).toBeGreaterThanOrEqual(expanded!.y + expanded!.height);
       expect(bounds!.x).toBeGreaterThan(outer!.x);
@@ -319,8 +319,11 @@ test('划词、搜索和发送在同一个输入框内，长问题不会挤走�
   await panel.getByRole('tab', { name: 'AI 问', exact: true }).click();
   await panel.getByRole('tab', { name: '问 AI', exact: true }).click();
   await expect(input).toHaveValue(draft);
-  await composer.getByLabel('本题联网方式').selectOption('force');
-  await expect(composer.getByLabel('本题联网方式')).toHaveValue('force');
+  await composer.getByRole('button', { name: '联网搜索', exact: true }).click();
+  await expect(composer.getByRole('button', { name: '联网搜索', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await panel.getByRole('tab', { name: 'AI 问', exact: true }).click();
+  await panel.getByRole('tab', { name: '问 AI', exact: true }).click();
+  await expect(composer.getByRole('button', { name: '联网搜索', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await composer.getByRole('button', { name: '不用这段' }).click();
   await expect(panel.getByLabel('向这篇文章提问')).toHaveValue(draft);
   await expect(composer.locator('.quote-chip')).toHaveCount(0);

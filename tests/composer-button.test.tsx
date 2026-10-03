@@ -102,7 +102,7 @@ describe('发出去的话立刻出现', () => {
 
     expect(document.querySelector('.bubble.user')?.textContent).toContain('这句话什么意思');
     expect(box.value).toBe('');
-    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 1, question: '这句话什么意思', network: 'auto', quote: null });
+    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 1, question: '这句话什么意思', search: false, quote: null });
 
     fireEvent.change(box, { target: { value: '下一句' } });
     await act(async () => {
@@ -124,7 +124,7 @@ describe('对话里的发送和停止', () => {
     expect(submit.disabled).toBe(false);
   });
 
-  it('问 AI 生成时正文只有正在写的字，停止在输入框里，和发送是同一个位置', () => {
+  it('问 AI 生成时正文只有正在写的字，停止在输入框里，和发送是同一个位置', async () => {
     const send = vi.fn(async () => ({ ok: true as const }));
     const { rerender } = render(
       <Reading
@@ -152,6 +152,7 @@ describe('对话里的发送和停止', () => {
     fireEvent.change(box, { target: { value: '下一句' } });
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(send).toHaveBeenCalledTimes(1);
+    await act(async () => {}); // Stop acknowledgement precedes enabling the successor request.
 
     rerender(<Reading state={panel()} send={send} />);
     const sendButton = screen.getByRole('button', { name: '发送' });

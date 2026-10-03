@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { chromium, expect, type Worker } from '@playwright/test';
 import type { PageSession } from '../../../src/core/session';
 import type { Config as AppConfig } from '../../../src/background/store';
-import type { NetworkMode } from '../../../src/core/search/agent-types';
+import type { AgentSettings } from '../../../src/core/search/agent-types';
 import { outboundFixture } from './consent';
 
 export type Scenario = 'latest' | 'retry' | 'ambiguous' | 'stale' | 'conflict' | 'empty' | 'injection' | 'content-failure' | 'searxng-date-unknown';
@@ -38,7 +38,7 @@ const ARTICLE = '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>
  * Loopback is the article/search transport only. Evidence URLs remain public-safe.
  * No credentials are live. This does not validate provider semantics, DNS or native prompts.
  */
-export async function launchResearchFixture(options: { scenario?: Scenario; enabled?: boolean; width?: number; height?: number; large?: boolean } = {}) {
+export async function launchResearchFixture(options: { scenario?: Scenario; enabled?: boolean; legacyAgent?: Partial<AgentSettings>; width?: number; height?: number; large?: boolean } = {}) {
   const scenario = options.scenario ?? 'latest';
   const server = createServer((_request, response) => { response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(ARTICLE); });
   await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
@@ -55,7 +55,7 @@ export async function launchResearchFixture(options: { scenario?: Scenario; enab
     const extensionId = new URL(worker.url()).host;
     const config = { apiKeys: { deepseek: 'sk-synthetic-model-only' }, appearance: { fontSize: options.large ? 'large' : 'normal' },
       search: { providerId: scenario === 'content-failure' ? 'firecrawl' : scenario === 'searxng-date-unknown' ? 'searxng' : 'bocha',
-        credentials: { bocha: { apiKey: 'sk-synthetic-search-only' }, ...(scenario === 'searxng-date-unknown' ? { searxng: { baseUrl: origin } } : {}) }, agent: { enabled: options.enabled ?? true } } };
+        credentials: { bocha: { apiKey: 'sk-synthetic-search-only' }, ...(scenario === 'searxng-date-unknown' ? { searxng: { baseUrl: origin } } : {}) }, agent: { enabled: options.enabled ?? true, ...options.legacyAgent } } };
     await worker.evaluate(async config => chrome.storage.local.set({ config }), { ...config, outbound: outboundFixture(config) });
     const panel = await context.newPage();
     await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
@@ -115,7 +115,9 @@ export async function launchResearchFixture(options: { scenario?: Scenario; enab
             const clarifications = data.untrustedIntent?.clarifications ?? [];
             if (scenario === 'ambiguous' && !clarifications.length) output = { type: 'ask_user', question: '你指哪个 Atlas 产品？', reason: 'ambiguous_entity' };
             else if (scenario === 'injection' && state.actions <= 2) output = { type: 'send_key', key: 'untrusted-page-command' };
-            else if (!data.gate.canSearch || data.gate.level === 'not_needed') output = { type: 'finish_answer', answer: '文章观察三个团队四周；当前未联网核验。', source: 'original', citations: [], references: [], unanswered: [], freshness: 'not_applicable' };
+            else if (!data.gate.canSearch || data.gate.level === 'not_needed') output = { type: 'finish_answer',
+              answer: '文章没有版本信息，无法只依据文章确认最新版本；当前未联网核验。',
+              source: 'unknown', citations: [], references: [], unanswered: ['文章未提供版本信息'], freshness: 'not_applicable' };
             else if (!data.ledger.attempts.length || (scenario === 'retry' && data.ledger.attempts.length === 1)) output = { type: 'search_web',
               query: data.ledger.attempts.length ? 'Atlas 官方发布版本公告' : 'Atlas 当前版本', purpose: 'latest', freshness: data.gate.freshness, language: 'zh-CN', domains: [], maxResults: 5 };
             else if (scenario === 'content-failure' && !data.progress.readIds.length) output = { type: 'read_sources', sourceIds: ids.slice(0, 1), focus: '核对版本' };
@@ -151,9 +153,16 @@ export async function launchResearchFixture(options: { scenario?: Scenario; enab
     const session = () => readFixtureSession(worker, tabId);
     const storedConfig = () => readFixtureConfig(worker);
     return { panel, article, context, worker, tabId, extensionId, hits, records, unexpected, session, config: storedConfig,
-      async ask(question: string, mode: NetworkMode) {
+      async setSearch(on: boolean) {
+        const toggle = panel.getByRole('button', { name: '联网搜索', exact: true });
+        if (await toggle.getAttribute('aria-pressed') !== String(on)) await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-pressed', String(on));
+      },
+      async ask(question: string, search: boolean) {
         completedTurns = (await session()).chat.length;
-        await panel.getByLabel('本题联网方式').selectOption(mode);
+        const toggle = panel.getByRole('button', { name: '联网搜索', exact: true });
+        if (await toggle.getAttribute('aria-pressed') !== String(search)) await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-pressed', String(search));
         await panel.getByLabel('向这篇文章提问').fill(question);
         await panel.getByRole('button', { name: '发送', exact: true }).click();
       },

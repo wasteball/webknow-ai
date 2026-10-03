@@ -6,7 +6,7 @@ import type { ThinkingLevel } from './model-thinking';
 import type { DiagramMode, FontSize, PromptOverrides } from './settings';
 import type { Skill } from './skills';
 import type { Quote } from './quote';
-import type { AgentEvent, AgentSettings, NetworkMode, ResearchSummary } from './search/agent-types';
+import type { AgentEvent, AgentSettings, ResearchSummary } from './search/agent-types';
 import type { ResearchPending, Bubble, ChatTurn, LearningHistory, LearningState, RequestKind, SessionState } from './session';
 
 /** 侧栏可见的页面状态（PRD 4.2）。由配置、权限与会话状态共同推导。 */
@@ -83,7 +83,7 @@ export type Command =
   | { type: 'attach'; tabId: number | null }
   | { type: 'start'; tabId: number }
   | { type: 'stop'; tabId: number }
-  | { type: 'ask'; tabId: number; question: string; network?: NetworkMode; search?: boolean; quote?: string | null; quoteId?: string }
+  | { type: 'ask'; tabId: number; question: string; search?: boolean; quote?: string | null; quoteId?: string }
   | { type: 'resolveResearch'; tabId: number; sessionId: string; runId: string; mode: 'continue' | 'article' | 'cancel'; text: string }
   | { type: 'setQuote'; tabId: number; text: string }
   | { type: 'clearQuote'; tabId: number; quoteId?: string }
@@ -101,7 +101,6 @@ export type Command =
   | { type: 'saveSettings'; patch: import('./settings').SettingsPatch }
   | { type: 'saveSkill'; skill: { id?: string; name: string; description: string; target: 'guide' | 'answer' | 'learn'; body: string } }
   | { type: 'deleteSkill'; id: string }
-  | { type: 'saveSearchAgentSettings'; patch: Partial<AgentSettings> }
   | { type: 'saveSearchConfig'; providerId: string | null; credentials?: Record<string, string> }
   | { type: 'testSearch'; providerId: string; credentials?: Record<string, string> }
   | { type: 'saveImaConfig'; clientId?: string; apiKey?: string }

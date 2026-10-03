@@ -4,17 +4,36 @@ import { launchResearchFixture } from './helpers/research';
 test('article explanation finishes before asserting zero searches', async () => {
   const f = await launchResearchFixture();
   try {
-    await f.ask('解释这篇文章中的试点方法', 'auto');
+    await f.ask('解释这篇文章中的试点方法', true);
     await f.waitFinished();
     expect(f.hits).toHaveLength(0);
     await expect(f.panel.locator('#mode-panel-qa .msg.ai .said:not(.said-guide)')).toContainText('三个团队');
+    await expect(f.panel.locator('#mode-panel-qa .msg.ai .said:not(.said-guide)')).not.toContainText('未联网核验');
+  } finally { await f.close(); }
+});
+
+test('clarification can finish from the article without granting another search action', async () => {
+  const f = await launchResearchFixture({ scenario: 'ambiguous' });
+  try {
+    await f.ask('今天最新版本是什么？', true);
+    await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
+    await f.panel.getByRole('button', { name: '只按文章', exact: true }).click();
+    await f.waitFinished();
+    expect(f.hits).toHaveLength(0);
+    const answer = f.panel.locator('#mode-panel-qa .msg.ai .said:not(.said-guide)').last();
+    await expect(answer).toContainText('无法只依据文章确认最新版本');
+    await expect(answer).not.toContainText('可靠性上限');
+    const researchModels = (await f.records()).filter(r => r.url.includes('/chat/completions')).slice(1);
+    expect(researchModels).toHaveLength(3);
+    expect(researchModels.at(-1)!.body).toContain('审查 candidate');
+    expect(f.unexpected).toEqual([]);
   } finally { await f.close(); }
 });
 
 test('latest research uses frozen dates, safe source IDs and separate receiver payloads', async () => {
   const f = await launchResearchFixture();
   try {
-    await f.ask('Atlas 今天最新版本是什么？', 'auto'); await f.waitFinished();
+    await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
     expect(f.hits).toHaveLength(1);
     const records = await f.records();
     const search = records.find(r => r.url.endsWith('/v1/web-search'))!;
@@ -47,7 +66,7 @@ for (const scenario of ['latest', 'ambiguous'] as const) {
     const f = await launchResearchFixture({ scenario });
     try {
       await f.hold('checking');
-      await f.ask(scenario === 'ambiguous' ? '今天最新版本是什么？' : 'Atlas 今天最新版本是什么？', 'force');
+      await f.ask(scenario === 'ambiguous' ? '今天最新版本是什么？' : 'Atlas 今天最新版本是什么？', true);
       if (scenario === 'ambiguous') {
         await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
         await f.panel.getByLabel('补充条件').fill('Atlas 数据库');
@@ -72,7 +91,7 @@ for (const scenario of ['latest', 'ambiguous'] as const) {
 test('live source read result updates while the second assessment is still pending', async () => {
   const f = await launchResearchFixture({ scenario: 'content-failure' });
   try {
-    await f.hold('reading'); await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitPhase('reading');
+    await f.hold('reading'); await f.ask('Atlas 今天最新版本是什么？', true); await f.waitPhase('reading');
     const details = f.panel.locator('#mode-panel-qa .research-details');
     await details.locator('summary').click();
     await expect(details).toContainText('Atlas 当前版本');
@@ -88,7 +107,7 @@ test('live source read result updates while the second assessment is still pendi
 test('retry changes the actual query and adds evidence before answering', async () => {
   const f = await launchResearchFixture({ scenario: 'retry' });
   try {
-    await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
     expect(f.hits).toHaveLength(2);
     expect(f.hits.map(h => JSON.parse(h).query)).toEqual([
       expect.stringContaining('Atlas 当前版本'), expect.stringContaining('Atlas 官方发布版本公告'),
@@ -103,7 +122,7 @@ test('retry changes the actual query and adds evidence before answering', async 
 test('SearXNG latest research adopts unknown dates without claiming time verification', async () => {
   const f = await launchResearchFixture({ scenario: 'searxng-date-unknown' });
   try {
-    await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
     const records = await f.records();
     const searches = records.filter(r => r.url.includes('/search') || r.url.endsWith('/v1/web-search'));
     expect(searches).toHaveLength(1);
@@ -138,7 +157,7 @@ test('SearXNG latest research adopts unknown dates without claiming time verific
 test('provider content failure only reads selected source and returns to honest summary', async () => {
   const f = await launchResearchFixture({ scenario: 'content-failure' });
   try {
-    await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
     const sources = (await f.session()).chat[0]?.research?.sources;
     expect(sources?.map(s => s.url)).toEqual(['https://example.org/atlas/release', 'https://example.net/atlas/mirror']);
     expect(sources?.map(s => s.readStatus)).toEqual(['unavailable', 'not_read']);
@@ -160,7 +179,7 @@ for (const scenario of ['stale', 'conflict', 'empty', 'injection'] as const) {
   test(`${scenario} evidence preserves disclosure and never invents latest facts`, async () => {
     const f = await launchResearchFixture({ scenario });
     try {
-      await f.ask('Atlas 今天最新版本是什么？', 'auto'); await f.waitFinished();
+      await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
       const answer = f.panel.locator('#mode-panel-qa .msg.ai .said:not(.said-guide)').last();
       await expect(answer).toContainText(scenario === 'stale' ? '资料较旧' : scenario === 'conflict' ? '版本冲突' : scenario === 'empty' ? '未找到资料' : '这次没有核验成功');
       await expect(answer).not.toContainText('Atlas 当前版本为 3。');
@@ -173,7 +192,7 @@ for (const scenario of ['stale', 'conflict', 'empty', 'injection'] as const) {
 test('clarification resumes the same frozen run with intent visible to both auditors', async () => {
   const f = await launchResearchFixture({ scenario: 'ambiguous' });
   try {
-    await f.ask('今天最新版本是什么？', 'force');
+    await f.ask('今天最新版本是什么？', true);
     await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
     const waiting = await f.session();
     const checkpoint = waiting.researchCheckpoint;
@@ -196,7 +215,7 @@ for (const phase of ['deciding', 'searching', 'reading', 'checking', 'answering'
     const f = await launchResearchFixture({ scenario: phase === 'reading' ? 'content-failure' : 'latest', width: 320, height: 400, large: true });
     try {
       await f.panel.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-      await f.hold(phase); await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitPhase(phase);
+      await f.hold(phase); await f.ask('Atlas 今天最新版本是什么？', true); await f.waitPhase(phase);
       const stop = f.panel.getByRole('button', { name: '停止', exact: true });
       const bounds = await stop.boundingBox();
       expect(bounds!.x).toBeGreaterThanOrEqual(0); expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(400);
@@ -217,7 +236,7 @@ for (const phase of ['deciding', 'searching', 'reading', 'checking', 'answering'
 test('waiting cancellation sends no request until explicit new-run action', async () => {
   const f = await launchResearchFixture({ scenario: 'ambiguous' });
   try {
-    await f.ask('今天最新版本是什么？', 'force');
+    await f.ask('今天最新版本是什么？', true);
     await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
     const before = (await f.records()).length;
     await f.panel.getByRole('button', { name: '取消', exact: true }).click();
@@ -235,7 +254,7 @@ test('native source details preserve bottom and review scroll positions, then la
 
   try {
     await f.panel.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
 
     // Layout fixture retains an actually accepted research result and its safe metadata.
     const session = await f.session();
@@ -284,7 +303,7 @@ test('native source details preserve bottom and review scroll positions, then la
 
     await f.panel.getByRole('button', { name: '回到最新消息' }).click();
     await expect.poll(bottom).toBeLessThan(2);
-    await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
 
     await expect(summaries).toHaveCount(9);
     await expect.poll(bottom).toBeLessThan(2);
@@ -296,7 +315,7 @@ test('immediate native keyboard summary activation preserves review through inco
   const f = await launchResearchFixture({ width: 320, height: 440, large: true });
   try {
     await f.panel.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
-    await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
     const session = await f.session(); const accepted = session.chat[0]!;
     session.chat = Array.from({ length: 8 }, (_, index) => ({ ...accepted, id: `keyboard-${index}`, question: `第 ${index + 1} 题`,
       answer: '根据网络资料，Atlas 当前版本为 3。'.repeat(20) }));
@@ -341,7 +360,7 @@ for (const change of ['navigation', 'body edit', 'model switch'] as const) {
   test(`${change} invalidates held research and rejects late answers`, async () => {
     const f = await launchResearchFixture();
     try {
-      await f.hold('checking'); await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitPhase('checking');
+      await f.hold('checking'); await f.ask('Atlas 今天最新版本是什么？', true); await f.waitPhase('checking');
       if (change === 'navigation') await f.article.goto(`${new URL(f.article.url()).origin}/other.html`);
       if (change === 'body edit') await f.article.locator('article p').first().evaluate(n => { n.textContent = '正文已经改稿；旧研究必须失效。'; });
       if (change === 'model switch') {
@@ -365,7 +384,7 @@ for (const change of ['navigation', 'body edit', 'model switch'] as const) {
 test('panel reconnect and worker restart interrupt without automatically resending', async () => {
   const f = await launchResearchFixture({ scenario: 'ambiguous' });
   try {
-    await f.ask('今天最新版本是什么？', 'force');
+    await f.ask('今天最新版本是什么？', true);
     await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
     const before = (await f.records()).length;
     const original = (await f.session()).researchPending?.runId;
@@ -375,6 +394,8 @@ test('panel reconnect and worker restart interrupt without automatically resendi
     await expect(f.panel.getByRole('button', { name: '继续', exact: true })).toHaveCount(0);
     expect((await f.records()).length).toBe(before);
     expect((await f.session()).researchCheckpoint ?? null).toBeNull();
+    await expect(f.panel.getByRole('button', { name: '联网搜索', exact: true })).toHaveAttribute('aria-pressed', 'false');
+    await f.setSearch(true);
     await f.panel.getByRole('button', { name: '重新研究这个问题' }).click();
     await expect(f.panel.getByRole('region', { name: '研究澄清' })).toBeVisible();
     const restarted = (await f.session()).researchPending?.runId;
@@ -396,35 +417,30 @@ test('panel reconnect and worker restart interrupt without automatically resendi
   } finally { await f.close(); }
 });
 
-test('editing/restoring research policy and clearing sessions leave credentials independent', async () => {
-  const f = await launchResearchFixture();
+test('retired research preferences stay stored but never enter decisions or alter credentials', async () => {
+  const legacyAgent = { enabled: false, depth: 'quick' as const, policy: 'LEGACY_POLICY_DO_NOT_EXECUTE',
+    language: 'xx-legacy', preferredDomains: ['legacy.invalid'] };
+  const f = await launchResearchFixture({ legacyAgent });
   try {
-    await f.ask('Atlas 今天最新版本是什么？', 'force'); await f.waitFinished();
+    await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
+    expect(f.hits).toHaveLength(1);
+    const records = await f.records();
+    expect(records.every(r => !r.body.includes('LEGACY_POLICY_DO_NOT_EXECUTE') && !r.body.includes('legacy.invalid'))).toBe(true);
     const initial = await f.config();
+    expect(initial.search?.agent).toEqual(legacyAgent);
     expect(initial.apiKeys?.deepseek).toBe('sk-synthetic-model-only');
     expect(initial.search?.credentials?.bocha?.apiKey).toBe('sk-synthetic-search-only');
     const settings = await f.context.newPage();
     await settings.goto(`chrome-extension://${f.extensionId}/options.html?tab=${f.tabId}#search`);
-    const policy = settings.getByLabel('联网 Agent 策略', { exact: true });
-    await expect(policy).toBeVisible();
-    const builtIn = await policy.inputValue();
-    await policy.fill('只查原始发布者，日期未知时明确说明。');
-    await settings.getByRole('button', { name: '保存联网策略', exact: true }).click();
-    const config = f.config;
-    await expect.poll(async () => (await config()).search?.agent?.policy).toBe('只查原始发布者，日期未知时明确说明。');
-    expect((await config()).apiKeys).toEqual(initial.apiKeys);
-    expect((await config()).search?.credentials).toEqual(initial.search?.credentials);
-    expect((await f.session()).chat).toHaveLength(1);
-    await settings.getByRole('button', { name: '恢复默认联网策略', exact: true }).click();
-    await expect(policy).toHaveValue(builtIn);
-    await expect.poll(async () => (await config()).search?.agent?.policy ?? '').toBe('');
+    await expect(settings.getByLabel('联网 Agent 策略', { exact: true })).toHaveCount(0);
+    await expect(settings.getByRole('button', { name: '保存联网策略', exact: true })).toHaveCount(0);
     await settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '清除', exact: true }).click();
     await settings.getByRole('button', { name: '全部清掉', exact: true }).click();
     await expect.poll(() => f.worker.evaluate(async () => Object.keys(await chrome.storage.session.get(null)).filter(k => k.startsWith('sess:')))).toEqual([]);
-    expect((await config()).apiKeys).toEqual(initial.apiKeys);
-    expect((await config()).search?.credentials).toEqual(initial.search?.credentials);
-    expect((await config()).search?.agent?.enabled).toBe(true);
-    expect((await config()).search?.agent?.policy ?? '').toBe('');
+    const after = await f.config();
+    expect(after.apiKeys).toEqual(initial.apiKeys);
+    expect(after.search?.credentials).toEqual(initial.search?.credentials);
+    expect(after.search?.agent).toEqual(legacyAgent);
     expect(f.unexpected).toEqual([]);
   } finally { await f.close(); }
 });

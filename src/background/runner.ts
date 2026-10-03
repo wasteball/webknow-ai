@@ -12,7 +12,7 @@ import {
   unknownAssistMode,
 } from '../core/learn-policy';
 import { learnMessages, type LearnMode } from '../core/prompts/learn';
-import type { AgentCheckpoint, AgentEvent, AgentResume, NetworkMode } from '../core/search/agent-types';
+import type { AgentCheckpoint, AgentEvent, AgentResume, NetworkMode, RunIdentity } from '../core/search/agent-types';
 import { runtimeAgentSettings } from '../core/search/agent-policy';
 import { initialCheckpoint } from '../core/search/agent-limits';
 import { evaluateSearchGate } from '../core/search/gate';
@@ -60,7 +60,7 @@ import { getSession, putSession, readApiKey, readConfig } from './store';
 
 export type Intent =
   | { kind: 'guide'; tabId: number }
-  | { kind: 'ask'; tabId: number; question: string; network?: NetworkMode; search?: boolean; quote?: string | null; quoteId?: string }
+  | { kind: 'ask'; tabId: number; question: string; search?: boolean; quote?: string | null; quoteId?: string }
   | { kind: 'resolveResearch'; tabId: number; sessionId: string; runId: string; mode: 'continue' | 'article' | 'cancel'; text: string }
   | { kind: 'learnStart'; tabId: number; goal: string }
   | { kind: 'learnAnswer'; tabId: number; text: string; choices?: LearnChoiceAnswer[] }
@@ -86,6 +86,18 @@ type Task = (
 type ActiveRun = { runId: string; sessionId: string; controller: AbortController; research?: boolean; waiting?: boolean; seq?: number; agent?: AgentEvent };
 const controllers = new Map<number, ActiveRun>();
 export function currentAgentEvent(tabId: number): AgentEvent | undefined { return controllers.get(tabId)?.agent; }
+
+/** Storage is evidence, not authorization: only this worker's live run grants permission. */
+export function assertActiveResearch(identity: RunIdentity, session: PageSession | null): AgentCheckpoint['snapshot'] {
+  const active = controllers.get(identity.tabId);
+  const snapshot = session?.researchCheckpoint?.snapshot;
+  if (!active?.research || active.controller.signal.aborted || active.sessionId !== identity.sessionId || active.runId !== identity.runId ||
+      session?.id !== identity.sessionId || session.run?.id !== identity.runId || session.url !== identity.url || session.fingerprint !== identity.fingerprint || !snapshot?.settings.enabled ||
+      Object.entries(identity).some(([key, value]) => snapshot.identity[key as keyof RunIdentity] !== value)) {
+    throw appError('ABORTED', '这次研究的联网许可已失效，请重新提问。');
+  }
+  return snapshot;
+}
 const recoveries = new Map<number, Promise<PageSession | null>>();
 
 /** A restarted worker cannot resume a persisted network request. Keep history and permit retry. */
@@ -133,7 +145,7 @@ export async function handleIntent(intent: Intent, hooks: RunnerHooks): Promise<
     case 'guide':
       return runGuide(intent.tabId, hooks);
     case 'ask':
-      return runAsk(intent.tabId, intent.question, intent.network ?? (intent.search === true ? 'force' : intent.search === false ? 'article' : 'auto'), hooks, intent.quote, intent.quoteId);
+      return runAsk(intent.tabId, intent.question, intent.search === true ? 'auto' : 'article', hooks, intent.quote, intent.quoteId);
     case 'resolveResearch':
       return resolveResearch(intent, hooks);
     case 'learnStart':
@@ -409,7 +421,7 @@ async function runAsk(
     'answer',
     async (session, runId, signal) => {
       let current = await adoptCurrentPage(tabId, session);
-      const settings = runtimeAgentSettings(config, browser.i18n?.getUILanguage() ?? globalThis.navigator?.language ?? 'en');
+      const settings = { ...runtimeAgentSettings(config, browser.i18n?.getUILanguage() ?? globalThis.navigator?.language ?? 'en'), enabled: network === 'auto' };
       const preparedQuote = rawQuote === undefined ? current.quote ?? null
         : rawQuote === null ? null : prepareQuote(rawQuote, current.blocks);
       const frozenQuote = preparedQuote ? { ...preparedQuote, id: rawQuote === undefined ? preparedQuote.id : quoteId ?? preparedQuote.id } : null;
@@ -473,7 +485,6 @@ async function runAsk(
           gate.level === 'required' && !clean.value.citations.length)) clean = cleanAnswer(unknown, current.blocks);
       if (!clean.ok) throw clean.error;
       const unanswered = [...clean.value.unanswered];
-      unanswered.push('本题未联网核验，只依据当前提供的文章。');
       const citations = clean.value.source === 'unknown' ? [] : withQuoteCitation(clean.value.citations, current.blocks, quote);
       const asked = new Set([...current.chat.map((turn) => turn.question), question]);
       const followUps = clean.value.followUps.filter((item) => !asked.has(item.question));
@@ -484,7 +495,7 @@ async function runAsk(
           {
             id: newId('t'),
             question,
-            answer: `${clean.value.answer}\n\n本题未联网核验，只依据当前提供的文章。`,
+            answer: gate.level === 'required' ? `${clean.value.answer}\n\n本题未联网核验，只依据当前提供的文章。` : clean.value.answer,
             source: clean.value.source,
             citations,
             unanswered,

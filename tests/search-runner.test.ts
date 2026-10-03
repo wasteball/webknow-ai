@@ -41,7 +41,7 @@ function waiting(checkpoint: AgentCheckpoint): AgentOutcome {
   const question = { type: 'ask_user' as const, question: '你指的是哪个版本？', reason: 'ambiguous_entity' as const };
   return { kind: 'waiting', checkpoint: { ...checkpoint, waiting: question }, question };
 }
-const ask = () => handleIntent({ kind: 'ask', tabId: 7, question: '查证这一结论', network: 'force' }, hooks);
+const ask = () => handleIntent({ kind: 'ask', tabId: 7, question: '查证这一结论', search: true }, hooks);
 async function resume(runId?: string) {
   const session = (await storage.get())!;
   return handleIntent({ kind: 'resolveResearch', tabId: 7, sessionId: session.id,
@@ -119,17 +119,30 @@ describe('research lifecycle through handleIntent', () => {
     expect(recovered?.run).toBeNull(); expect(recovered?.researchCheckpoint).toBeUndefined();
     expect(recovered?.researchPending?.status).toBe('interrupted'); expect(storage.research).toHaveBeenCalledOnce();
   });
-  it.each([{}, { search: { providerId: 'firecrawl' } }])('global network defaults off even for force and legacy provider config %j', async config => {
-    storage.config.mockResolvedValue(config); await ask();
+  it.each([false, undefined])('missing/false local permission ignores legacy enabled (%s)', async search => {
+    await handleIntent({ kind: 'ask', tabId: 7, question: '查证这一结论', search }, hooks);
     expect(storage.research).not.toHaveBeenCalled();
-    expect((await storage.get())?.chat[0]?.answer).toContain('未联网核验');
+    const turn = (await storage.get())?.chat[0];
+    expect(turn?.answer.match(/未联网核验/g)).toHaveLength(1);
+    expect(turn?.unanswered.join('')).not.toContain('未联网核验');
+    expect(turn?.source).toBe('unknown');
     expect(storage.model).not.toHaveBeenCalled();
   });
-  it('article-scoped answer cannot use remembered external current facts', async () => {
-    await handleIntent({ kind: 'ask', tabId: 7, question: '解释文中样本', network: 'article' }, hooks);
+  it('true permission is auto, not forced search, and ignores legacy disabled settings', async () => {
+    storage.config.mockResolvedValue({ provider: 'deepseek', search: { providerId: 'firecrawl', agent: { enabled: false, depth: 'quick', policy: 'OLD_POLICY' } } });
+    await handleIntent({ kind: 'ask', tabId: 7, question: '比较文章外的团队', search: true }, hooks);
+    const snapshot = storage.research.mock.calls[0]?.[0].snapshot;
+    expect(snapshot?.gate).toMatchObject({ level: 'recommended', canSearch: true, mustSearch: false });
+    expect(snapshot?.settings).toMatchObject({ enabled: true, depth: 'deep' });
+    expect(snapshot?.settings.policy).not.toBe('OLD_POLICY');
+  });
+  it.each([false, true, undefined])('ordinary article explanation does not repeat offline notices (%s)', async search => {
+    await handleIntent({ kind: 'ask', tabId: 7, question: '解释文中样本', search }, hooks);
     expect(storage.research).not.toHaveBeenCalled();
     expect(storage.model.mock.calls[0]?.[0][0].content).toContain('本题仅依据文章');
-    expect((await storage.get())?.chat[0]?.answer).toContain('未联网核验');
+    const turn = (await storage.get())?.chat[0];
+    expect(turn?.answer).toBe('只有三个团队。');
+    expect(turn?.unanswered).toEqual([]);
   });
   it('ignores obsolete and non-increasing agent events', async () => {
     storage.research.mockImplementation(async (checkpoint: AgentCheckpoint, _signal: AbortSignal, emit: (e: AgentEvent) => void) => {
@@ -291,7 +304,7 @@ it('publishes the running identity before executing initial and resumed research
     expect(published).toBe(true);
     return waiting(checkpoint);
   });
-  const first = handleIntent({ kind: 'ask', tabId: 7, question: '查证这一结论', network: 'force' }, { ...hooks, onState: stateHook });
+  const first = handleIntent({ kind: 'ask', tabId: 7, question: '查证这一结论', search: true }, { ...hooks, onState: stateHook });
   await vi.waitFor(() => expect(registration).toHaveBeenCalledTimes(1));
   expect(storage.research).not.toHaveBeenCalled();
   deliver(); await first;
@@ -316,7 +329,7 @@ it.each([false, true])('stop during delayed identity publication prevents initia
   const session = (await storage.get())!;
   const running = handleIntent(continued
     ? { kind: 'resolveResearch', tabId: 7, sessionId: session.id, runId: session.run!.id, mode: 'continue', text: 'Atlas' }
-    : { kind: 'ask', tabId: 7, question: '查证这一结论', network: 'force' }, { ...hooks, onState: stateHook });
+    : { kind: 'ask', tabId: 7, question: '查证这一结论', search: true }, { ...hooks, onState: stateHook });
   await vi.waitFor(() => expect(publishing).toBe(true));
   abortRun(7); deliver(); await running;
   expect(storage.research).toHaveBeenCalledTimes(before);

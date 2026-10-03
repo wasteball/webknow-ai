@@ -1,5 +1,3 @@
-import { normalizeAgentSettings } from '../core/search/agent-policy';
-import type { AgentSettings } from '../core/search/agent-types';
 import { storage } from 'wxt/utils/storage';
 
 import { appError } from '../core/errors';
@@ -28,7 +26,7 @@ import type { PageSession } from '../core/session';
 /**
  * 外发告知版本：接收方或发送范围实质变化时必须更新，旧确认随之失效（FR-022）。
  *
- * 2026-10-01.1：包括模型、搜索服务／自建实例和来源读取接收方及数据范围。
+ * 2026-10-02.1：来源读取恢复产品默认，旧 off 范围确认必须重新取得。
  */
 export { OUTBOUND_NOTICE_VERSION } from '../core/settings';
 
@@ -377,16 +375,4 @@ export async function getPending(tabId: number): Promise<Pending | null> {
 
 export async function clearPending(tabId: number): Promise<void> {
   await storage.removeItem(pendingKey(tabId));
-}
-
-/** Merge a partial validated patch; invalid fields preserve the saved value. */
-export async function saveSearchAgentSettings(patch: Partial<AgentSettings>): Promise<void> {
-  return serializeConfig(async () => {
-    const current = await readStoredConfig();
-    const agent = { ...current.search?.agent, ...normalizeAgentSettings(patch) };
-    if (agent.policy === '') delete agent.policy;
-    const next: Config = { ...current, search: { ...current.search, agent } };
-    if (outboundScope(current) !== outboundScope(next)) delete next.outbound;
-    await storage.setItem(CONFIG_KEY, next);
-  });
 }

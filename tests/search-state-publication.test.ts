@@ -60,7 +60,7 @@ async function start(continued: boolean) {
   receive({ id: 1, command: { type: 'attach', tabId: 7 } });
   await vi.waitFor(() => expect(messages.some(m => m.type === 'reply')).toBe(true));
   const hooks = { onState: notifyTab, onProgress: vi.fn(), onAgent: (_tabId: number, event: AgentEvent) => messages.push({ type: 'agent', event }) };
-  const ask = { kind: 'ask' as const, tabId: 7, question: 'Check this claim', network: 'force' as const };
+  const ask = { kind: 'ask' as const, tabId: 7, question: 'Check this claim', search: true };
   if (continued) {
     await handleIntent(ask, hooks);
     await idleTurn();

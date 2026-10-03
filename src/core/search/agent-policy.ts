@@ -39,11 +39,9 @@ export function normalizeAgentSettings(patch: unknown): Partial<AgentSettings> {
   return clean;
 }
 
-/** Legacy provider selection never enables the independent global network switch. */
-export function effectiveAgentSettings(config: { search?: { agent?: Partial<AgentSettings> } }): AgentSettings {
-  const effective = { ...DEFAULT_AGENT_SETTINGS, ...normalizeAgentSettings(config.search?.agent) };
-  effective.policy = effective.policy.trim() || DEFAULT_SEARCH_AGENT_POLICY;
-  return effective;
+/** Legacy records remain stored, but product defaults alone govern research. */
+export function effectiveAgentSettings(_config: { search?: { agent?: Partial<AgentSettings> } }): AgentSettings {
+  return { ...DEFAULT_AGENT_SETTINGS, preferredDomains: [], policy: DEFAULT_SEARCH_AGENT_POLICY };
 }
 
 /** Saved empty values follow the browser, resolved once when freezing the run. No geolocation. */

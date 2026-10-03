@@ -1,7 +1,7 @@
 import { outboundScope } from '../core/settings';
 import { browser } from 'wxt/browser';
 import type { RunIdentity } from '../core/search/agent-types';
-import { effectiveAgentSettings } from '../core/search/agent-policy';
+import { assertActiveResearch } from './runner';
 import { resolveThinking } from '../core/model-thinking';
 import { getSession } from './store';
 import { readPageIdentity } from './page';
@@ -131,31 +131,34 @@ export async function callResearchModel(input: {
     }
     if (input.outboundScope !== undefined && outboundScope(config) !== input.outboundScope) throw appError('STALE_PAGE', '外发接收方或范围已经变化，请重新提问。');
     assertOutboundConfirmation(config);
-    if (!effectiveAgentSettings(config).enabled) throw appError('ABORTED', '联网已关闭。');
     return provider;
   };
   const assertPage = async () => {
     const live = await readPageIdentity(input.identity.tabId);
     const fresh = await getSession(input.identity.tabId);
+    assertActiveResearch(input.identity, fresh);
     if (fresh?.id !== input.identity.sessionId || fresh.run?.id !== input.identity.runId ||
         fresh.url !== input.identity.url || fresh.fingerprint !== input.identity.fingerprint ||
         live?.url !== input.identity.url || live.fingerprint !== input.identity.fingerprint) {
       throw appError('STALE_PAGE', '页面或模型已经变化，请重新提问。');
     }
     if (input.signal.aborted) throw appError('ABORTED', '已停止本次研究。');
+    return fresh;
   };
   const provider = assertConfig(await readConfig());
   await assertPage();
   if (!await browser.permissions.contains({ origins: [provider.origin] })) throw appError('PERMISSION_MISSING', '模型服务的访问权限已失效。');
   const apiKey = await readApiKey(provider.id);
   if (!apiKey) throw appError('NO_KEY', `还没有配置 ${provider.name} 的钥匙。`, false);
-  // Config/page may change while permission or key storage awaits settle.
-  await assertPage();
+  // Recheck permission after Key lookup; receiver/consent checks follow every await.
+  if (!await browser.permissions.contains({ origins: [provider.origin] })) throw appError('PERMISSION_MISSING', '模型服务的访问权限已失效。');
+  const fresh = await assertPage();
   const current = await readConfig();
   assertConfig(current);
   const currentApiKey = current.apiKeys?.[provider.id]?.trim();
   if (!currentApiKey) throw appError('NO_KEY', `还没有配置 ${provider.name} 的钥匙。`, false);
   if (currentApiKey !== apiKey) throw appError('ABORTED', '模型钥匙已变化，请重新提问。');
+  assertActiveResearch(input.identity, fresh);
   if (input.signal.aborted) throw appError('ABORTED', '已停止本次研究。');
   return chatJson({ apiKey, provider, model: input.identity.modelId, thinking: input.thinking,
     messages: input.messages, signal: input.signal });

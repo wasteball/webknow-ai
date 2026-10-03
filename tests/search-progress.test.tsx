@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentPhase, ResearchSummary } from '../src/core/search/agent-types';
-import type { PanelState } from '../src/core/protocol';
+import type { Command, PanelState } from '../src/core/protocol';
 import { SearchProgress } from '../src/sidepanel/components/SearchProgress';
 import { SearchSources } from '../src/sidepanel/components/SearchSources';
 import { Reading } from '../src/sidepanel/components/Reading';
@@ -60,7 +60,7 @@ it('never links an unsafe source URL', () => {
 
 describe('research composer', () => {
   it.each<AgentPhase>(['deciding', 'searching', 'reading', 'checking', 'answering', 'waiting', 'degraded'])('%s keeps stop in the composer and hides unreviewed output', async (phase) => {
-    const send = vi.fn(async () => ({ ok: true as const }));
+    const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
     render(<Reading state={researching(phase)} send={send} />);
     const stop = screen.getByRole('button', { name: '停止' });
     expect(document.querySelector('.composer-field')?.contains(stop)).toBe(true);
@@ -72,7 +72,7 @@ describe('research composer', () => {
   });
 
   it.each(['continue', 'article', 'cancel'] as const)('sends guarded %s without the unrelated composer draft', async (mode) => {
-    const send = vi.fn(async () => ({ ok: true as const }));
+    const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
     render(<Reading state={researching()} send={send} />);
     const composer = screen.getByLabelText('向这篇文章提问') as HTMLTextAreaElement;
     fireEvent.change(composer, { target: { value: '下一题草稿' } });
@@ -86,7 +86,7 @@ describe('research composer', () => {
   });
 
   it.each(['stopped', 'interrupted'] as const)('%s preserves original question and requires an explicit fresh ask', async (status) => {
-    const send = vi.fn(async () => ({ ok: true as const }));
+    const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
     const state = researching();
     render(<Reading state={{ ...state, busy: null, researchPending: { ...state.researchPending!, status } }} send={send} />);
     expect(screen.getByText('最新版本是什么？')).toBeTruthy();
@@ -94,11 +94,11 @@ describe('research composer', () => {
     expect(send).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '重新研究这个问题' }));
     await act(async () => {});
-    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 7, question: '最新版本是什么？', network: 'auto', quote: null });
+    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 7, question: '最新版本是什么？', search: false, quote: null });
   });
 
   it('uses backend permission origins only after the click and requires grant before continuing', async () => {
-    const send = vi.fn(async () => ({ ok: true as const }));
+    const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
     const state = researching();
     state.settings.search.sourceCapabilities.directRead = true;
     state.researchPending = { ...state.researchPending!, clarification: { type: 'ask_user', question: '是否允许读取？', reason: 'permission' }, permissionOrigins: ['https://verified.org/*'] };
@@ -123,30 +123,30 @@ describe('research composer', () => {
     expect(screen.getByText('直接读取尚未验证')).toBeTruthy();
   });
 
-  it('exposes three per-question modes, keeps quote identity, and discloses disabled live verification', async () => {
-    const send = vi.fn(async () => ({ ok: true as const }));
+  it('opens tool setup without consuming an unconfigured composer draft or quote', async () => {
+    const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
     const settings = vi.fn();
     render(<Reading state={panel({ quote: { id: 'q2', text: '新划词', blockId: 'b2' } })} send={send} onSearchSettings={settings} />);
-    const input = screen.getByLabelText('向这篇文章提问');
+    const input = screen.getByLabelText('向这篇文章提问') as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: '产品 A 最新版本是什么？' } });
-    const mode = screen.getByLabelText('本题联网方式');
-    expect(screen.getByRole('option', { name: '智能联网' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: '本题联网' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: '只依据文章' })).toBeTruthy();
-    fireEvent.change(mode, { target: { value: 'force' } });
-    expect(screen.getByText(/联网总开关已关闭.*未核验/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '联网设置' }));
+    const chip = screen.getByRole('button', { name: '联网搜索' });
+    fireEvent.click(chip);
     expect(settings).toHaveBeenCalledOnce();
+    expect(chip.getAttribute('aria-pressed')).toBe('false');
+    expect(input.value).toBe('产品 A 最新版本是什么？');
+    expect(document.querySelector('.composer .quote-chip')?.textContent).toContain('新划词');
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.queryByRole('combobox')).toBeNull();
     fireEvent.submit(input.closest('form')!);
     await act(async () => {});
-    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 7, question: '产品 A 最新版本是什么？', network: 'force', quote: '新划词', quoteId: 'q2' });
+    expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 7, question: '产品 A 最新版本是什么？', search: false, quote: '新划词', quoteId: 'q2' });
   });
 });
 
 it('a permission result cannot resume a card that stopped while the browser prompt was open', async () => {
   let grant!: (allowed: boolean) => void;
   permissions.request.mockImplementationOnce(() => new Promise<boolean>(resolve => { grant = resolve; }));
-  const send = vi.fn(async () => ({ ok: true as const }));
+  const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
   const state = researching();
   state.settings.search.sourceCapabilities.directRead = true;
   state.researchPending = { ...state.researchPending!, clarification: { type: 'ask_user', question: '允许读取来源？', reason: 'permission' }, permissionOrigins: ['https://verified.org/*'] };
@@ -160,7 +160,7 @@ it('a permission result cannot resume a card that stopped while the browser prom
 });
 
 it('bounds clarification text and does not consume a new selection on an explicit retry', async () => {
-  const send = vi.fn(async () => ({ ok: true as const }));
+  const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
   const state = researching();
   state.quote = { id: 'new', text: '后来划词', blockId: 'b2' };
   const { rerender } = render(<Reading state={state} send={send} />);
@@ -173,21 +173,173 @@ it('bounds clarification text and does not consume a new selection on an explici
   fireEvent.change(composer, { target: { value: '下一题草稿' } });
   fireEvent.click(screen.getByRole('button', { name: '重新研究这个问题' }));
   await act(async () => {});
-  expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 7, question: '最新版本是什么？', network: 'auto', quote: '上一轮划词', quoteId: 'old' });
+  expect(send).toHaveBeenCalledWith({ type: 'ask', tabId: 7, question: '最新版本是什么？', search: false, quote: '上一轮划词', quoteId: 'old' });
   expect(document.querySelector('.composer .quote-chip')?.textContent).toContain('后来划词');
   expect(composer.value).toBe('下一题草稿');
 });
 
+function configured(): PanelState {
+  const state = panel({ sessionId: 's1', pageUrl: identity.url });
+  state.settings.search = { ...state.settings.search, enabled: true, providerName: 'Firecrawl',
+    agent: { ...state.settings.search.agent, enabled: false } };
+  return state;
+}
+
+it('defaults off, sends boolean permission on and off, and ignores the old hidden enabled flag', async () => {
+  const state = configured();
+  const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
+  render(<Reading state={state} send={send} />);
+  const chip = screen.getByRole('button', { name: '联网搜索' });
+  const input = screen.getByLabelText('向这篇文章提问');
+  expect(chip.getAttribute('aria-pressed')).toBe('false');
+  const submit = async (question: string) => {
+    fireEvent.change(input, { target: { value: question } });
+    fireEvent.submit(input.closest('form')!);
+    await act(async () => {});
+  };
+  await submit('默认文章回答');
+  fireEvent.click(chip);
+  expect(chip.getAttribute('aria-pressed')).toBe('true');
+  await submit('查证一下');
+  fireEvent.click(chip);
+  await submit('再按文章回答');
+  expect(send.mock.calls.map(([command]) => command)).toEqual([
+    { type: 'ask', tabId: 7, question: '默认文章回答', search: false, quote: null },
+    { type: 'ask', tabId: 7, question: '查证一下', search: true, quote: null },
+    { type: 'ask', tabId: 7, question: '再按文章回答', search: false, quote: null },
+  ]);
+});
+
+it('keeps local permission across panel visibility and backend state updates', () => {
+  const state = configured();
+  const send = vi.fn();
+  const { rerender } = render(<Reading state={state} send={send} />);
+  fireEvent.click(screen.getByRole('button', { name: '联网搜索' }));
+  rerender(<Reading state={{ ...state, phase: 'LEARNING' }} active={false} send={send} />);
+  rerender(<Reading state={{ ...state, quote: { id: 'new', text: '新引用', blockId: 'b1' } }} active send={send} />);
+  expect(screen.getByRole('button', { name: '联网搜索' }).getAttribute('aria-pressed')).toBe('true');
+  expect(send).not.toHaveBeenCalled();
+});
+
+it.each(['waiting', 'searching'] as const)('off cancels only the published current-page %s research and locks until stop acknowledges', async phase => {
+  let acknowledge!: (reply: { ok: true }) => void;
+  const send = vi.fn((_command: Command) => new Promise<{ ok: true }>(resolve => { acknowledge = resolve; }));
+  const state = configured();
+  const { rerender } = render(<Reading state={state} send={send} />);
+  const chip = screen.getByRole('button', { name: '联网搜索' }) as HTMLButtonElement;
+  fireEvent.click(chip);
+  rerender(<Reading state={researching(phase)} send={send} />);
+  fireEvent.click(chip);
+  expect(chip.getAttribute('aria-pressed')).toBe('false');
+  expect(chip.disabled).toBe(true);
+  expect(send).toHaveBeenCalledExactlyOnceWith({ type: 'stop', tabId: 7 });
+  expect(screen.queryByRole('button', { name: '继续' })).toBeNull();
+  expect(screen.getByRole('button', { name: '停止' })).toBeTruthy();
+  rerender(<Reading state={state} send={send} />);
+  const input = screen.getByLabelText('向这篇文章提问');
+  fireEvent.change(input, { target: { value: '下一题' } });
+  fireEvent.click(chip);
+  fireEvent.click(screen.getByRole('button', { name: '停止' }));
+  fireEvent.submit(input.closest('form')!);
+  fireEvent.keyDown(input, { key: 'Enter' });
+  expect(send).toHaveBeenCalledTimes(1);
+  await act(async () => acknowledge({ ok: true }));
+  expect(chip.disabled).toBe(false);
+  fireEvent.click(chip);
+  fireEvent.submit(input.closest('form')!);
+  expect(send).toHaveBeenLastCalledWith({ type: 'ask', tabId: 7, question: '下一题', search: true, quote: null });
+  fireEvent.click(chip);
+  expect(send.mock.calls.filter(([command]) => command.type === 'stop')).toHaveLength(1);
+  await act(async () => acknowledge({ ok: true }));
+});
+
+it('disables the switch before ask registers its run, then allows off after current research is published', async () => {
+  let finishAsk!: (reply: { ok: true }) => void;
+  const send = vi.fn((command: { type: string }) => command.type === 'ask'
+    ? new Promise<{ ok: true }>(resolve => { finishAsk = resolve; }) : Promise.resolve({ ok: true as const }));
+  const state = configured();
+  const { rerender } = render(<Reading state={state} send={send} />);
+  const chip = screen.getByRole('button', { name: '联网搜索' }) as HTMLButtonElement;
+  fireEvent.click(chip);
+  const input = screen.getByLabelText('向这篇文章提问');
+  fireEvent.change(input, { target: { value: '最新版本？' } });
+  fireEvent.submit(input.closest('form')!);
+  expect(chip.disabled).toBe(true);
+  fireEvent.click(chip);
+  expect(chip.getAttribute('aria-pressed')).toBe('true');
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: '停止' })).toBeTruthy();
+  rerender(<Reading state={researching('searching')} send={send} />);
+  expect(chip.disabled).toBe(false);
+  fireEvent.click(chip);
+  expect(send).toHaveBeenLastCalledWith({ type: 'stop', tabId: 7 });
+  await act(async () => finishAsk({ ok: true }));
+});
+
+it.each(['article', 'learning', 'other-tab', 'other-session', 'other-page'] as const)('off does not stop %s work', async kind => {
+  const state = configured();
+  const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
+  const { rerender } = render(<Reading state={state} send={send} />);
+  const chip = screen.getByRole('button', { name: '联网搜索' });
+  fireEvent.click(chip);
+  const researchState = researching('searching');
+  const busy = kind === 'article' || kind === 'learning'
+    ? { kind: kind === 'article' ? 'answer' as const : 'learn' as const, draft: '', reasoning: '', chars: 0 }
+    : { ...researchState.busy!, agent: { ...event, identity: { ...identity,
+      ...(kind === 'other-tab' ? { tabId: 8 } : kind === 'other-session' ? { sessionId: 's2' } : { url: 'https://example.org/other' }) } } };
+  rerender(<Reading state={{ ...state, busy }} send={send} />);
+  fireEvent.click(chip);
+  await act(async () => {});
+  expect(chip.getAttribute('aria-pressed')).toBe('false');
+  expect(send).not.toHaveBeenCalled();
+});
+
+it('does not send a successor while published research has no progress event yet', async () => {
+  const state = researching('searching', { busy: null });
+  const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
+  render(<Reading state={state} send={send} />);
+  const input = screen.getByLabelText('向这篇文章提问');
+  fireEvent.change(input, { target: { value: '下一题' } });
+  fireEvent.submit(input.closest('form')!);
+  await act(async () => {});
+  expect(send).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: '停止' })).toBeTruthy();
+});
+
+it('off invalidates an in-flight source permission continuation', async () => {
+  let grant!: (allowed: boolean) => void;
+  let acknowledge!: (reply: { ok: true }) => void;
+  permissions.request.mockImplementationOnce(() => new Promise<boolean>(resolve => { grant = resolve; }));
+  const send = vi.fn((_command: Command) => new Promise<{ ok: true }>(resolve => { acknowledge = resolve; }));
+  const state = configured();
+  const { rerender } = render(<Reading state={state} send={send} />);
+  fireEvent.click(screen.getByRole('button', { name: '联网搜索' }));
+  const waiting = researching();
+  waiting.settings.search.sourceCapabilities.directRead = true;
+  waiting.researchPending = { ...waiting.researchPending!, clarification: { type: 'ask_user', question: '允许读取？', reason: 'permission' }, permissionOrigins: ['https://verified.org/*'] };
+  rerender(<Reading state={waiting} send={send} />);
+  fireEvent.change(screen.getByLabelText('补充条件'), { target: { value: '允许' } });
+  fireEvent.click(screen.getByRole('button', { name: '授权并继续' }));
+  fireEvent.click(screen.getByRole('button', { name: '联网搜索' }));
+  await act(async () => grant(true));
+  expect(send).toHaveBeenCalledExactlyOnceWith({ type: 'stop', tabId: 7 });
+  rerender(<Reading state={{ ...waiting, busy: null, researchPending: { ...waiting.researchPending!, status: 'stopped' } }} send={send} />);
+  await act(async () => acknowledge({ ok: true }));
+  expect(screen.getByText('最新版本是什么？')).toBeTruthy();
+  expect(screen.getByRole('button', { name: '重新研究这个问题' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '联网搜索' }).getAttribute('aria-pressed')).toBe('false');
+});
+
 it('keeps disabled live-verification disclosure and settings available after the question is sent', async () => {
   const state = panel();
-  const send = vi.fn(async () => ({ ok: true as const }));
+  const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
   const settings = vi.fn();
   const { rerender } = render(<Reading state={state} send={send} onSearchSettings={settings} />);
   const input = screen.getByLabelText('向这篇文章提问');
   fireEvent.change(input, { target: { value: '产品 A 最新版本是什么？' } });
   fireEvent.submit(input.closest('form')!);
   await act(async () => {});
-  expect(screen.getByText(/联网总开关已关闭.*未核验/)).toBeTruthy();
+  expect(screen.getByText(/联网搜索未开启.*未核验/)).toBeTruthy();
   rerender(<Reading state={{ ...state, chat: [{ id: 't1', question: '产品 A 最新版本是什么？', answer: '原文无法确认。', source: 'unknown', citations: [], references: [], unanswered: ['缺少实时核验依据。'], at: 1 }] }} send={send} onSearchSettings={settings} />);
   fireEvent.click(screen.getByRole('button', { name: '联网设置' }));
   expect(settings).toHaveBeenCalledOnce();

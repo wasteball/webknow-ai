@@ -39,7 +39,6 @@ import {
   saveCustomSkill,
   saveImaConfig,
   saveSearchConfig,
-  saveSearchAgentSettings,
   setPending,
   writeConfig,
 } from './store';
@@ -187,7 +186,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
   };
 }
 
-/** 界面可编辑偏好与已声明接收方；凭证和运行快照不出后台。 */
+/** 产品默认与已声明接收方；凭证和运行快照不出后台。 */
 function searchStatus(config: import('./store').Config): PanelState['settings']['search'] {
   const providerId = config.search?.providerId;
   const provider = BUILTIN_SEARCH_PROVIDERS.find(item => item.id === providerId);
@@ -196,7 +195,7 @@ function searchStatus(config: import('./store').Config): PanelState['settings'][
   if (providerId === 'searxng') {
     try { receiver = `SearXNG（${new URL(saved.baseUrl ?? '').origin}）`; } catch { receiver = 'SearXNG（尚未配置实例）'; }
   }
-  return { enabled: Boolean(provider) && effectiveAgentSettings(config).enabled,
+  return { enabled: Boolean(provider),
     providerName: provider?.name ?? null, receiver,
     hasCredentials: Boolean(provider?.configFields.every(field => !field.required || Boolean(saved[field.key]?.trim()))),
     agent: effectiveAgentSettings(config),
@@ -366,7 +365,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         // 逐题联网开关由界面决定：这里必须原样透传，否则开关是死的（F3）。
         return finish(
           await handleIntent(
-            { kind: 'ask', tabId: command.tabId, question: command.question, search: command.search, network: command.network, quote: command.quote, quoteId: command.quoteId },
+            { kind: 'ask', tabId: command.tabId, question: command.question, search: command.search, quote: command.quote, quoteId: command.quoteId },
             hooks,
           ),
         );
@@ -393,7 +392,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
           return { ok: false, error: appError('STALE_PAGE', '这个话题过期了（页面内容变了），重新开始伴读吧。', true) };
         }
         return finish(
-          await handleIntent({ kind: 'ask', tabId: command.tabId, question: bubble.question, network: 'article', quote: null }, hooks),
+          await handleIntent({ kind: 'ask', tabId: command.tabId, question: bubble.question, search: false, quote: null }, hooks),
         );
       }
 
@@ -487,15 +486,6 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         await deleteCustomSkill(command.id);
         await pushAllStates();
         return { ok: true, message: '技能已删除。' };
-      }
-
-      case 'saveSearchAgentSettings': {
-        const before = await readConfig();
-        await saveSearchAgentSettings(command.patch);
-        const after = await readConfig();
-        if (!effectiveAgentSettings(after).enabled || outboundScope(before) !== outboundScope(after)) await invalidateAllResearch();
-        await pushAllStates();
-        return { ok: true, message: '联网偏好已保存，下一次提问生效。' };
       }
 
       case 'saveSearchConfig': {

@@ -10,7 +10,7 @@ describe('agent settings', () => {
       enabled: false, freshness: 'auto', depth: 'deep', language: '', region: '',
       preferredDomains: [], sourceReading: 'provider', policy: '',
     });
-    expect(SEARCH_AGENT_VERSION).toBe('2026-10-01.1');
+    expect(SEARCH_AGENT_VERSION).toBe('2026-10-02.1');
     expect(DEFAULT_SEARCH_AGENT_POLICY).toContain('证据充分后再提交 finish_answer');
   });
   it('normalizes only valid known settings and retains an explicit policy reset', () => {
@@ -49,11 +49,12 @@ describe('independent agent prompt', () => {
     expect(system.content).not.toContain('CUSTOM_ANSWER_POLICY');
     expect(system.content).not.toContain('IGNORE_ALL_RULES');
     expect(user.role).toBe('user');
-    expect(user.content).toContain('增加 fetch');
+    expect(user.content).not.toContain('增加 fetch');
+    expect(JSON.parse(user.content.split('\n')[1]!).policy).toBe(DEFAULT_SEARCH_AGENT_POLICY);
     expect(user.content).toContain('CUSTOM_ANSWER_POLICY');
     expect(user.content).toContain('IGNORE_ALL_RULES');
     expect(user.content).toMatch(/WKA_[a-z0-9]+_RESEARCH_BEGIN/);
-    expect(user.content).not.toContain(DEFAULT_SEARCH_AGENT_POLICY);
+    expect(user.content).toContain(JSON.stringify(DEFAULT_SEARCH_AGENT_POLICY).slice(1, -1));
     expect(system.content).not.toContain(HARNESS_RULES);
     expect(system.content).not.toContain('followUps');
   });

@@ -10,25 +10,20 @@ import { SearchSettings } from '../src/sidepanel/components/SearchSettings';
 import { panel } from './helpers/panel';
 beforeEach(() => { permissionRequest.mockReset().mockResolvedValue(true); });
 afterEach(cleanup);
-it('edits active policy, retains drafts through refresh, and restores only this policy', async () => {
-  const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
-  const { rerender } = render(<SearchSettings state={panel()} send={send} />);
-  const box = screen.getByLabelText('联网 Agent 策略') as HTMLTextAreaElement;
-  expect(box.value).toContain('每次重试必须改变检索策略');
-  fireEvent.change(box, { target: { value: '优先官方来源，简洁回答。' } });
-  rerender(<SearchSettings state={panel()} send={send} />);
-  expect(box.value).toBe('优先官方来源，简洁回答。');
-  fireEvent.click(screen.getByRole('button', { name: '保存联网策略' }));
-  await waitFor(() => expect(send).toHaveBeenCalledWith({ type: 'saveSearchAgentSettings', patch: { policy: '优先官方来源，简洁回答。' } }));
-  fireEvent.click(screen.getByRole('button', { name: '恢复默认联网策略' }));
-  await waitFor(() => expect(send).toHaveBeenCalledWith({ type: 'saveSearchAgentSettings', patch: { policy: '' } }));
+it('keeps tool setup without a global switch, research parameters or strategy editor', () => {
+  render(<SearchSettings state={panel()} send={vi.fn()} />);
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.queryByRole('combobox')).toBeNull();
+  expect(screen.queryByRole('textbox')).toBeNull();
+  expect(screen.queryByRole('button', { name: '保存联网策略' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '恢复默认联网策略' })).toBeNull();
+  expect(screen.getByRole('radiogroup', { name: '搜索服务' })).toBeTruthy();
 });
 it('keeps six providers, masks keys, requests permissions in the gesture then tests', async () => {
   const send = vi.fn(async (_command: Command) => ({ ok: true as const }));
   let grant!: (accepted: boolean) => void;
   permissionRequest.mockImplementationOnce(() => new Promise<boolean>(resolve => { grant = resolve; }));
   render(<SearchSettings state={panel()} send={send} />);
-  expect((screen.getByRole('checkbox', { name: '智能联网' }) as HTMLInputElement).checked).toBe(false);
   expect(screen.getAllByRole('radio')).toHaveLength(7);
   fireEvent.click(screen.getByRole('radio', { name: /Tavily/ }));
   const input = screen.getByLabelText('API Key') as HTMLInputElement;
@@ -45,7 +40,7 @@ it('keeps six providers, masks keys, requests permissions in the gesture then te
     { type: 'testSearch', providerId: 'tavily' },
   ]);
   expect(input.value).toBe('');
-  expect((screen.getByRole('option', { name: /直接读取/ }) as HTMLOptionElement).disabled).toBe(true);
+  expect(screen.queryByRole('combobox', { name: '来源读取' })).toBeNull();
 });
 
 it('shows shared receiver boundaries before initial key setup', () => {

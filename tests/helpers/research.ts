@@ -41,7 +41,7 @@ export function snapshotFixture(overrides?: Partial<AgentSnapshot>): AgentSnapsh
       enabled: true, depth: 'deep', freshness: 'auto', language: 'zh-CN', region: 'CN',
       sourceReading: 'provider', preferredDomains: [], policy: '',
     },
-    policyVersion: '2026-10-01.1', answerPolicy: '只依据允许的材料回答', diagrams: false,
+    policyVersion: '2026-10-02.1', answerPolicy: '只依据允许的材料回答', diagrams: false,
     ...overrides,
   };
 }

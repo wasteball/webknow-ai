@@ -1,4 +1,5 @@
 import { DIRECT_READ_VERIFIED } from './search/source-reader';
+import { DEFAULT_AGENT_SETTINGS } from './search/agent-policy';
 import { LIMITS, SUMMARY_LENGTH_CHARS, type SummaryLength } from './limits';
 import { MODEL_PROVIDERS, findProvider, type ProviderId } from './model-providers';
 import { resolveThinking, type ThinkingLevel, type ThinkingStore } from './model-thinking';
@@ -141,7 +142,7 @@ export function effectiveSettings(config: {
 }
 
 /** Stable public receiver/data declaration; deliberately allowlists no credentials or key fingerprints. */
-export const OUTBOUND_NOTICE_VERSION = '2026-10-01.1';
+export const OUTBOUND_NOTICE_VERSION = '2026-10-02.1';
 export function outboundScope(config: {
   provider?: string;
   search?: { providerId?: string; agent?: Partial<import('./search/agent-types').AgentSettings>; credentials?: Record<string, Record<string, string>> };
@@ -155,7 +156,7 @@ export function outboundScope(config: {
       if (url.protocol === 'https:' || url.protocol === 'http:') origin = url.origin;
     } catch { /* An invalid instance has no authorized receiver. */ }
   }
-  const reading = config.search?.agent?.sourceReading ?? 'provider';
+  const reading = DEFAULT_AGENT_SETTINGS.sourceReading;
   return JSON.stringify({ version: OUTBOUND_NOTICE_VERSION, model: model.receiver, modelOrigin: model.origin,
     search: id, selfHostOrigin: origin, sourceReading: reading,
     directRead: DIRECT_READ_VERIFIED,

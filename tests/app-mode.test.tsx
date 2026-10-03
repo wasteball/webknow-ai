@@ -26,6 +26,24 @@ import { App } from '../src/sidepanel/App';
 
 beforeEach(() => { transport.listeners.length = 0; transport.commands.length = 0; });
 
+it('keeps the local search switch through real mode changes and resets it on a new article key', async () => {
+  render(<App />);
+  await act(async () => {});
+  const state = panel({ sessionId: 'article-a' });
+  state.settings.search = { ...state.settings.search, enabled: true, providerName: 'Firecrawl' };
+  const emit = async (next: typeof state) => act(async () => transport.listeners.forEach(fn => fn({ type: 'state', state: next })));
+  await emit(state);
+  const chip = screen.getByRole('button', { name: '联网搜索' });
+  expect(chip.getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(chip);
+  fireEvent.click(screen.getByRole('tab', { name: 'AI 问' }));
+  await act(async () => {});
+  fireEvent.click(screen.getByRole('tab', { name: '问 AI' }));
+  expect(screen.getByRole('button', { name: '联网搜索' }).getAttribute('aria-pressed')).toBe('true');
+  await emit({ ...state, sessionId: 'article-b', pageUrl: 'https://example.com/next' });
+  expect(screen.getByRole('button', { name: '联网搜索' }).getAttribute('aria-pressed')).toBe('false');
+});
+
 it('同一篇文章的后台学习状态更新不会强制切模式', async () => {
   render(<App />);
   await act(async () => {});

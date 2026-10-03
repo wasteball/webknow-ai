@@ -3,7 +3,7 @@ import { browser } from 'wxt/browser';
 import { appError } from '../core/errors';
 import { findProvider } from '../core/model-providers';
 import { resolveThinking } from '../core/model-thinking';
-import { effectiveAgentSettings } from '../core/search/agent-policy';
+import { assertActiveResearch } from './runner';
 import type { AgentCheckpoint, AgentEvent, AgentResume, RunIdentity } from '../core/search/agent-types';
 import { runResearch } from '../core/search/orchestrator';
 import { findSearchProvider, researchSearch } from '../core/search/registry';
@@ -38,8 +38,7 @@ export async function assertResearchCurrent(identity: RunIdentity, thinking?: st
   }
   if (frozenScope !== undefined && outboundScope(config) !== frozenScope) throw appError('STALE_PAGE', '外发接收方或范围已经变化，请重新提问。');
   assertOutboundConfirmation(config);
-  // Turning the switch off invalidates an already running/waiting research, too.
-  if (!effectiveAgentSettings(config).enabled) throw appError('ABORTED', '联网已关闭，请重新提问。');
+  assertActiveResearch(identity, fresh);
 }
 
 export function permissionOrigins(checkpoint: AgentCheckpoint): string[] {
@@ -60,8 +59,16 @@ export async function executeResearch(checkpoint: AgentCheckpoint, signal: Abort
       throw appError('ABORTED', '搜索服务的配置已变化，请重新提问。');
     }
   };
-  const searchBoundary = async (childSignal: AbortSignal, prepared?: Record<string, string>) => {
+  const assertAction = async (action: 'search' | 'read') => {
+    const current = assertActiveResearch(identity, await getSession(identity.tabId));
+    if (!checkpoint.snapshot.settings.enabled || !checkpoint.snapshot.gate.canSearch || !current.gate.canSearch ||
+        action === 'read' && (checkpoint.snapshot.settings.sourceReading === 'off' || current.settings.sourceReading === 'off')) {
+      throw appError('ABORTED', '这次研究不允许搜索或读取来源。');
+    }
+  };
+  const searchBoundary = async (childSignal: AbortSignal, prepared?: Record<string, string>, action: 'search' | 'read' = 'search') => {
     await assertCurrent();
+    await assertAction(action);
     const config = await readConfig();
     if (config.search?.providerId !== searchReceiver) throw appError('STALE_PAGE', '搜索接收方已经变化，请重新提问。');
     const provider = searchReceiver && findSearchProvider(searchReceiver);
@@ -76,12 +83,14 @@ export async function executeResearch(checkpoint: AgentCheckpoint, signal: Abort
     await assertCurrent();
     // Last authoritative storage read follows all permission/page awaits. Check both the
     // frozen public declaration and private prepared credentials before physical fetch.
+    await assertAction(action);
+    const fresh = await getSession(identity.tabId);
     const final = await readConfig();
+    assertActiveResearch(identity, fresh);
     if (outboundScope(final) !== checkpoint.snapshot.outboundScope || final.search?.providerId !== searchReceiver) {
       throw appError('STALE_PAGE', '外发接收方或范围已经变化，请重新提问。');
     }
     assertOutboundConfirmation(final);
-    if (!effectiveAgentSettings(final).enabled) throw appError('ABORTED', '联网已关闭。');
     const model = researchModelSelection(final);
     if (model.modelProvider !== identity.modelProvider || model.modelId !== identity.modelId || model.thinking !== thinking) {
       throw appError('STALE_PAGE', '模型已经变化，请重新提问。');
@@ -90,10 +99,10 @@ export async function executeResearch(checkpoint: AgentCheckpoint, signal: Abort
     if (childSignal.aborted) throw appError('ABORTED', '已停止本次研究。');
     return { provider, credentials };
   };
-  const guardedFetch = (childSignal: AbortSignal, credentials: Record<string, string>): typeof fetch => {
+  const guardedFetch = (childSignal: AbortSignal, credentials: Record<string, string>, action: 'search' | 'read' = 'search'): typeof fetch => {
     const prepared = { ...credentials };
     return async (input, init) => {
-      await searchBoundary(childSignal, prepared);
+      await searchBoundary(childSignal, prepared, action);
       return fetch(input, init);
     };
   };
@@ -110,15 +119,16 @@ export async function executeResearch(checkpoint: AgentCheckpoint, signal: Abort
     },
     read: async (ids, focus, ledger, childSignal) => {
       await assertCurrent();
+      await assertAction('read');
       const selected = findSearchProvider(searchReceiver);
       return readSources({ ids, focus, ledger, mode: checkpoint.snapshot.settings.sourceReading,
         remainingChars: 40_000 - ledger.sources.reduce((sum, source) => sum + (source.content?.length ?? 0), 0),
         signal: childSignal, now: () => new Date(), directReadVerified: DIRECT_READ_VERIFIED,
         hasPermission: origin => browser.permissions.contains({ origins: [`${origin}/*`] }),
-        fetchImpl: async (input, init) => { await assertCurrent(); if (childSignal.aborted) throw appError('ABORTED', '已停止本次研究。'); return fetch(input, init); },
+        fetchImpl: async (input, init) => { await assertCurrent(); await assertAction('read'); if (childSignal.aborted) throw appError('ABORTED', '已停止本次研究。'); return fetch(input, init); },
         providerRead: selected?.capabilities.content && selected.readSources ? async (sources, readSignal) => {
-          const { provider, credentials } = await searchBoundary(readSignal);
-          return provider.readSources!({ sources, signal: readSignal, config: credentials, fetchImpl: guardedFetch(readSignal, credentials) });
+          const { provider, credentials } = await searchBoundary(readSignal, undefined, 'read');
+          return provider.readSources!({ sources, signal: readSignal, config: credentials, fetchImpl: guardedFetch(readSignal, credentials, 'read') });
         } : undefined,
       });
     },
