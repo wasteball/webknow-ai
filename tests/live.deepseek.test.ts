@@ -72,6 +72,7 @@ const completeness = {
   warnings: [],
 };
 
+const blockIds = blocks.map((block) => block.id);
 const contextJson = JSON.stringify(
   blocks.map((block) => ({ id: block.id, role: block.role, content: block.content })),
 );
@@ -164,7 +165,7 @@ live('A0 真实 DeepSeek 接入', () => {
       }),
       'learn',
     );
-    const clean = cleanLearn(result, 'ask');
+    const clean = cleanLearn(result, 'ask', undefined, blockIds);
     process.stdout.write(`  [learn] 校验: ${clean.ok ? JSON.stringify(clean.value) : clean.error.message}\n`);
     expect(clean.ok).toBe(true);
     if (!clean.ok || clean.value.action !== 'question') return;
@@ -191,7 +192,7 @@ live('A0 真实 DeepSeek 接入', () => {
       }),
       'quiz-ask',
     );
-    const askClean = cleanLearn(asked.result, 'ask');
+    const askClean = cleanLearn(asked.result, 'ask', undefined, blockIds);
     expect(askClean.ok, '选择题出题未通过结构校验').toBe(true);
     if (!askClean.ok || askClean.value.action !== 'quiz') return;
     const quiz = askClean.value;
@@ -220,7 +221,7 @@ live('A0 真实 DeepSeek 接入', () => {
       }),
       'quiz-graded',
     );
-    const gradedClean = cleanLearn(graded.result, 'respond', 'quiz');
+    const gradedClean = cleanLearn(graded.result, 'respond', 'quiz', blockIds);
     process.stdout.write(
       `  [quiz-graded] 完整输出: ${JSON.stringify(graded.result)}\n`,
     );
@@ -266,7 +267,7 @@ live('A0 真实 DeepSeek 接入', () => {
         signal: AbortSignal.timeout(60_000),
         maxTokens: LIMITS.maxOutputTokens,
       });
-      const clean = cleanLearn(parsed, 'respond', 'open');
+      const clean = cleanLearn(parsed, 'respond', 'open', blockIds);
       process.stdout.write(
         `  [${label}] ${clean.ok ? JSON.stringify(clean.value).slice(0, 160) : `校验失败: ${clean.error.message}`}\n`,
       );

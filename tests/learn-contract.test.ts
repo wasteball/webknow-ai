@@ -19,6 +19,30 @@ describe('model-visible learning output contract', () => {
     }
   });
 
+  it('requires both graded continuation fields even when only an open question follows', () => {
+    const system = learnSystem('Omit unused JSON keys.', 'mixed', false);
+    expect(system).toContain('graded 的 nextQuestion 和 nextQuiz 均为必填字段');
+    const line = system.split('\n').find(item => item.startsWith('- mode=respond（选择题）：'))!;
+    const example = JSON.parse(line.slice(line.indexOf('{')));
+    expect(typeof example.nextQuestion).toBe('string');
+    expect(example.nextQuiz).toBeNull();
+    expect(cleanLearn(example, 'respond', 'quiz', ['b_0']).ok).toBe(true);
+  });
+
+  it('rejects omitted continuation fields instead of silently defaulting them', () => {
+    const graded = {
+      action: 'graded', analysis: 'The selected option matches the article.', notes: [],
+      nextQuestion: 'Which cost was not measured?', nextQuiz: null,
+    };
+    for (const field of ['nextQuestion', 'nextQuiz']) {
+      const omitted: Record<string, unknown> = { ...graded };
+      delete omitted[field];
+      expect(cleanLearn(omitted, 'respond', 'quiz', ['b_0']).ok).toBe(false);
+    }
+    expect(cleanLearn(graded, 'respond', 'quiz', ['b_0']).ok).toBe(true);
+    expect(cleanLearn({ ...graded, nextQuestion: null }, 'respond', 'quiz', ['b_0']).ok).toBe(true);
+  });
+
   it('never treats a model-supplied network label as verified provenance', () => {
     const result = cleanLearn({
       action: 'feedback', verdict: 'partial', feedback: 'Partly understood.', nextQuestion: null,

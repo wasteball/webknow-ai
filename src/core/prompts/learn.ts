@@ -7,7 +7,7 @@ import type { CurrentRound, QuestionTarget, QuizChoice } from '../session';
  * 策略三：引导学习（“AI 问我”）。
  * 用户只能覆盖策略段；harness、来源纪律和输出契约仍由代码掌握。
  */
-export const LEARN_VERSION = '2026-10-05.1';
+export const LEARN_VERSION = '2026-10-05.2';
 export const VERDICTS = ['correct', 'partial', 'misconception', 'unknown', 'objection'] as const;
 
 const ChoiceSchema: z.ZodType<QuizChoice> = z.object({
@@ -109,10 +109,12 @@ const LEARN_CONTRACT = [
   '按 mode 返回对应 JSON，并严格遵守字段约束；掌握度由程序保守计算，不输出百分比。',
   'target.blockIds 必须来自给定正文块，focus、conditions 和 misconceptions 只描述当前题的文章目标。',
   '按 mode 只返回一个 JSON 对象，不加 Markdown 围栏。以下示例中的 target、nextQuestionTarget 和 supplement 可省略；nextQuestion 和 nextQuiz 的 null 表示没有下一题，不是整个对象为 null。',
+  'graded 的 nextQuestion 和 nextQuiz 均为必填字段，必须同时保留。只继续开放题时 nextQuestion 填问题、nextQuiz 填 null；只继续选择题时 nextQuestion 填 null、nextQuiz 填选择题对象；不继续提问时两者都填 null。不得因为另一个字段已有值而省略它，也不得用空对象或空字符串代替 null。',
+  'feedback 和 explain 的 nextQuestion 也为必填字段，没有下一问时必须显式填 null。输出前检查当前 action 的所有必填字段，不用省略字段表示“没有”。',
   '- mode=ask（开放题）：{"action":"question","question":"文中如何限定适用范围？","target":{"blockIds":["b_0"],"focus":"适用范围"}}',
   '- mode=ask（选择题）：{"action":"quiz","questions":[{"id":"q1","text":"哪个说法符合原文？","choices":[{"id":"A","label":"只适用于试点"},{"id":"B","label":"适用于所有情况"}],"answer":["A"],"why":"原文限定了试点范围。","target":{"blockIds":["b_0"],"focus":"适用范围"}}]}',
   '- mode=respond（开放题）：{"action":"feedback","verdict":"partial","feedback":"主干正确，但还有一个条件。","nextQuestion":"原文限定了哪个条件？","nextQuestionTarget":{"blockIds":["b_0"],"focus":"必要条件"}}',
-  '- mode=respond（选择题）：{"action":"graded","analysis":"依据原文说明理解情况。","notes":[{"questionId":"q1","note":"依据当前答案钥匙解释。"}],"nextQuestion":null,"nextQuiz":null}',
+  '- mode=respond（选择题）：{"action":"graded","analysis":"依据原文说明理解情况。","notes":[{"questionId":"q1","note":"依据当前答案钥匙解释。"}],"nextQuestion":"原文还限定了哪个条件？","nextQuestionTarget":{"blockIds":["b_0"],"focus":"必要条件"},"nextQuiz":null}',
   '- mode=hint：{"action":"hint","hint":"回到文中的适用条件。","question":"文中如何限定适用范围？"}',
   '- mode=explain：{"action":"explain","explanation":"先解释原文的条件。","supplement":{"text":"必要的稳定背景知识，不是文章原话。","source":"stable"},"nextQuestion":null}',
   '- mode=close：{"action":"summary","summary":"只说明本轮实际验证的范围。","coveredTargets":["适用范围"],"uncoveredTargets":["未提问的其他内容"],"nextDirections":[]}',
