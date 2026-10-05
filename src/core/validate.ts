@@ -215,7 +215,8 @@ function cleanSupplement(raw: { text: string; source: 'stable' | 'network' | 'un
   if (!raw) return undefined;
   const text = raw.text.trim();
   if (!text || text.length > 800 || /[\u0000-\u001f\u007f]/.test(text)) return null;
-  return { text, source: raw.source };
+  // Only the backend's checked research material may carry network provenance.
+  return { text, source: raw.source === 'network' ? 'unverified' : raw.source };
 }
 
 function cleanTextList(values: readonly string[] | undefined): string[] | undefined {

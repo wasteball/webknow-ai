@@ -731,7 +731,11 @@ async function learningSupplement(
   signal: AbortSignal,
   hooks: RunnerHooks,
 ): Promise<LearnSupplement | undefined> {
-  const question = input.userAnswer?.trim() || (learning.current?.kind === 'open' ? learning.current.question : learning.goal);
+  const question = learning.current?.kind === 'open'
+    ? learning.current.question
+    : learning.current?.kind === 'quiz'
+      ? learning.current.questions.map(item => item.text).join('\n')
+      : learning.goal;
   const search = input.search === true;
   const gate = evaluateSearchGate({
     question: question.slice(0, LIMITS.maxQuestionChars),
@@ -773,13 +777,19 @@ async function learningSupplement(
   await hooks.onState(tabId);
   try {
     const outcome = await executeResearch(checkpoint, signal, event => {
-      if (event.identity.runId === runId) hooks.onAgent?.(tabId, event);
+      if (signal.aborted || controllers.get(tabId) !== active || event.identity.runId !== runId || event.seq <= (active.seq ?? 0)) return;
+      active.seq = event.seq;
+      active.agent = event;
+      hooks.onAgent?.(tabId, event);
     });
+    await assertResearchCurrent(checkpoint.snapshot.identity, model.thinking, signal, checkpoint.snapshot.searchProviderId, checkpoint.snapshot.outboundScope);
     if (outcome.kind !== 'finished' || outcome.degraded) return { text: '本轮联网资料未能完成核验。', source: 'unverified' };
     const answer = toResearchAnswer(outcome);
     if (answer.source !== 'extended' || !answer.references.length) return undefined;
     return { text: answer.answer, source: 'network', references: answer.webReferences, research: answer.research };
-  } catch {
+  } catch (error) {
+    if (signal.aborted) throw appError('ABORTED', '已经停止。');
+    if (isAppError(error) && ['ABORTED', 'STALE_PAGE', 'PERMISSION_MISSING', 'OUTBOUND_CONFIRMATION_REQUIRED', 'NO_KEY'].includes(error.code)) throw error;
     return { text: '本轮联网资料未能完成核验。', source: 'unverified' };
   } finally {
     active.research = false;
@@ -818,9 +828,13 @@ async function runLearnStep(
         style: settings.learningStyle,
       });
       const supplementContext = mode === 'close' ? undefined : await learningSupplement(tabId, current, learning, input, config, runId, signal, hooks);
+      // Keep verified material even when the model does not echo it; notes never grade article understanding.
+      const preparedLearning = supplementContext
+        ? appendLearn(learning, { role: 'note', text: supplementContext.text, supplement: supplementContext })
+        : learning;
       let next = await callLearn(
         current,
-        learning,
+        preparedLearning,
         mode,
         input,
         ctx.json,
@@ -912,6 +926,7 @@ async function callLearn(
   diagrams: boolean,
   supplementContext?: LearnSupplement,
 ): Promise<LearningState> {
+  if (signal.aborted) throw appError('ABORTED', '已经停止。');
   const watch = watchProgress(
     hooks,
     tabId,

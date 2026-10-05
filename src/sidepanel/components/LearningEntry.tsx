@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 import type { LearnEntry, MasteryLabel } from '../../core/session';
 import { Thinking, VerdictTag } from './bits';
 import { Rich, RichInline } from './Rich';
+import { SearchSources } from './SearchSources';
 
 export function LearningEntry({ entry, diagrams, quizContent }: { entry: LearnEntry; diagrams: boolean; quizContent?: ReactNode }) {
-  if (entry.role === 'skip' || entry.role === 'note') {
+  if (entry.role === 'skip' || (entry.role === 'note' && !entry.supplement)) {
     return (
       <>
         <Thinking text={entry.reasoning ?? ''} />
@@ -31,6 +32,7 @@ export function LearningEntry({ entry, diagrams, quizContent }: { entry: LearnEn
           <aside className="supplement">
             <span className="tag">补充说明{entry.supplement.source === 'network' ? '（联网资料）' : entry.supplement.source === 'unverified' ? '（未核验）' : ''}</span>
             <Rich text={entry.supplement.text} diagrams={diagrams} />
+            <SearchSources references={entry.supplement.references ?? []} research={entry.supplement.research} />
           </aside>
         )}
         {entry.mastery && <MasteryTag mastery={entry.mastery} />}
