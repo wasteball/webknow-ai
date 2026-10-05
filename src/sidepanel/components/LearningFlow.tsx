@@ -8,12 +8,13 @@ import { Busy, ComposerField, ComposerTextarea, Drafting, SuggestRow } from './b
 import { Conversation } from './Conversation';
 import { LearningEntry as Entry } from './LearningEntry';
 import { QuizMessage } from './QuizMessage';
+import { Icon } from './Icon';
 import { Rich } from './Rich';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /** 题目、选项与反馈都是消息；底部只承担输入和当前操作。 */
-export function Learning({ state, send, active = true }: { state: PanelState; send: Send; active?: boolean }) {
+export function Learning({ state, send, active = true, searchOn = false, onSearchChange = () => {}, onSearchSettings }: { state: PanelState; send: Send; active?: boolean; searchOn?: boolean; onSearchChange?: (value: boolean) => void; onSearchSettings?: () => void }) {
   const [draft, setDraft] = useState('');
   const autoStarted = useRef(false);
   const [startFailed, setStartFailed] = useState(false);
@@ -30,6 +31,7 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
   const busy = state.busy?.kind === 'learn' || submitting;
   const blocked = state.busy !== null && state.busy.kind !== 'learn';
   const diagrams = state.settings.diagrams === 'auto';
+  const searchEnabled = state.settings.search.enabled;
   const quiz = current?.kind === 'quiz' ? current.questions : null;
   const inRound = learning?.status === 'active';
   const closed = learning?.status === 'closed';
@@ -39,6 +41,11 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
   const allAnswered = quiz !== null && selectedCount === quiz.length;
 
   const stop = () => { if (tabId !== null) void send({ type: 'stop', tabId }); };
+  const toggleSearch = () => {
+    if (!searchEnabled) { onSearchSettings?.(); return; }
+    onSearchChange(!searchOn);
+    if (searchOn && busy) stop();
+  };
   const answer = async () => {
     if (tabId === null || !draft.trim() || busy || blocked) return;
     const text = draft.trim();
@@ -47,7 +54,7 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
     setSubmitting(true);
     setFollowRequest((n) => n + 1);
     try {
-      const reply = await send({ type: 'learnAnswer', tabId, text });
+      const reply = await send({ type: 'learnAnswer', tabId, text, ...(searchEnabled && searchOn ? { search: true } : {}) });
       if (!reply?.ok) { setPending(null); setDraft((value) => value || text); }
     } finally { setSubmitting(false); }
   };
@@ -59,7 +66,7 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
     setSubmitting(true);
     setFollowRequest((n) => n + 1);
     try {
-      const reply = await send({ type: 'learnAnswer', tabId, text: '（选择题作答）', choices });
+      const reply = await send({ type: 'learnAnswer', tabId, text: '（选择题作答）', choices, ...(searchEnabled && searchOn ? { search: true } : {}) });
       if (!reply?.ok) setPending(null);
     } finally { setSubmitting(false); }
   };
@@ -74,7 +81,7 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
     setSubmitting(true);
     setFollowRequest((n) => n + 1);
     try {
-      const reply = await send({ type: 'learnStart', tabId, goal: sent });
+      const reply = await send({ type: 'learnStart', tabId, goal: sent, ...(searchEnabled && searchOn ? { search: true } : {}) });
       if (!reply?.ok) {
         setStartFailed(true);
         setSentGoals((goals) => { const next = new Set(goals); next.delete(sent); return next; });
@@ -93,9 +100,9 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
 
   useEffect(() => {
     if (!active || learning || autoStarted.current || busy || blocked || tabId === null ||
-        state.phase !== 'READY' || !state.guide || !state.outboundConfirmed) return;
+        state.phase !== 'READY' || !state.outboundConfirmed) return;
     void startWith(DEFAULT_LEARN_GOAL, true);
-  }, [active, learning, busy, blocked, tabId, state.phase, state.guide, state.outboundConfirmed]);
+  }, [active, learning, busy, blocked, tabId, state.phase, state.outboundConfirmed]);
 
   const usedGoals = new Set([...usedLearnGoals(learning), ...sentGoals]);
   const starters = [
@@ -145,7 +152,7 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
       <form className="composer" onSubmit={(event) => { event.preventDefault(); if (!busy && !blocked && (inRound || closed)) void (quiz && inRound ? submitQuiz() : inRound ? answer() : startWith(goal)); }}>
         <ComposerField busy={busy} idleLabel={quiz && inRound ? '提交' : closed ? '开始' : '回答'} onStop={stop}
           submitDisabled={blocked || (!closed && (quiz ? !allAnswered : !current || !draft.trim()))}
-          tools={inRound && <Assists tabId={tabId} send={send} resume={!current} only={quiz ? ['explain', 'skip', 'end'] : current ? ['unknown', 'hint', 'explain', 'skip', 'end'] : ['skip', 'end']} disabled={busy || blocked} />}>
+          tools={<>{inRound && <Assists tabId={tabId} send={send} resume={!current} only={quiz ? ['explain', 'skip', 'end'] : current ? ['unknown', 'hint', 'explain', 'skip', 'end'] : ['skip', 'end']} disabled={busy || blocked} search={searchEnabled && searchOn} />}{(searchEnabled || onSearchSettings) && <button type="button" className="search-chip" aria-pressed={searchEnabled && searchOn} disabled={busy} title={searchEnabled ? '允许为理解文章核验必要的外部资料' : '先选择一个联网搜索服务'} onClick={toggleSearch}><Icon name="globe" small />联网搜索{searchEnabled && searchOn && <Icon name="check" small />}</button>}</>}>
           {quiz && inRound ? <p className="composer-selection" role="status">{selectedCount ? `已选 ${selectedCount}/${quiz.length} 题，点击箭头提交` : '在上方选择答案，再点击箭头提交'}</p>
             : <><label className="sr-only" htmlFor={closed ? 'learning-goal' : 'learning-answer'}>{closed ? '自己写一个方向' : '用自己的话回答'}</label>
               <ComposerTextarea id={closed ? 'learning-goal' : 'learning-answer'} rows={2} maxLength={closed ? 200 : 1000}
@@ -160,11 +167,11 @@ export function Learning({ state, send, active = true }: { state: PanelState; se
 }
 
 const ASSIST_LABEL = { unknown: '我不知道', hint: '提示', explain: '讲解', skip: '跳过', end: '结束' } as const;
-function Assists({ tabId, send, only, disabled, resume }: {
-  tabId: number | null; send: Send; only: (keyof typeof ASSIST_LABEL)[]; disabled: boolean; resume: boolean;
+function Assists({ tabId, send, only, disabled, resume, search }: {
+  tabId: number | null; send: Send; only: (keyof typeof ASSIST_LABEL)[]; disabled: boolean; resume: boolean; search: boolean;
 }) {
   const button = (action: keyof typeof ASSIST_LABEL) => <button type="button" key={action} className="quiet" disabled={disabled}
-    onClick={() => tabId !== null && void send(action === 'end' ? { type: 'learnEnd', tabId } : { type: 'learnAssist', tabId, action })}>{resume && action === 'skip' ? '继续提问' : ASSIST_LABEL[action]}</button>;
+    onClick={() => tabId !== null && void send(action === 'end' ? { type: 'learnEnd', tabId } : { type: 'learnAssist', tabId, action, ...(search ? { search: true } : {}) })}>{resume && action === 'skip' ? '继续提问' : ASSIST_LABEL[action]}</button>;
   const more = only.filter((action) => (!resume && action === 'skip') || action === 'end');
   return <>
     {only.filter((action) => (action !== 'skip' || resume) && action !== 'end').map(button)}

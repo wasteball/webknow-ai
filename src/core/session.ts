@@ -33,6 +33,8 @@ export type ChatTurn = {
   references: string[];
   webReferences?: ChatReference[];
   research?: ResearchSummary;
+  /** Internal context segment; omitted in older persisted sessions and treated as legacy. */
+  topicId?: string;
   /** 这一问针对网页上划出的原文。 */
   quote?: Quote;
   /** 答完后顺着这一轮接着问的方向；点一张就发出去，上一排全部收起。 */
@@ -45,15 +47,33 @@ export type ChatTurn = {
 /** 五类回答判断（FR-013）。 */
 export type Verdict = 'correct' | 'partial' | 'misconception' | 'unknown' | 'objection';
 
+/** 只对当前学习段的文章目标点给出的定性判断，不是长期用户画像。 */
+export type MasteryLabel = 'independent' | 'basic' | 'review' | 'unverified';
+
+/** 一道题要检验的文章目标；只保留当前正文块的身份。 */
+export type QuestionTarget = {
+  blockIds: string[];
+  focus: string;
+  conditions?: string[];
+  misconceptions?: string[];
+};
+
+/** 文章外背景说明。正文依据和外部补充在数据结构上分开。 */
+export type LearnSupplement = {
+  text: string;
+  source: 'stable' | 'network' | 'unverified';
+  references?: ChatReference[];
+  research?: ResearchSummary;
+};
 /** 选择题轮次（产品化改造 F5）。 */
 export type QuizChoice = { id: string; label: string };
-export type QuizQuestion = { id: string; text: string; choices: QuizChoice[]; multi: boolean };
+export type QuizQuestion = { id: string; text: string; choices: QuizChoice[]; multi: boolean; target?: QuestionTarget };
 /** 答案钥匙：只在会话数据里保存用于程序判分，不渲染给用户。 */
 export type QuizKey = { questionId: string; answer: string[]; why: string };
 
 /** 当前待回答的轮次：开放问答或选择题测验。 */
 export type CurrentRound =
-  | { kind: 'open'; question: string; hintUsed: boolean }
+  | { kind: 'open'; question: string; hintUsed: boolean; target?: QuestionTarget }
   | { kind: 'quiz'; questions: QuizQuestion[]; answerKey: QuizKey[] };
 
 export type LearnRole =
@@ -72,6 +92,11 @@ export type LearnEntry = {
   role: LearnRole;
   text: string;
   verdict?: Verdict;
+  mastery?: MasteryLabel;
+  target?: QuestionTarget;
+  supplement?: LearnSupplement;
+  coveredTargets?: string[];
+  uncoveredTargets?: string[];
   /** 该回答是否在无提示条件下完成（FR-014：经提示后完成不记为独立掌握）。 */
   independent?: boolean;
   /** role=quiz：本轮的选择题（不含答案）。 */
@@ -121,6 +146,8 @@ export type PageSession = {
   url: string;
   title: string;
   fingerprint: string;
+  /** Internal Ask AI context segment; old sessions without it use their legacy chat. */
+  activeTopicId?: string;
   state: SessionState;
   blocks: EvidenceBlock[];
   completeness: Completeness;
@@ -156,6 +183,7 @@ export function createSession(tabId: number, page: BlocksPayload): PageSession {
     url: page.url,
     title: page.title,
     fingerprint: page.fingerprint,
+    activeTopicId: newId('topic'),
     state: 'ANALYZING',
     blocks: page.blocks,
     completeness: page.completeness,
@@ -210,6 +238,7 @@ export function markStale(session: PageSession, url?: string): PageSession {
     ...session,
     url: nextUrl,
     title: samePage ? session.title : '',
+    activeTopicId: newId('topic'),
     fingerprint: '',
     researchCheckpoint: undefined,
     researchPending: session.researchPending ? { ...session.researchPending, status: 'interrupted' } : undefined,
@@ -260,7 +289,7 @@ export function acceptsWriteBack(session: PageSession, runId: string): boolean {
 
 /** 停止后的状态恢复（FR-023）：三类请求各自的落点。 */
 export function stateAfterStop(session: PageSession, kind: RequestKind): SessionState {
-  if (kind === 'guide') return 'READY_TO_START';
+  if (kind === 'guide') return session.blocks.length > 0 ? 'READY' : 'READY_TO_START';
   if (kind === 'learn') return 'LEARNING';
   return 'READY';
 }
@@ -268,9 +297,10 @@ export function stateAfterStop(session: PageSession, kind: RequestKind): Session
 /**
  * 失败后的状态恢复（FR-035）：只有“还没有首屏”才需要用户重新开始，
  * 问答或学习失败时保留已有会话与已完成记录，只显示可执行的错误信息。
+ * 导览失败不等于读取失败：已有正文时页面仍可问答和学习。
  */
 export function stateAfterFailure(session: PageSession, kind: RequestKind): SessionState {
-  if (kind === 'guide') return 'ERROR';
+  if (kind === 'guide') return session.blocks.length > 0 ? 'READY' : 'ERROR';
   if (kind === 'learn') return session.learning ? 'LEARNING' : 'READY';
   return 'READY';
 }

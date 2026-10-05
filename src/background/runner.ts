@@ -19,6 +19,7 @@ import { evaluateSearchGate } from '../core/search/gate';
 import { SEARCH_AGENT_VERSION } from '../core/prompts/search-agent';
 import { toResearchAnswer } from '../core/search/answer';
 import { assertResearchCurrent, executeResearch, permissionOrigins, researchModelSelection } from './research';
+import { hasAskedQuestion, newTopicId, startsNewTopic, topicHistory } from '../core/topic';
 import { prepareQuote, type Quote } from '../core/quote';
 import { browser } from 'wxt/browser';
 import { outboundScope, effectiveSettings } from '../core/settings';
@@ -35,8 +36,11 @@ import {
   nextQuestionAllowed,
   stateAfterFailure,
   stateAfterStop,
+  type LearnSupplement,
   type LearningState,
+  type MasteryLabel,
   type PageSession,
+  type QuestionTarget,
   type RequestKind,
 } from '../core/session';
 import {
@@ -62,9 +66,9 @@ export type Intent =
   | { kind: 'guide'; tabId: number }
   | { kind: 'ask'; tabId: number; question: string; search?: boolean; quote?: string | null; quoteId?: string }
   | { kind: 'resolveResearch'; tabId: number; sessionId: string; runId: string; mode: 'continue' | 'article' | 'cancel'; text: string }
-  | { kind: 'learnStart'; tabId: number; goal: string }
-  | { kind: 'learnAnswer'; tabId: number; text: string; choices?: LearnChoiceAnswer[] }
-  | { kind: 'learnAssist'; tabId: number; assist: 'hint' | 'explain' | 'skip' | 'unknown' }
+  | { kind: 'learnStart'; tabId: number; goal: string; search?: boolean }
+  | { kind: 'learnAnswer'; tabId: number; text: string; choices?: LearnChoiceAnswer[]; search?: boolean }
+  | { kind: 'learnAssist'; tabId: number; assist: 'hint' | 'explain' | 'skip' | 'unknown'; search?: boolean }
   | { kind: 'learnEnd'; tabId: number };
 
 /** 选择题作答：一题多个选项 id。 */
@@ -117,7 +121,7 @@ export function recoverInterruptedRun(tabId: number): Promise<PageSession | null
       ...endRun(session, session.run.id),
       researchCheckpoint: undefined,
       researchPending: session.researchPending ? { ...session.researchPending, status: stopped ? 'stopped' as const : 'interrupted' as const } : undefined,
-      state: stateAfterFailure(session, session.run.kind),
+      state: stopped ? stateAfterStop(session, session.run.kind) : stateAfterFailure(session, session.run.kind),
       error: stopped ? null : appError('INTERNAL', '刚才的生成被中断了。已有对话还在，请重试刚才的操作。', true),
     };
     await putSession(next);
@@ -149,11 +153,11 @@ export async function handleIntent(intent: Intent, hooks: RunnerHooks): Promise<
     case 'resolveResearch':
       return resolveResearch(intent, hooks);
     case 'learnStart':
-      return runLearnStart(intent.tabId, intent.goal, hooks);
+      return runLearnStart(intent.tabId, intent.goal, intent.search === true, hooks);
     case 'learnAnswer':
-      return runLearnStep(intent.tabId, 'respond', { userAnswer: intent.text, userChoices: intent.choices }, hooks);
+      return runLearnStep(intent.tabId, 'respond', { userAnswer: intent.text, userChoices: intent.choices, search: intent.search === true }, hooks);
     case 'learnAssist':
-      return runAssist(intent.tabId, intent.assist, hooks);
+      return runAssist(intent.tabId, intent.assist, intent.search === true, hooks);
     case 'learnEnd':
       return runLearnStep(intent.tabId, 'close', {}, hooks);
   }
@@ -421,6 +425,10 @@ async function runAsk(
     'answer',
     async (session, runId, signal) => {
       let current = await adoptCurrentPage(tabId, session);
+      const topicSwitched = startsNewTopic(question);
+      const legacyTopic = !current.activeTopicId;
+      const topicId = topicSwitched ? newTopicId() : current.activeTopicId ?? 'legacy';
+      const topicTurns = topicHistory(current.chat, topicId, legacyTopic && topicId === 'legacy');
       const settings = { ...runtimeAgentSettings(config, browser.i18n?.getUILanguage() ?? globalThis.navigator?.language ?? 'en'), enabled: network === 'auto' };
       const preparedQuote = rawQuote === undefined ? current.quote ?? null
         : rawQuote === null ? null : prepareQuote(rawQuote, current.blocks);
@@ -434,7 +442,8 @@ async function runAsk(
           identity: { tabId, sessionId: current.id, runId, url: current.url, fingerprint: current.fingerprint,
             modelProvider: model.modelProvider, modelId: model.modelId }, thinking: model.thinking,
           searchProviderId: config.search?.providerId, outboundScope: outboundScope(config), question, title: current.title, blocks: structuredClone(current.blocks), quote: frozenQuote,
-          history: current.chat.slice(-LIMITS.maxHistoryTurns).map(turn => ({ question: turn.question, answer: turn.answer })),
+          history: topicTurns.slice(-LIMITS.maxHistoryTurns).map(turn => ({ question: turn.question, answer: turn.answer })),
+          topicId,
           disclosure: describeCompleteness(current.completeness), gate, settings,
           policyVersion: SEARCH_AGENT_VERSION, answerPolicy: resolvePolicy('answer', config) ?? ANSWER_DEFAULT_POLICY,
           diagrams: effectiveSettings(config).diagrams === 'auto',
@@ -468,12 +477,13 @@ async function runAsk(
           url: current.url,
           contextJson: ctx.json,
           disclosure: describeCompleteness(current.completeness),
-          history: current.chat
+          history: topicTurns
             .slice(-LIMITS.maxHistoryTurns)
             .map((turn) => ({ question: turn.question, answer: turn.answer })),
           question,
           override: resolvePolicy('answer', config),
           networkContext: { gate, scope: 'article' },
+          topic: { switched: topicSwitched },
           quote,
           diagrams,
         }),
@@ -486,14 +496,16 @@ async function runAsk(
       if (!clean.ok) throw clean.error;
       const unanswered = [...clean.value.unanswered];
       const citations = clean.value.source === 'unknown' ? [] : withQuoteCitation(clean.value.citations, current.blocks, quote);
-      const asked = new Set([...current.chat.map((turn) => turn.question), question]);
-      const followUps = clean.value.followUps.filter((item) => !asked.has(item.question));
+      const asked = [...topicTurns.map((turn) => turn.question), question];
+      const followUps = clean.value.followUps.filter((item) => !hasAskedQuestion(asked, item.question));
       return writeBack(tabId, current, runId, (fresh) => ({
         ...fresh,
+        activeTopicId: topicId,
         chat: [
           ...fresh.chat,
           {
             id: newId('t'),
+            topicId,
             question,
             answer: gate.level === 'required' ? `${clean.value.answer}\n\n本题未联网核验，只依据当前提供的文章。` : clean.value.answer,
             source: clean.value.source,
@@ -594,7 +606,9 @@ async function researchStep(session: PageSession, checkpoint: AgentCheckpoint, s
   const answer = toResearchAnswer(outcome);
   const quote = checkpoint.snapshot.quote;
   return { ...fresh, researchCheckpoint: undefined, researchPending: undefined,
+    activeTopicId: checkpoint.snapshot.topicId ?? fresh.activeTopicId,
     chat: [...fresh.chat, { id: newId('t'), question: checkpoint.snapshot.question, ...answer,
+      ...(checkpoint.snapshot.topicId ? { topicId: checkpoint.snapshot.topicId } : {}),
       quote: quote ?? undefined, followUps: [], at: Date.now() }].slice(-LIMITS.maxChatTurns),
     quote: quote && fresh.quote && (fresh.quote.id ?? fresh.quote.text) === (quote.id ?? quote.text) ? null : fresh.quote ?? null,
     state: 'READY', error: null, updatedAt: Date.now() };
@@ -622,9 +636,10 @@ type LearnInput = {
   userAnswer?: string;
   userChoices?: LearnChoiceAnswer[];
   hintUsed?: boolean;
+  search?: boolean;
 };
 
-async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): Promise<AppError | null> {
+async function runLearnStart(tabId: number, goal: string, search: boolean, hooks: RunnerHooks): Promise<AppError | null> {
   const session = await getSession(tabId);
   if (!session) return appError('STALE_PAGE', '当前标签页没有可用的页面会话。', true);
   const blocked = canStartLearning(session);
@@ -654,12 +669,13 @@ async function runLearnStart(tabId: number, goal: string, hooks: RunnerHooks): P
     log: [],
   };
   await putSession({ ...session, learning, learningHistory: archiveLearning(session.learning, session.learningHistory), state: 'LEARNING', error: null, updatedAt: Date.now() });
-  return runLearnStep(tabId, 'ask', {}, hooks);
+  return runLearnStep(tabId, 'ask', { search }, hooks);
 }
 
 async function runAssist(
   tabId: number,
   assist: 'hint' | 'explain' | 'skip' | 'unknown',
+  search: boolean,
   hooks: RunnerHooks,
 ): Promise<AppError | null> {
   if (assist === 'hint') {
@@ -684,7 +700,7 @@ async function runAssist(
       learning: appendLearn(learning, { role: 'answer', text: '我不知道', independent: false }),
       updatedAt: Date.now(),
     });
-    return runLearnStep(tabId, mode, { userAnswer: '我不知道', hintUsed: true }, hooks);
+    return runLearnStep(tabId, mode, { userAnswer: '我不知道', hintUsed: true, search }, hooks);
   }
   if (assist === 'skip') {
     // 跳过不发模型请求：只记录用户选择，然后换一个题目（FR-014）。
@@ -700,9 +716,79 @@ async function runAssist(
         : learning,
       updatedAt: Date.now(),
     });
-    return runLearnStep(tabId, 'ask', {}, hooks);
+    return runLearnStep(tabId, 'ask', { search }, hooks);
   }
-  return runLearnStep(tabId, assist === 'hint' ? 'hint' : 'explain', {}, hooks);
+  return runLearnStep(tabId, assist === 'hint' ? 'hint' : 'explain', { search }, hooks);
+}
+
+async function learningSupplement(
+  tabId: number,
+  session: PageSession,
+  learning: LearningState,
+  input: LearnInput,
+  config: Awaited<ReturnType<typeof readConfig>>,
+  runId: string,
+  signal: AbortSignal,
+  hooks: RunnerHooks,
+): Promise<LearnSupplement | undefined> {
+  const question = input.userAnswer?.trim() || (learning.current?.kind === 'open' ? learning.current.question : learning.goal);
+  const search = input.search === true;
+  const gate = evaluateSearchGate({
+    question: question.slice(0, LIMITS.maxQuestionChars),
+    pageTitle: session.title,
+    quote: null,
+    mode: search ? 'auto' : 'article',
+    enabled: search,
+    freshness: runtimeAgentSettings(config, browser.i18n?.getUILanguage() ?? globalThis.navigator?.language ?? 'en').freshness,
+    now: new Date(),
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+  if (!search && gate.level === 'required') return { text: '本轮需要实时资料，但联网搜索未开启，当前未核验。', source: 'unverified' };
+  if (!gate.canSearch || gate.level === 'ambiguous' || !config.search?.providerId) return undefined;
+
+  const model = researchModelSelection(config);
+  const settings = { ...runtimeAgentSettings(config, browser.i18n?.getUILanguage() ?? globalThis.navigator?.language ?? 'en'), enabled: true };
+  const checkpoint = initialCheckpoint({
+    identity: { tabId, sessionId: session.id, runId, url: session.url, fingerprint: session.fingerprint, modelProvider: model.modelProvider, modelId: model.modelId },
+    thinking: model.thinking,
+    searchProviderId: config.search.providerId,
+    outboundScope: outboundScope(config),
+    question: question.slice(0, LIMITS.maxQuestionChars),
+    title: session.title,
+    blocks: structuredClone(session.blocks),
+    quote: null,
+    history: learnHistory(learning).map(item => ({ question: item.question, answer: item.answer })),
+    disclosure: describeCompleteness(session.completeness),
+    gate,
+    settings,
+    policyVersion: SEARCH_AGENT_VERSION,
+    answerPolicy: resolvePolicy('answer', config) ?? ANSWER_DEFAULT_POLICY,
+    diagrams: effectiveSettings(config).diagrams === 'auto',
+  }, Date.now());
+  const active = controllers.get(tabId);
+  if (!active || active.runId !== runId || active.sessionId !== session.id) return undefined;
+  active.research = true;
+  active.seq = 0;
+  await putSession({ ...session, researchCheckpoint: checkpoint, researchPending: { runId, question: checkpoint.snapshot.question, quote: null, status: 'running' } });
+  await hooks.onState(tabId);
+  try {
+    const outcome = await executeResearch(checkpoint, signal, event => {
+      if (event.identity.runId === runId) hooks.onAgent?.(tabId, event);
+    });
+    if (outcome.kind !== 'finished' || outcome.degraded) return { text: '本轮联网资料未能完成核验。', source: 'unverified' };
+    const answer = toResearchAnswer(outcome);
+    if (answer.source !== 'extended' || !answer.references.length) return undefined;
+    return { text: answer.answer, source: 'network', references: answer.webReferences, research: answer.research };
+  } catch {
+    return { text: '本轮联网资料未能完成核验。', source: 'unverified' };
+  } finally {
+    active.research = false;
+    active.agent = undefined;
+    const fresh = await getSession(tabId);
+    if (fresh?.id === session.id && fresh.run?.id === runId) {
+      await putSession({ ...fresh, researchCheckpoint: undefined, researchPending: undefined });
+    }
+  }
 }
 
 async function runLearnStep(
@@ -731,6 +817,7 @@ async function runLearnStep(
         policy: resolvePolicy('learn', config),
         style: settings.learningStyle,
       });
+      const supplementContext = mode === 'close' ? undefined : await learningSupplement(tabId, current, learning, input, config, runId, signal, hooks);
       let next = await callLearn(
         current,
         learning,
@@ -743,6 +830,7 @@ async function runLearnStep(
         frozen.override,
         frozen.style,
         settings.diagrams === 'auto',
+        supplementContext,
       );
       // 模型判断应当收束时，本轮直接补一次收束，不留给用户一个悬空状态（FR-012）。
       if (mode !== 'close' && !next.current && next.status === 'active') {
@@ -758,6 +846,7 @@ async function runLearnStep(
           frozen.override,
           frozen.style,
           settings.diagrams === 'auto',
+          supplementContext,
         );
       }
 
@@ -774,6 +863,41 @@ async function runLearnStep(
   );
 }
 
+type LearnHistoryItem = {
+  question: string;
+  answer: string;
+  verdict: string;
+  hintUsed: boolean;
+  target?: QuestionTarget;
+  mastery?: string;
+};
+
+function learnHistory(learning: LearningState): LearnHistoryItem[] {
+  const pairs: LearnHistoryItem[] = [];
+  for (const entry of learning.log) {
+    if (entry.role === 'question' || entry.role === 'quiz') {
+      pairs.push({
+        question: entry.text.split('\n')[0] ?? '',
+        answer: '',
+        verdict: '',
+        hintUsed: false,
+        target: entry.target ?? entry.quiz?.[0]?.target,
+      });
+      continue;
+    }
+    const last = pairs[pairs.length - 1];
+    if (!last) continue;
+    if (entry.role === 'answer') {
+      last.answer = entry.text;
+      last.hintUsed = entry.independent === false;
+    } else if (entry.role === 'feedback') {
+      last.verdict = entry.verdict ?? '';
+      last.mastery = entry.mastery;
+    }
+  }
+  return pairs.slice(-LIMITS.maxHistoryTurns * 2);
+}
+
 async function callLearn(
   session: PageSession,
   learning: LearningState,
@@ -786,6 +910,7 @@ async function callLearn(
   override: string | undefined,
   style: 'mixed' | 'quiz' | 'open',
   diagrams: boolean,
+  supplementContext?: LearnSupplement,
 ): Promise<LearningState> {
   const watch = watchProgress(
     hooks,
@@ -800,28 +925,7 @@ async function callLearn(
       disclosure: describeCompleteness(session.completeness),
       goal: learning.goal,
       round: learning.used,
-      history: learning.log
-        .filter((entry) => entry.role === 'question' || entry.role === 'quiz' || entry.role === 'answer')
-        .slice(-LIMITS.maxHistoryTurns * 2)
-        .reduce<{ question: string; answer: string; verdict: string; hintUsed: boolean }[]>(
-          (pairs, entry) => {
-            if (entry.role === 'question' || entry.role === 'quiz') {
-              pairs.push({
-                question: entry.text.split('\n')[0] ?? '',
-                answer: '',
-                verdict: '',
-                hintUsed: false,
-              });
-            } else {
-              const last = pairs[pairs.length - 1];
-              if (last) {
-                last.answer = entry.text;
-                last.hintUsed = entry.independent === false;
-              }
-            }
-            return pairs;
-          },
-          []),
+      history: learnHistory(learning),
       current: learning.current,
       userAnswer: input.userAnswer,
       userAnswers: input.userChoices,
@@ -829,6 +933,9 @@ async function callLearn(
       override,
       style,
       diagrams,
+      supplementalContext: supplementContext && supplementContext.source !== 'stable'
+        ? { text: supplementContext.text, source: supplementContext.source }
+        : undefined,
     }),
     signal,
     watch.onProgress,
@@ -843,16 +950,30 @@ async function callLearn(
   return attachCallReasoning(applyLearn(learning, clean.value, input), learning.log.length, watch.reasoning());
 }
 
+function openMastery(verdict: 'correct' | 'partial' | 'misconception' | 'unknown' | 'objection', independent: boolean): MasteryLabel {
+  if (verdict === 'correct' && independent) return 'independent';
+  if (verdict === 'correct' || verdict === 'partial') return 'basic';
+  if (verdict === 'misconception') return 'review';
+  return 'unverified';
+}
+
+function quizMastery(correct: number, total: number): MasteryLabel {
+  if (total > 0 && correct === total) return 'basic';
+  return correct > 0 ? 'review' : 'unverified';
+}
+
 function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInput): LearningState {
   let next = learning;
   switch (clean.action) {
     case 'question':
+      if (!nextQuestionAllowed(next)) return { ...next, current: null };
       next = appendLearn(
-        { ...next, used: next.used + 1, current: { kind: 'open', question: clean.question, hintUsed: false } },
-        { role: 'question', text: clean.question },
+        { ...next, used: next.used + 1, current: { kind: 'open', question: clean.question, hintUsed: false, target: clean.target } },
+        { role: 'question', text: clean.question, ...(clean.target ? { target: clean.target } : {}) },
       );
       break;
     case 'quiz':
+      if (!nextQuestionAllowed(next)) return { ...next, current: null };
       next = appendLearn(
         {
           ...next,
@@ -868,13 +989,14 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
       break;
     case 'feedback': {
       const hintUsed = next.current?.kind === 'open' ? next.current.hintUsed : false;
+      const target = next.current?.kind === 'open' ? next.current.target : undefined;
+      const mastery = openMastery(clean.verdict, !hintUsed);
       next = appendLearn({ ...next }, { role: 'answer', text: input.userAnswer ?? '', independent: !hintUsed });
       next = appendLearn(next, {
-        role: 'feedback',
-        text: clean.feedback,
-        verdict: clean.verdict,
+        role: 'feedback', text: clean.feedback, verdict: clean.verdict, mastery,
+        ...(target ? { target } : {}), ...(clean.supplement ? { supplement: clean.supplement } : {}),
       });
-      next = advance(next, clean.nextQuestion);
+      next = advance(next, clean.nextQuestion, clean.nextQuestionTarget);
       break;
     }
     case 'graded': {
@@ -905,7 +1027,8 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
         .join('\n');
       next = appendLearn({ ...next }, { role: 'answer', text: answerText, independent: true });
 
-      const notesById = new Map(clean.notes.map((note) => [note.questionId, note.note]));
+      const validIds = new Set(current.questions.map((question) => question.id));
+      const notesById = new Map(clean.notes.filter((note) => validIds.has(note.questionId)).map((note) => [note.questionId, note.note]));
       const feedbackText = [
         `本轮 ${score.correct}/${score.total} 题正确。`,
         clean.analysis,
@@ -919,7 +1042,11 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
       ]
         .filter(Boolean)
         .join('\n');
-      next = appendLearn(next, { role: 'feedback', text: feedbackText, graded, score });
+      next = appendLearn(next, {
+        role: 'feedback', text: feedbackText, graded, score,
+        mastery: quizMastery(score.correct, score.total),
+        ...(clean.supplement ? { supplement: clean.supplement } : {}),
+      });
 
       // 下一轮：选择题优先，其次开放问题；模型判断问清楚了才交给收束。
       const canContinue = nextQuestionAllowed(next);
@@ -937,7 +1064,7 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
           },
         );
       } else if (clean.nextQuestion && canContinue) {
-        next = advance(next, clean.nextQuestion);
+        next = advance(next, clean.nextQuestion, clean.nextQuestionTarget);
       } else {
         next = { ...next, current: null };
       }
@@ -947,22 +1074,30 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
       next = appendLearn(
         {
           ...next,
-          current: { kind: 'open', question: clean.question, hintUsed: true },
+          current: next.current?.kind === 'open'
+            ? { ...next.current, question: clean.question, hintUsed: true }
+            : next.current,
         },
         { role: 'hint', text: clean.hint },
       );
       break;
     case 'explain':
-      next = appendLearn(next, { role: 'explain', text: clean.explanation });
+      next = appendLearn(next, { role: 'explain', text: clean.explanation, ...(clean.supplement ? { supplement: clean.supplement } : {}) });
       // 选择题轮讲解后继续作答（契约要求模型返回 nextQuestion:null）。
       if (next.current?.kind === 'quiz') break;
-      next = advance(next, clean.nextQuestion);
+      next = advance(next, clean.nextQuestion, clean.nextQuestionTarget);
       break;
     case 'summary':
       // 继续方向做成可点的卡片（界面用 SuggestRow 渲染），不再拼成一句流水账。
       next = appendLearn(
         { ...next, current: null, status: 'closed', nextDirections: clean.nextDirections },
-        { role: 'summary', text: clean.summary },
+        {
+          role: 'summary',
+          text: clean.summary,
+          ...(clean.supplement ? { supplement: clean.supplement } : {}),
+          ...(clean.coveredTargets ? { coveredTargets: clean.coveredTargets } : {}),
+          ...(clean.uncoveredTargets ? { uncoveredTargets: clean.uncoveredTargets } : {}),
+        },
       );
       break;
   }
@@ -970,10 +1105,10 @@ function applyLearn(learning: LearningState, clean: LearnResult, input: LearnInp
 }
 
 /** 是否还有下一轮开放问题：模型给了下一问就接着问，直到它判断该收束（FR-012）。 */
-function advance(learning: LearningState, nextQuestion: string | null): LearningState {
+function advance(learning: LearningState, nextQuestion: string | null, target?: QuestionTarget): LearningState {
   if (!nextQuestion || !nextQuestionAllowed(learning)) return { ...learning, current: null };
   return appendLearn(
-    { ...learning, used: learning.used + 1, current: { kind: 'open', question: nextQuestion, hintUsed: false } },
-    { role: 'question', text: nextQuestion },
+    { ...learning, used: learning.used + 1, current: { kind: 'open', question: nextQuestion, hintUsed: false, target } },
+    { role: 'question', text: nextQuestion, ...(target ? { target } : {}) },
   );
 }

@@ -84,14 +84,49 @@ describe('request lifecycle recovery', () => {
     expect(state.error).toBeNull();
   });
 
-  it('an interrupted request does not block a fresh question after recovery', async () => {
-    storage.seed({ ...ready(), run: { id: 'orphan', kind: 'answer', startedAt: 1 } });
-    await buildPanelState(7);
+  it('starts a fresh Ask AI topic without sending the previous topic history', async () => {
+    await handleIntent({ kind: 'ask', tabId: 7, question: '文章讲了什么？' }, hooks);
+    storage.callModel.mockClear();
+    await handleIntent({ kind: 'ask', tabId: 7, question: '换个主题，限制是什么？' }, hooks);
+
+    const payload = JSON.parse(storage.callModel.mock.calls[0]![0][1].content.split('\n')[1]);
+    expect(payload.history).toEqual([]);
+    const chat = (await storage.get())?.chat ?? [];
+    expect(chat).toHaveLength(2);
+    expect(chat[0]?.topicId).not.toBe(chat[1]?.topicId);
+  });
+
+  it('a failed guide keeps the extracted page usable for ask and learning', async () => {
+    storage.seed({ ...ready(), guide: null });
+    storage.callModel.mockResolvedValueOnce({ invalid: true }).mockResolvedValue(result);
+
+    expect(await handleIntent({ kind: 'guide', tabId: 7 }, hooks)).toMatchObject({ code: 'BAD_OUTPUT' });
+    const afterGuide = (await storage.get())!;
+    expect(afterGuide.state).toBe('READY');
+    expect(afterGuide.blocks).toHaveLength(1);
+    expect(afterGuide.guide).toBeNull();
+    expect(afterGuide.run).toBeNull();
+    expect(afterGuide.error?.retryable).toBe(true);
+
     expect(await handleIntent({ kind: 'ask', tabId: 7, question: '有几个团队？' }, hooks)).toBeNull();
     expect((await storage.get())?.chat).toHaveLength(1);
   });
 
-  it('a previous page still unwinding cannot block the new page guide', async () => {
+  it('stopping a guide with extracted blocks keeps the page readable', async () => {
+    storage.seed({ ...ready(), guide: null });
+    storage.callModel.mockImplementation((_messages, signal: AbortSignal) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(appError('ABORTED', '已停止')));
+    }));
+    const running = handleIntent({ kind: 'guide', tabId: 7 }, hooks);
+    await vi.waitFor(() => expect(storage.callModel).toHaveBeenCalledOnce());
+    expect(abortRun(7)).toBe(true);
+    expect((await running)?.code).toBe('ABORTED');
+    const state = await buildPanelState(7);
+    expect(state.sessionState).toBe('READY');
+    expect(state.busy).toBeNull();
+    expect(state.guide).toBeNull();
+    expect(state.error).toBeNull();
+  });  it('a previous page still unwinding cannot block the new page guide', async () => {
     let finishOld!: (value: unknown) => void;
     storage.callModel.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }));
     const old = handleIntent({ kind: 'ask', tabId: 7, question: '旧页问题' }, hooks);

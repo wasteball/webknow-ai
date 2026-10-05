@@ -77,6 +77,8 @@ export type AgentSnapshot = {
   /** Program-owned frozen receiver declaration, never supplied by a model action. */
   outboundScope?: string;
   identity: RunIdentity; question: string; quote: Quote | null;
+  /** Current Ask AI context segment; optional for old checkpoints. */
+  topicId?: string;
   title: string; blocks: EvidenceBlock[]; disclosure: string;
   history: { question: string; answer: string }[];
   /** User clarification is untrusted intent, never article/external fact evidence. */

@@ -125,14 +125,16 @@ describe('会话与请求身份', () => {
 
   it('停止后按请求类型分别恢复到确定状态', () => {
     const session = createSession(1, payload);
-    expect(stateAfterStop(session, 'guide')).toBe('READY_TO_START');
+    expect(stateAfterStop(session, 'guide')).toBe('READY');
+    expect(stateAfterStop({ ...session, blocks: [] }, 'guide')).toBe('READY_TO_START');
     expect(stateAfterStop(session, 'answer')).toBe('READY');
     expect(stateAfterStop(session, 'learn')).toBe('LEARNING');
   });
 
-  it('失败后只有首屏需要重新开始，问答与学习保留已有记录', () => {
+  it('摘要失败后保留已读取页面，真正没有正文时仍然需要重新开始', () => {
     const session = createSession(1, payload);
-    expect(stateAfterFailure(session, 'guide')).toBe('ERROR');
+    expect(stateAfterFailure(session, 'guide')).toBe('READY');
+    expect(stateAfterFailure({ ...session, blocks: [] }, 'guide')).toBe('ERROR');
     expect(stateAfterFailure(session, 'answer')).toBe('READY');
     expect(stateAfterFailure(session, 'learn')).toBe('READY');
     expect(stateAfterFailure({ ...session, learning: { goal: 'g', promptVersion: 'v', used: 1, current: null, status: 'active', log: [] } }, 'learn')).toBe('LEARNING');

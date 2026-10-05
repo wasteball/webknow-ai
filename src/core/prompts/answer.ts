@@ -36,6 +36,7 @@ export const ANSWER_DEFAULT_POLICY = [
   '涉及正文中的事实或观点时，citations 填入真正支持这些说法的正文块；不要用同主题但不支持结论的段落充当依据。',
   '回答使用简体中文，沿用原文的名称，语言平实；不要堆砌小标题，不要写与问题无关的背景介绍。回答正文里不要出现块编号。',
   'followUps：给 0 到 3 个能靠原文继续回答的具体问题，写在 followUps 里，不要写进 answer；不要重复已问的问题。没有有价值的新角度就给空数组。',
+  '如果 payload 提供了当前 topic，历史只用于理解这个 topic；用户明确换主题时不要把旧 topic 的细节当作当前问题的前提。',
 ].join('\n');
 
 const ANSWER_CONTRACT = [
@@ -103,6 +104,7 @@ export function answerMessages(input: {
   /** 用户设置「不要图」时为 false：明确要求不用图表。 */
   diagrams?: boolean;
   networkContext?: { gate: GateResult; scope: 'article' };
+  topic?: { switched: boolean };
 }) {
   const marker = randomBoundary();
   const articleOnly = input.networkContext?.scope === 'article';
@@ -112,6 +114,7 @@ export function answerMessages(input: {
     blocks: JSON.parse(input.contextJson),
     history: input.history,
     question: input.question,
+    topic: input.topic ?? null,
     ...(input.webResults && !articleOnly ? { webResults: input.webResults } : {}),
     ...(input.quote ? { quote: input.quote } : {}),
   });

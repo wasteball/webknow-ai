@@ -88,9 +88,9 @@ export type Command =
   | { type: 'setQuote'; tabId: number; text: string }
   | { type: 'clearQuote'; tabId: number; quoteId?: string }
   | { type: 'explore'; tabId: number; bubbleId: string }
-  | { type: 'learnStart'; tabId: number; goal: string }
-  | { type: 'learnAnswer'; tabId: number; text: string; choices?: { questionId: string; choiceIds: string[] }[] }
-  | { type: 'learnAssist'; tabId: number; action: 'hint' | 'explain' | 'skip' | 'unknown' }
+  | { type: 'learnStart'; tabId: number; goal: string; search?: boolean }
+  | { type: 'learnAnswer'; tabId: number; text: string; choices?: { questionId: string; choiceIds: string[] }[]; search?: boolean }
+  | { type: 'learnAssist'; tabId: number; action: 'hint' | 'explain' | 'skip' | 'unknown'; search?: boolean }
   | { type: 'learnEnd'; tabId: number }
   | { type: 'jump'; tabId: number; blockId: string }
   | { type: 'clearSession'; tabId: number }

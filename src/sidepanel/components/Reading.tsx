@@ -23,11 +23,13 @@ type Send = (command: Command) => Promise<Reply | undefined>;
  *
  * 回答正文走 <Rich>：模型写的是受控 markdown 子集，这里是它唯一的渲染入口。
  */
-export function Reading({ state, send, onSearchSettings, active = true }: { state: PanelState; send: Send; onSearchSettings?: () => void; active?: boolean }) {
+export function Reading({ state, send, onSearchSettings, active = true, searchOn, onSearchChange }: { state: PanelState; send: Send; onSearchSettings?: () => void; active?: boolean; searchOn?: boolean; onSearchChange?: (value: boolean) => void }) {
   const [draft, setDraft] = useState('');
+  const [localSearchOn, setLocalSearchOn] = useState(false);
+  const effectiveSearchOn = searchOn ?? localSearchOn;
+  const setEffectiveSearchOn = onSearchChange ?? setLocalSearchOn;
   const [submitting, setSubmitting] = useState(false);
   const [followRequest, setFollowRequest] = useState(0);
-  const [searchOn, setSearchOn] = useState(false);
   const [stopping, setStopping] = useState(false);
   const stopInFlight = useRef(false);
   const [hidingSuggests, setHidingSuggests] = useState(false);
@@ -48,6 +50,7 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
   const searchEnabled = state.settings.search.enabled;
   const diagrams = state.settings.diagrams === 'auto';
   const guide = state.guide;
+  const guideRetryable = state.sessionState === 'READY' && !guide && Boolean(state.error) && !busy;
   const lastTurn = state.chat[state.chat.length - 1];
   const row = visibleSuggestions({
     chatLength: state.chat.length,
@@ -65,7 +68,7 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
   const outgoing = pending && pending.at === state.chat.length ? pending : null;
 
   const verificationQuestion = draft.trim() || currentPending?.question || outgoing?.question || lastTurn?.question || '';
-  const needsVerification = !(searchEnabled && searchOn) && Boolean(verificationQuestion) && evaluateSearchGate({
+  const needsVerification = !(searchEnabled && effectiveSearchOn) && Boolean(verificationQuestion) && evaluateSearchGate({
     question: verificationQuestion, pageTitle: state.pageTitle, quote: quote?.text ?? null, mode: 'article',
     enabled: false, freshness: state.settings.search.agent.freshness, now: new Date(),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -91,8 +94,8 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
   const toggleSearch = () => {
     if (stopInFlight.current || (submitting && !researching)) return;
     if (!searchEnabled) { onSearchSettings?.(); return; }
-    setSearchOn(!searchOn);
-    if (searchOn && researching) void stop();
+    setEffectiveSearchOn(!effectiveSearchOn);
+    if (effectiveSearchOn && researching) void stop();
   };
   const sendQuestion = async (question: string, sentQuote: Quote | null = quote, retry = false) => {
     if (!tabId || !question.trim() || busy || blocked || stopInFlight.current) return;
@@ -104,7 +107,7 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
     if (!retry) setDraft((current) => (current.trim() === text ? '' : current));
     setSubmitting(true);
     setFollowRequest((n) => n + 1);
-    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && searchOn, quote: sentQuote?.text ?? null, ...(sentQuote?.id ? { quoteId: sentQuote.id } : {}) }).finally(() => setSubmitting(false));
+    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && effectiveSearchOn, quote: sentQuote?.text ?? null, ...(sentQuote?.id ? { quoteId: sentQuote.id } : {}) }).finally(() => setSubmitting(false));
     if (reply?.ok) return;
     setConsumedQuote((current) => current === sentQuoteKey ? null : current);
     setPending((current) => (current?.question === text ? null : current));
@@ -190,6 +193,14 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
       </Conversation>
 
       <div className="dock">
+        {guideRetryable && tabId !== null && (
+          <p className="composer-notice" role="status">
+            摘要暂时没生成，但你仍然可以直接提问。{' '}
+            <button type="button" className="link" onClick={() => void send({ type: 'start', tabId })}>
+              重试摘要
+            </button>
+          </p>
+        )}
         {needsVerification && <p className="composer-notice" role="status">联网搜索未开启，本题需要实时核验，当前未核验。{onSearchSettings && <button type="button" className="link" onClick={onSearchSettings}>联网设置</button>}</p>}
         {blocked && <p className="composer-notice" role="status">AI 问正在生成，结束后可以继续提问。</p>}
         <form
@@ -244,7 +255,7 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
               <button
                 type="button"
                 className="search-chip"
-                aria-pressed={searchEnabled && searchOn}
+                aria-pressed={searchEnabled && effectiveSearchOn}
                 disabled={stopping || (submitting && !researching)}
                 title={searchEnabled
                   ? `打开后，只把搜索词发给${state.settings.search.providerName ?? '搜索服务'}，不发这一页正文`
@@ -253,7 +264,7 @@ export function Reading({ state, send, onSearchSettings, active = true }: { stat
               >
                 <Icon name="globe" small />
                 联网搜索
-                {searchEnabled && searchOn && <Icon name="check" small />}
+                {searchEnabled && effectiveSearchOn && <Icon name="check" small />}
               </button>
             )}
           >

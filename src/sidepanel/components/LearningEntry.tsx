@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { LearnEntry } from '../../core/session';
+import type { LearnEntry, MasteryLabel } from '../../core/session';
 import { Thinking, VerdictTag } from './bits';
 import { Rich, RichInline } from './Rich';
 
@@ -27,6 +27,13 @@ export function LearningEntry({ entry, diagrams, quizContent }: { entry: LearnEn
     <article className="msg ai">
       <Thinking text={entry.reasoning ?? ''} />
       <div className={`said${entry.role === 'summary' ? ' said-summary' : ''}`}>
+        {entry.supplement && (
+          <aside className="supplement">
+            <span className="tag">补充说明{entry.supplement.source === 'network' ? '（联网资料）' : entry.supplement.source === 'unverified' ? '（未核验）' : ''}</span>
+            <Rich text={entry.supplement.text} diagrams={diagrams} />
+          </aside>
+        )}
+        {entry.mastery && <MasteryTag mastery={entry.mastery} />}
         {entry.role === 'question' && <Rich text={entry.text} diagrams={false} />}
         {entry.role === 'quiz' && (quizContent ?? <QuizEntryView entry={entry} />)}
         {entry.role === 'feedback' && (
@@ -56,6 +63,17 @@ export function LearningEntry({ entry, diagrams, quizContent }: { entry: LearnEn
       </div>
     </article>
   );
+}
+
+const MASTERY_LABELS: Record<MasteryLabel, string> = {
+  independent: '已能独立说明',
+  basic: '基本理解',
+  review: '需要再看',
+  unverified: '尚未验证',
+};
+
+function MasteryTag({ mastery }: { mastery: MasteryLabel }) {
+  return <span className="tag">{MASTERY_LABELS[mastery]}</span>;
 }
 
 /**

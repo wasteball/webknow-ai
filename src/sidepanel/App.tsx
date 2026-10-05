@@ -36,12 +36,17 @@ export function App() {
   const [state, setState] = useState<PanelState | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const conversationKey = state?.sessionId ?? `${state?.tabId}:${state?.pageUrl}`;
+  const [searchOn, setSearchOn] = useState(false);
   const [selection, setSelection] = useState<{ session: string; view: View } | null>(null);
   // Resolve a new article synchronously; a mounted hidden mode must not start a paid request.
   const view = selection?.session === conversationKey ? selection.view
     : state?.learning?.status === 'active' ? 'learn' : 'qa';
   const setView = (next: View) => setSelection({ session: conversationKey, view: next });
   const clientRef = useRef<Client | null>(null);
+
+  useEffect(() => {
+    setSearchOn(false);
+  }, [conversationKey]);
 
   useEffect(() => {
     const client = createClient({
@@ -336,7 +341,7 @@ export function App() {
                 aria-labelledby={tabDomId('qa')}
                 hidden={!readyShell || view !== 'qa'}
               >
-                <Reading state={state} send={send} active={readyShell && view === 'qa'} onSearchSettings={() => openSettings('search')} />
+                <Reading state={state} send={send} active={readyShell && view === 'qa'} onSearchSettings={() => openSettings('search')} searchOn={searchOn} onSearchChange={setSearchOn} />
               </div>
               <div
                 key={`${conversationKey}:learn`}
@@ -345,7 +350,7 @@ export function App() {
                 aria-labelledby={tabDomId('learn')}
                 hidden={!readyShell || view !== 'learn'}
               >
-                <Learning state={state} send={send} active={readyShell && view === 'learn'} />
+                <Learning state={state} send={send} active={readyShell && view === 'learn'} searchOn={searchOn} onSearchChange={setSearchOn} onSearchSettings={() => openSettings('search')} />
               </div>
             </>
           )}

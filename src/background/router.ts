@@ -397,7 +397,7 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
       }
 
       case 'learnStart':
-        return finish(await handleIntent({ kind: 'learnStart', tabId: command.tabId, goal: command.goal }, hooks));
+        return finish(await handleIntent({ kind: 'learnStart', tabId: command.tabId, goal: command.goal, search: command.search }, hooks));
       case 'learnAnswer':
         return finish(
           await handleIntent(
@@ -406,13 +406,14 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
               tabId: command.tabId,
               text: command.text,
               choices: command.choices,
+              search: command.search,
             },
             hooks,
           ),
         );
       case 'learnAssist':
         return finish(
-          await handleIntent({ kind: 'learnAssist', tabId: command.tabId, assist: command.action }, hooks),
+          await handleIntent({ kind: 'learnAssist', tabId: command.tabId, assist: command.action, search: command.search }, hooks),
         );
       case 'learnEnd':
         return finish(await handleIntent({ kind: 'learnEnd', tabId: command.tabId }, hooks));
@@ -609,6 +610,12 @@ async function startSession(tabId: number): Promise<Reply> {
     return { ok: false, error: fromThrown(error) };
   }
   const existing = await getSession(tabId);
+  if (existing && existing.state === 'READY' && existing.blocks.length > 0 && !existing.guide && existing.learning?.status !== 'active') {
+    // The page is already readable; retry only the derived guide instead of extracting again.
+    void handleIntent({ kind: 'guide', tabId }, hooks);
+    await pushState(tabId);
+    return { ok: true, message: '正在重新生成摘要。' };
+  }
   if (existing && (existing.state === 'READY' || existing.state === 'LEARNING')) {
     await pushState(tabId);
     return { ok: true, message: '这一页刚才已经读过，直接用了上次的结果。' };

@@ -216,6 +216,31 @@ describe('cleanLearn', () => {
     }
   });
 
+  it('保留合法题目目标与补充说明，拒绝不存在的正文块', () => {
+    const valid = cleanLearn({
+      action: 'feedback', verdict: 'partial', feedback: '主干对了。',
+      supplement: { text: '这个术语是统计学中的基础概念。', source: 'stable' },
+      nextQuestion: null,
+      nextQuestionTarget: { blockIds: ['b_0'], focus: '适用边界' },
+    }, 'respond', 'open', ['b_0', 'b_1']);
+    expect(valid.ok).toBe(true);
+    if (valid.ok && valid.value.action === 'feedback') {
+      expect(valid.value.supplement?.source).toBe('stable');
+      expect(valid.value.nextQuestionTarget?.blockIds).toEqual(['b_0']);
+    }
+    expect(cleanLearn({
+      action: 'question', question: '文章的限制是什么？', target: { blockIds: ['missing'], focus: '限制' },
+    }, 'ask', undefined, ['b_0']).ok).toBe(false);
+  });
+
+  it('题目补充说明长度和控制字符受限', () => {
+    expect(cleanLearn({
+      action: 'explain', explanation: '解释。', supplement: { text: '\u0000', source: 'stable' }, nextQuestion: null,
+    }, 'explain', 'open', ['b_0']).ok).toBe(false);
+    expect(cleanLearn({
+      action: 'explain', explanation: '解释。', supplement: { text: 'x'.repeat(801), source: 'stable' }, nextQuestion: null,
+    }, 'explain', 'open', ['b_0']).ok).toBe(false);
+  });
   it('选择题轮必须用 graded，开放问题必须用 feedback（F5）', () => {
     const feedback = { action: 'feedback', verdict: 'correct', feedback: '反馈', nextQuestion: null };
     expect(cleanLearn(feedback, 'respond', 'open').ok).toBe(true);

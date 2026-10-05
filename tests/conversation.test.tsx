@@ -77,7 +77,20 @@ describe('学习也是对话流', () => {
     expect(send).toHaveBeenCalledOnce();
   });
 
-  it('另一模式生成结束后才开始首问，失败不循环重发', async () => {
+  it('摘要失败时 AI 问仍会主动开始首问', () => {
+    const send = vi.fn(async () => ({ ok: true as const }));
+    render(<Learning state={panel({ guide: null, error: { code: 'BAD_OUTPUT', message: '摘要失败', retryable: true } })} send={send} active />);
+    expect(send).toHaveBeenCalledWith({ type: 'learnStart', tabId: 7, goal: DEFAULT_LEARN_GOAL });
+  });
+
+  it('摘要失败时问 AI 保留输入并提供重试摘要', () => {
+    const send = vi.fn(async () => ({ ok: true as const }));
+    render(<Reading state={panel({ guide: null, error: { code: 'BAD_OUTPUT', message: '摘要失败', retryable: true } })} send={send} />);
+    expect(screen.getByText(/摘要暂时没生成/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '重试摘要' }));
+    expect(send).toHaveBeenCalledWith({ type: 'start', tabId: 7 });
+    expect(screen.getByLabelText('向这篇文章提问')).toBeTruthy();
+  });  it('另一模式生成结束后才开始首问，失败不循环重发', async () => {
     const send = vi.fn(async () => ({ ok: false as const, error: { code: 'INTERNAL' as const, message: '失败', retryable: true } }));
     const state = panel();
     const { rerender } = render(<Learning state={{ ...state, busy: { kind: 'answer', chars: 0, draft: '', reasoning: '' } }} send={send} />);
