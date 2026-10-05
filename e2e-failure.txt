@@ -1,0 +1,272 @@
+
+> webknow-ai@0.13.2 test:e2e /home/runner/work/webknow-ai/webknow-ai
+> pnpm build:e2e && playwright test
+
+
+> webknow-ai@0.13.2 build:e2e /home/runner/work/webknow-ai/webknow-ai
+> wxt build --mode e2e
+
+[log] 
+WXT 0.21.4
+[info] Building chrome-mv3 for e2e with Vite 8.3.0
+[?25l
+⠋ Preparing...[K
+⠋ [1/3] background[K
+⠙ [1/3] background[K
+⠹ [1/3] background[K
+⠹ [2/3] content[K
+⠸ [2/3] content[K
+⠸ [3/3] options, sidepanel, viewer[K
+⠼ [3/3] options, sidepanel, viewer[K
+⠴ [3/3] options, sidepanel, viewer[K
+⠦ [3/3] options, sidepanel, viewer[K
+⠧ [3/3] options, sidepanel, viewer[K
+⠇ [3/3] options, sidepanel, viewer[K
+⠏ [3/3] options, sidepanel, viewer[K
+⠋ [3/3] options, sidepanel, viewer[K
+⠙ [3/3] options, sidepanel, viewer[K
+⠹ [3/3] options, sidepanel, viewer[K
+⠸ [3/3] options, sidepanel, viewer[K
+⠼ [3/3] options, sidepanel, viewer[K
+⠴ [3/3] options, sidepanel, viewer[K
+⠦ [3/3] options, sidepanel, viewer[K
+⠧ [3/3] options, sidepanel, viewer[K
+⠇ [3/3] options, sidepanel, viewer[K
+⠏ [3/3] options, sidepanel, viewer[K
+⠋ [3/3] options, sidepanel, viewer[K[33m[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+
+[K[?25h
+[K[?25h[success] Built extension in 2.038 s
+  ├─ .output/chrome-mv3-e2e/manifest.json                                    1.03 kB  
+  ├─ .output/chrome-mv3-e2e/options.html                                     831 B    
+  ├─ .output/chrome-mv3-e2e/sidepanel.html                                   741 B    
+  ├─ .output/chrome-mv3-e2e/viewer.html                                      569 B    
+  ├─ .output/chrome-mv3-e2e/background.js                                    425.24 kB
+  ├─ .output/chrome-mv3-e2e/chunks/abnfDiagram-O67JEVCF-ih5HrEUV.js          1.85 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/arc-BcgAThz3.js                           3.47 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/architecture-7GRP2DOG-5ht5AX3L.js         131 B    
+  ├─ .output/chrome-mv3-e2e/chunks/architectureDiagram-NJMV4G6O-CgzoO0dw.js  148.91 kB
+  ├─ .output/chrome-mv3-e2e/chunks/array-BifhSqXX.js                         107 B    
+  ├─ .output/chrome-mv3-e2e/chunks/blockDiagram-BEXU5L5S-Dsniuc58.js         42.46 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/c4Diagram-YGBWAQC7-CZzgqV55.js            65.08 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/channel-CueyJkv9.js                       114 B    
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-2Q5K7J3B-C1jixKkw.js                191 B    
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-3FUC2YCW-Ci77e7A0.js                10.72 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-5DYCD2WN-DWjNS-P5.js                1.42 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-5VM5RSS4-ZNzvKenW.js                362 B    
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-742MDFTN-C2ucBjLS.js                5.83 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-7INBJB4K-b0aZ9ThM.js                115.49 kB
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-7M6MHVWA-CX0wxina.js                62.72 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-7PRAP22T-BsTK6sto.js                1.95 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-DUW6YSOI-Dgx8z5s3.js                891 B    
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-FOHPRMQF-DzxwRta7.js                662.11 kB
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-GTNCS2PH-BgO0HkfQ.js                15.64 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-GWA4HPMP-BreRZRiW.js                1.97 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-J5ZVWO5B-oDCd-gWO.js                635 B    
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-JWPE2WC7-DVXcaiue.js                223 B    
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-MBY4JIJT-CC1zS7IB.js                51.87 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-NETBCI7D-Pe9YkiQi.js                5.44 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-O7XYJQB3-B1C8330U.js                239.46 kB
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-UA2S7LBM-CknnmYVP.js                14.83 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-WEXAMYUT-CQSLDAEa.js                574 B    
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-XXDRQBXY-Bt-cILVv.js                262 B    
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-Y2CYZVJY-DsF7k-Jl.js                155 B    
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-Z7XXMR3K-gPyi43-8.js                37.42 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/chunk-ZIGJFQKS-pia1zJRh.js                30.75 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/classDiagram-v2-NBCMYWYE-DrMPM1BA.js      49.70 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/cose-bilkent-JH36ORCC-Cs_0igKm.js         81.25 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/cynefin-OW5HDTMX-ZcmGe1Lf.js              126 B    
+  ├─ .output/chrome-mv3-e2e/chunks/cynefinDiagram-VND7K2PF-oOJzfext.js       9.94 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/cytoscape.esm-Yq6u8L66.js                 434.86 kB
+  ├─ .output/chrome-mv3-e2e/chunks/dagre-6A5THRUB-BgeYqLen.js                47.84 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/defaultLocale-BFoDCU3G.js                 4.63 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/diagram-22UHCM2B-DI9be3kW.js              80.49 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/diagram-3UASUU5V-0nfoPZU1.js              15.76 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/diagram-ATOU4E4O-BQ3vZLY5.js              10.65 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/diagram-CDSNMT55-BOKnrpFd.js              8.20 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/Diagram-DvoKFceK.js                       6.81 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/diagram-icons-CHvkzsQP.js                 2.13 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/diagram-MLGK6HIB-E6jdjPb9.js              4.28 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/diagram-MPIPVDR6-PkKlMM9y.js              6.07 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/dist-DWNioNh1.js                          2.17 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/ebnfDiagram-ZINNZB2B-ZGkQP4w9.js          2.06 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/elk-276RUBZZ-OonNVuro.js                  1.46 MB  
+  ├─ .output/chrome-mv3-e2e/chunks/erDiagram-OPXOYQCR-CNNZHuRp.js            30.65 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/eventmodeling-NTZA5JFV-CmuLMC8G.js        132 B    
+  ├─ .output/chrome-mv3-e2e/chunks/flowDiagram-KWPJA3E3-CiRXwwDN.js          575 B    
+  ├─ .output/chrome-mv3-e2e/chunks/ganttDiagram-FUAMR5RP-rpYsFdO8.js         69.35 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/gitGraph-4MIJSDKK-WzyHQR14.js             127 B    
+  ├─ .output/chrome-mv3-e2e/chunks/gitGraphDiagram-X574FWY7-BlCud_o3.js      29.01 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/graphlib-DS17s2tU.js                      23.90 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/identity-DHC4AMUh.js                      718 B    
+  ├─ .output/chrome-mv3-e2e/chunks/info-A6RAGUB7-CHKAx7vD.js                 123 B    
+  ├─ .output/chrome-mv3-e2e/chunks/infoDiagram-VRGFBTTK-C_9f79QY.js          655 B    
+  ├─ .output/chrome-mv3-e2e/chunks/init-C-OQMol4.js                          140 B    
+  ├─ .output/chrome-mv3-e2e/chunks/ishikawaDiagram-OU5B5YK6-Bw6rF9oL.js      17.31 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/journeyDiagram-ZHPQQLJL-tlqbApWk.js       23.16 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/kanban-definition-PNTS6WVX-Csi9_MWI.js    20.26 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/katex-ZlcWpGUi.js                         258.69 kB
+  ├─ .output/chrome-mv3-e2e/chunks/line-Bcvl8wCg.js                          943 B    
+  ├─ .output/chrome-mv3-e2e/chunks/linear-BVTLB9TA.js                        5.52 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/mermaid-parser.core-Df2Uayj8.js           16.59 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/mermaid.core-DZIm-GuM.js                  84.22 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/mindmap-definition-NLK3R4M7-gYndJtFQ.js   23.44 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/options-BGSIt165.js                       63.17 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/ordinal-BDEzSJ7C.js                       1.17 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/packet-AYTQ26CC-ImVJCKbK.js               125 B    
+  ├─ .output/chrome-mv3-e2e/chunks/path-fybaL0A-.js                          2.28 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/pegDiagram-GJSIUBJH-LMXj9avU.js           2.01 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/pie-WAS4IAKB-yZTe0lup.js                  122 B    
+  ├─ .output/chrome-mv3-e2e/chunks/pieDiagram-5QR66LMP-7la_kIS4.js           6.22 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/quadrantDiagram-O4NWA36T-CkUOqfr2.js      33.52 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/radar-RG4KPBEZ-Br7SJlWz.js                124 B    
+  ├─ .output/chrome-mv3-e2e/chunks/railroad-74A4TZTK-Cp2Rf8jv.js             127 B    
+  ├─ .output/chrome-mv3-e2e/chunks/railroad-abnf-HS5TGJTU-C7nRYOjc.js        131 B    
+  ├─ .output/chrome-mv3-e2e/chunks/railroad-ebnf-LZEXJU2U-9WXcVr0l.js        131 B    
+  ├─ .output/chrome-mv3-e2e/chunks/railroad-peg-WCYAUIDC-CEP4_hPr.js         130 B    
+  ├─ .output/chrome-mv3-e2e/chunks/railroadDiagram-XR7U4H2S-Cx1CzxK5.js      1.66 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/requirementDiagram-PLB6GJNP-D0l3dJkP.js   31.07 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/rolldown-runtime-W7wSyTde.js              979 B    
+  ├─ .output/chrome-mv3-e2e/chunks/rough.esm-Dy-Kn_BL.js                     27.11 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/sankeyDiagram-IPEJSGJF-UqPvGZ_2.js        22.79 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/sequenceDiagram-PO4LG4MO-BwikJxbZ.js      117.32 kB
+  ├─ .output/chrome-mv3-e2e/chunks/sidepanel-CLPcTWlb.js                     63.14 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/sizeCapture-INFHLROL-3uHXrFqA.js          872 B    
+  ├─ .output/chrome-mv3-e2e/chunks/src-CvopzD7t.js                           45.68 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/stateDiagram-v2-GCMORJYK-DxsDM3dd.js      41.55 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/style-B8mrH1Tq.js                         708.99 kB
+  ├─ .output/chrome-mv3-e2e/chunks/swimlanes-2SLR337P-UIeXkjJH.js            106.24 kB
+  ├─ .output/chrome-mv3-e2e/chunks/swimlanesDiagram-TC7HE7FX-0lQyYJt1.js     830 B    
+  ├─ .output/chrome-mv3-e2e/chunks/timeline-definition-EJHVYXUP-DalPmsjM.js  30.45 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/treemap-WGGIJYW6-DqhCqTuR.js              126 B    
+  ├─ .output/chrome-mv3-e2e/chunks/treeView-Q6P3EWNA-D-TJh8J8.js             127 B    
+  ├─ .output/chrome-mv3-e2e/chunks/usecaseDiagram-POWQR4AR-DzyxKgwq.js       211.24 kB
+  ├─ .output/chrome-mv3-e2e/chunks/vennDiagram-UO4OBE2U-SSQEkXYS.js          41.19 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/viewer-Dv5UussF.js                        9.54 kB  
+  ├─ .output/chrome-mv3-e2e/chunks/wardley-WFR3VGLG-DlCe6wyd.js              126 B    
+  ├─ .output/chrome-mv3-e2e/chunks/wardleyDiagram-VNRHLVJA-lGTITYnk.js       25.20 kB 
+  ├─ .output/chrome-mv3-e2e/chunks/xychartDiagram-PMCCYNJV-fRqbLq5p.js       44.15 kB 
+  ├─ .output/chrome-mv3-e2e/content-scripts/content.js                       57.19 kB 
+  ├─ .output/chrome-mv3-e2e/assets/sidepanel-BlS3UJbB.css                    4.51 kB  
+  ├─ .output/chrome-mv3-e2e/assets/style-DGBpDYUj.css                        27.45 kB 
+  ├─ .output/chrome-mv3-e2e/assets/viewer-Bv8DPOiR.css                       3.02 kB  
+  ├─ .output/chrome-mv3-e2e/icon/128.png                                     1.20 kB  
+  ├─ .output/chrome-mv3-e2e/icon/16.png                                      195 B    
+  ├─ .output/chrome-mv3-e2e/icon/32.png                                      319 B    
+  └─ .output/chrome-mv3-e2e/icon/48.png                                      435 B    
+Σ Total size: 6.51 MB                                                      
+[success] Finished in 2.158 s
+
+Running 75 tests using 1 worker
+
+  ✓   1 tests/e2e/chart-fixture.spec.ts:299:1 › 生成图表基准截图 (2.8s)
+  ✓   2 tests/e2e/conversation.spec.ts:54:1 › 真实后台保留学习历史，长选择题不挤走输入，切模式不丢草稿 (21.0s)
+  ✓   3 tests/e2e/conversation.spec.ts:103:1 › 重连恢复网页订阅，残留中断状态可重试，长对话上滑即有返回入口 (6.7s)
+  ✓   4 tests/e2e/conversation.spec.ts:154:1 › 引用发送即从输入框移出，生成期间新引用和草稿不被旧回复清掉 (3.5s)
+  ✓   5 tests/e2e/conversation.spec.ts:190:1 › 停止第一问后继续提问，不虚构跳过记录 (5.6s)
+  ✓   6 tests/e2e/diagram.spec.ts:57:1 › mermaid 能在 MV3 的 CSP 下渲染各类图表 (1.1s)
+  ✓   7 tests/e2e/extension.spec.ts:30:1 › 后台以 MV3 service worker 启动 (3ms)
+  ✓   8 tests/e2e/extension.spec.ts:41:1 › 侧栏已配置且启用（工具栏点击的前提） (118ms)
+  ✓   9 tests/e2e/extension.spec.ts:51:1 › 声明了 activeTab（否则扩展拿不到当前页地址，无法申请站点权限） (3ms)
+  ✓  10 tests/e2e/extension.spec.ts:60:1 › 未配置 Key 时侧栏引导去设置，不在侧栏里填钥匙 (580ms)
+  ✓  11 tests/e2e/extension.spec.ts:81:1 › 知识库先提供 IMA 官网扫码查看入口，并说明扩展连接所需凭证 (191ms)
+  ✓  12 tests/e2e/extension.spec.ts:98:1 › 扩展页与后台都能直连 DeepSeek（host 权限豁免 CORS） (821ms)
+  ✓  13 tests/e2e/extension.spec.ts:148:1 › 保存的 Key 留在扩展本地存储，且不进入页面会话 (140ms)
+  ✓  14 tests/e2e/extraction.spec.ts:88:3 › 提取覆盖面 › 读到 shadow root 与同源 iframe，跨来源框架如实计数 (435ms)
+  ✓  15 tests/e2e/extraction.spec.ts:129:3 › 提取覆盖面 › 公众号正文里的引用能在真实浏览器回跳，高亮原段落 (141ms)
+  ✓  16 tests/e2e/extraction.spec.ts:157:3 › 提取覆盖面 › 点击侧栏里的看看原文会经后台定位公众号正文 (7.6s)
+  ✓  17 tests/e2e/flow.spec.ts:78:3 › 主路径 › 新页面等待明确启动，点击后完成提取与首屏 (1.2s)
+  -  18 tests/e2e/flow.spec.ts:142:3 › 主路径 › 已授权站点上，清掉会话后仍可直接开始
+  ✓  19 tests/e2e/quote-hostile.spec.ts:77:3 › 敌意页面上的划词提问 › 正文禁止选择、页面吃掉事件时，仍能划词并把这段发给后台 (344ms)
+  ✓  20 tests/e2e/quote.spec.ts:69:3 › 划词提问 › 划一段再点引用提问，后台会话里出现这段引用 (356ms)
+  ✓  21 tests/e2e/recovery-diagram.spec.ts:63:1 › 无效回答后能继续提问，含 Mermaid 的有效回答画成图 (8.2s)
+  ✓  22 tests/e2e/recovery-diagram.spec.ts:210:3 › 宽图自动适配，手动视角 resize 后保留，导航与键盘可操作 (650ms)
+  ✓  23 tests/e2e/recovery-diagram.spec.ts:210:3 › 高图自动适配，手动视角 resize 后保留，导航与键盘可操作 (601ms)
+  ✓  24 tests/e2e/recovery-diagram.spec.ts:258:1 › 小图居中，全屏切换保留手动视角，Esc 先退出全屏 (408ms)
+  ✓  25 tests/e2e/recovery-diagram.spec.ts:285:1 › 查看器导航后绑定失效，清会话不关闭已经用于其他内容的标签 (526ms)
+  ✓  26 tests/e2e/recovery-diagram.spec.ts:308:1 › 没有上下文枚举的旧接口仍能核对并关闭真正的图表 (418ms)
+  ✓  27 tests/e2e/recovery-diagram.spec.ts:338:1 › 记录失效与来源关闭有明确恢复行为，已经载入的图继续可看 (341ms)
+  ✓  28 tests/e2e/screenshots.spec.ts:65:1 › 首次配置界面 (397ms)
+  -  29 tests/e2e/screenshots.spec.ts:73:1 › 首屏摘要与话题
+  ✓  30 tests/e2e/search-agent.spec.ts:4:1 › article explanation finishes before asserting zero searches (6.3s)
+  ✓  31 tests/e2e/search-agent.spec.ts:15:1 › clarification can finish from the article without granting another search action (8.3s)
+  ✓  32 tests/e2e/search-agent.spec.ts:33:1 › latest research uses frozen dates, safe source IDs and separate receiver payloads (6.5s)
+  ✓  33 tests/e2e/search-agent.spec.ts:65:3 › live query and pending/adopted source details update before finish (latest) (8.4s)
+  ✓  34 tests/e2e/search-agent.spec.ts:65:3 › live query and pending/adopted source details update before finish (ambiguous) (10.4s)
+  ✓  35 tests/e2e/search-agent.spec.ts:91:1 › live source read result updates while the second assessment is still pending (8.4s)
+  ✓  36 tests/e2e/search-agent.spec.ts:107:1 › retry changes the actual query and adds evidence before answering (8.2s)
+  ✓  37 tests/e2e/search-agent.spec.ts:122:1 › SearXNG latest research adopts unknown dates without claiming time verification (8.2s)
+  ✓  38 tests/e2e/search-agent.spec.ts:157:1 › provider content failure only reads selected source and returns to honest summary (8.1s)
+  ✓  39 tests/e2e/search-agent.spec.ts:179:3 › stale evidence preserves disclosure and never invents latest facts (6.5s)
+  ✓  40 tests/e2e/search-agent.spec.ts:179:3 › conflict evidence preserves disclosure and never invents latest facts (6.5s)
+  ✓  41 tests/e2e/search-agent.spec.ts:179:3 › empty evidence preserves disclosure and never invents latest facts (6.5s)
+  ✓  42 tests/e2e/search-agent.spec.ts:179:3 › injection evidence preserves disclosure and never invents latest facts (6.3s)
+  ✓  43 tests/e2e/search-agent.spec.ts:192:1 › clarification resumes the same frozen run with intent visible to both auditors (9.3s)
+  ✓  44 tests/e2e/search-agent.spec.ts:214:3 › stop in deciding aborts transport, prevents next action and preserves draft (6.4s)
+  ✓  45 tests/e2e/search-agent.spec.ts:214:3 › stop in searching aborts transport, prevents next action and preserves draft (6.4s)
+  ✓  46 tests/e2e/search-agent.spec.ts:214:3 › stop in reading aborts transport, prevents next action and preserves draft (6.6s)
+  ✓  47 tests/e2e/search-agent.spec.ts:214:3 › stop in checking aborts transport, prevents next action and preserves draft (5.4s)
+  ✓  48 tests/e2e/search-agent.spec.ts:214:3 › stop in answering aborts transport, prevents next action and preserves draft (6.6s)
+  ✓  49 tests/e2e/search-agent.spec.ts:236:1 › waiting cancellation sends no request until explicit new-run action (10.3s)
+  ✓  50 tests/e2e/search-agent.spec.ts:252:1 › native source details preserve bottom and review scroll positions, then latest/new messages follow (17.4s)
+  ✘  51 tests/e2e/search-agent.spec.ts:314:1 › immediate native keyboard summary activation preserves review through incoming updates (11.8s)
+  ✓  52 tests/e2e/search-agent.spec.ts:360:3 › navigation invalidates held research and rejects late answers (6.4s)
+  ✓  53 tests/e2e/search-agent.spec.ts:360:3 › body edit invalidates held research and rejects late answers (7.3s)
+  ✓  54 tests/e2e/search-agent.spec.ts:360:3 › model switch invalidates held research and rejects late answers (6.5s)
+  ✓  55 tests/e2e/search-agent.spec.ts:384:1 › panel reconnect and worker restart interrupt without automatically resending (10.9s)
+  ✓  56 tests/e2e/search-agent.spec.ts:420:1 › retired research preferences stay stored but never enter decisions or alter credentials (7.9s)
+  ✓  57 tests/e2e/search-flow.spec.ts:4:1 › local search permission reaches the real router and completed research pipeline (5.5s)
+  ✓  58 tests/e2e/search-flow.spec.ts:18:1 › local OFF prevents search for a latest question regardless of legacy global setting (8.3s)
+  ✓  59 tests/e2e/search-flow.spec.ts:32:1 › search settings retain tool configuration without research controls (2.5s)
+  ✓  60 tests/e2e/search-flow.spec.ts:59:1 › turning local search OFF aborts its current transport and preserves the next draft (8.2s)
+  ✓  61 tests/e2e/widths.spec.ts:246:1 › 划词、搜索和发送在同一个输入框内，长问题不会挤走工具 (15.1s)
+  ✓  62 tests/e2e/widths.spec.ts:333:1 › 报错时设置与文章标题同排，错误提示不被齿轮遮挡 (263ms)
+  ✓  63 tests/e2e/widths.spec.ts:354:1 › 长读取范围与错误提示在短窗和大字下不遮住发送或停止 (8.6s)
+  ✓  64 tests/e2e/widths.spec.ts:432:1 › READY 视图在三种宽度下排版正确 (885ms)
+  ✓  65 tests/e2e/widths.spec.ts:445:1 › 点开一张卡片后开场卡全部收起，联想问题只跟在最新回答后面 (250ms)
+  ✓  66 tests/e2e/widths.spec.ts:465:1 › LEARNING 视图在宽面板下排版正确 (17.8s)
+  ✓  67 tests/e2e/widths.spec.ts:532:1 › 选择题轮在宽面板下可交互 (364ms)
+  ✓  68 tests/e2e/widths.spec.ts:559:1 › 设置是独立标签页：分类导航与内容区排版正确 (573ms)
+  ✓  69 tests/e2e/widths.spec.ts:598:1 › 模式切换是完整的 tab 组件：ARIA 关系与方向键都能用 (310ms)
+  ✓  70 tests/e2e/widths.spec.ts:637:1 › 深色模式跟随系统配色 (395ms)
+  ✓  71 tests/e2e/widths.spec.ts:660:1 › 文章标题与设置始终同排，模式条在下面且不被遮挡 (402ms)
+  ✓  72 tests/e2e/widths.spec.ts:711:1 › 三种宽度、两个模式下都不出现横向溢出 (910ms)
+  ✓  73 tests/e2e/widths.spec.ts:749:1 › 设置：出题方式改完立刻落盘（真实存储） (259ms)
+  ✓  74 tests/e2e/widths.spec.ts:773:1 › 设置：窄窗口下分类导航变成横向可滚动条，正文不横溢 (243ms)
+  ✓  75 tests/e2e/widths.spec.ts:797:1 › 模型：钥匙保存后掩码显示；没钥匙不给模型选择器 (496ms)
+
+
+  1) tests/e2e/search-agent.spec.ts:314:1 › immediate native keyboard summary activation preserves review through incoming updates 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByRole('button', { name: '回到最新消息' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" getByRole('button', { name: '回到最新消息' }) with timeout 5000ms
+      - waiting for getByRole('button', { name: '回到最新消息' })
+
+
+      338 |     expect(await gap()).toBeGreaterThan(80);
+      339 |     const latest = f.panel.getByRole('button', { name: '回到最新消息' });
+    > 340 |     await expect(latest).toBeVisible();
+          |                          ^
+      341 |     const reviewing = await position();
+      342 |     // Deliver another accepted turn through a normal state broadcast, without a local send/follow request.
+      343 |     session.chat.push({ ...accepted, id: 'incoming', question: '后到的消息' });
+        at /home/runner/work/webknow-ai/webknow-ai/tests/e2e/search-agent.spec.ts:340:26
+
+    Error Context: test-results/search-agent-immediate-nat-7840d-ew-through-incoming-updates/error-context.md
+
+  1 failed
+    tests/e2e/search-agent.spec.ts:314:1 › immediate native keyboard summary activation preserves review through incoming updates 
+  2 skipped
+  72 passed (6.0m)
+ ELIFECYCLE  Command failed with exit code 1.
