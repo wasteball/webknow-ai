@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """生成扩展图标（纯标准库，无需 Pillow）。
 
-图形：朱红方印 + 白色书签，表示页边批注的阅读搭子。
-16px 下也能辨认，所以细节一律砍掉。
+图形：光点——靛紫径向渐变圆 + 白色内核 + 右上金色星点，与侧栏 logo、划词按钮一致。
+16px 下也能辨认，所以光晕砍掉。
 
     python3 scripts/make-icons.py
 """
@@ -14,7 +14,6 @@ from pathlib import Path
 OUT_DIR = Path(__file__).resolve().parent.parent / "public" / "icon"
 SIZES = (16, 32, 48, 128)
 
-SEAL = (0xB4, 0x23, 0x18)
 INK = (0xFF, 0xFF, 0xFF)
 
 
@@ -34,32 +33,40 @@ def in_triangle(x, y, a, b, c):
     return not ((d1 < 0 or d2 < 0 or d3 < 0) and (d1 > 0 or d2 > 0 or d3 > 0))
 
 
+def lerp(c1, c2, t):
+    return tuple(round(a + (b - a) * t) for a, b in zip(c1, c2))
+
+
+STOPS = ((0xA5, 0xB4, 0xFC), (0x63, 0x66, 0xF1), (0x5B, 0x21, 0xB6))
+STAR = (0xFB, 0xBF, 0x24)
+
+
+def orb_color(x, y, n):
+    """与 BrandMark 同构：r=12/32 的渐变圆、r=4.6 白核、(23.2, 8.8) r=2.3 星点；整体放大到铺满画布。"""
+    k = n / 26  # 圆直径 24/32 → 放大让圆约占 92%
+    cx = cy = n / 2
+    sx, sy = cx + 7.2 * k, cy - 7.2 * k
+    if (x - sx) ** 2 + (y - sy) ** 2 <= (2.6 * k) ** 2:
+        return STAR
+    d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+    if d > 12 * k:
+        return None
+    if d <= 4.6 * k:
+        return INK
+    gx, gy = cx - 0.32 * 12 * k, cy - 0.40 * 12 * k
+    t = min(1.0, ((x - gx) ** 2 + (y - gy) ** 2) ** 0.5 / (18 * k))
+    return lerp(STOPS[0], STOPS[1], t / 0.55) if t < 0.55 else lerp(STOPS[1], STOPS[2], (t - 0.55) / 0.45)
+
+
 def render(size, scale=8):
     """超采样再降采样，得到平滑边缘。"""
     n = size * scale
-    # 每个像素的 (r,g,b,a)，先画底板再画气泡，最后按 scale×scale 取平均。
     rows = []
     for py in range(n):
         row = []
-        y = py + 0.5
         for px in range(n):
-            x = px + 0.5
-            a_bg = rounded_rect(x, y, 0.02 * n, 0.02 * n, 0.98 * n, 0.98 * n, 0.22 * n)
-            if not a_bg:
-                row.append((0, 0, 0, 0))
-                continue
-            left, right = 0.32 * n, 0.68 * n
-            top, bottom = 0.16 * n, 0.86 * n
-            mid, notch = 0.50 * n, 0.66 * n
-            bookmark = left <= x <= right and top <= y <= bottom
-            if bookmark and y > notch:
-                t = (y - notch) / (bottom - notch)
-                half = (right - left) / 2 * (1 - t)
-                bookmark = abs(x - mid) <= half
-            if bookmark:
-                row.append((*INK, 255))
-            else:
-                row.append((*SEAL, 255))
+            color = orb_color(px + 0.5, py + 0.5, n)
+            row.append((0, 0, 0, 0) if color is None else (*color, 255))
         rows.append(row)
 
     pixels = bytearray()

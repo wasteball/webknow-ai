@@ -434,7 +434,7 @@ test('retired research preferences stay stored but never enter decisions or alte
     await settings.goto(`chrome-extension://${f.extensionId}/options.html?tab=${f.tabId}#search`);
     await expect(settings.getByLabel('联网 Agent 策略', { exact: true })).toHaveCount(0);
     await expect(settings.getByRole('button', { name: '保存联网策略', exact: true })).toHaveCount(0);
-    await settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '清除', exact: true }).click();
+    await settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '隐私与数据', exact: true }).click();
     await settings.getByRole('button', { name: '全部清掉', exact: true }).click();
     await expect.poll(() => f.worker.evaluate(async () => Object.keys(await chrome.storage.session.get(null)).filter(k => k.startsWith('sess:')))).toEqual([]);
     const after = await f.config();

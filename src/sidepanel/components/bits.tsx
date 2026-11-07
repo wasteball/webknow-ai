@@ -2,8 +2,8 @@ import { useEffect, useLayoutEffect, useRef, type ReactNode, type TextareaHTMLAt
 
 import { describeCompleteness, type Completeness } from '../../core/blocks';
 import type { AppError } from '../../core/errors';
-import type { AnswerSource, Verdict } from '../../core/session';
-import { Icon } from './Icon';
+import type { AnswerSource } from '../../core/session';
+import { BrandMark, Icon } from './Icon';
 import { Rich } from './Rich';
 
 /** 来源与判断标签：不只靠颜色表达，颜色只是附加层（NFR-008/FR-036）。 */
@@ -16,13 +16,6 @@ const SOURCE_LABEL: Record<AnswerSource, string> = {
   unknown: '没法确认',
 };
 
-const VERDICT_LABEL: Record<Verdict, string> = {
-  correct: '答得不错',
-  partial: '对了一半',
-  misconception: '理解偏了',
-  unknown: '没答上来',
-  objection: '你的质疑有道理',
-};
 
 /**
  * 来源标签只在「不是默认情况」时出现。
@@ -51,25 +44,22 @@ export function SuggestRow({
 }) {
   if (!items.length) return null;
   return (
-    <div className="chiprow">
-      <p className="chip-lead">{lead}</p>
+    <nav className="next" aria-label={lead}>
+      <p className="next-lead">{lead}</p>
       {items.map((item) => (
         <button
           key={item.id}
           type="button"
-          className="chip"
+          className="next-item"
           disabled={disabled}
           onClick={() => onPick(item)}
         >
-          {item.question}
+          <Icon name="arrowTurn" small />
+          <span>{item.question}</span>
         </button>
       ))}
-    </div>
+    </nav>
   );
-}
-
-export function VerdictTag({ verdict }: { verdict: Verdict }) {
-  return <span className={`tag tag-${verdict}`}>{VERDICT_LABEL[verdict]}</span>;
 }
 
 /** 读取范围：未解析与缺失范围始终可见（FR-007/FR-018）。 */
@@ -80,7 +70,7 @@ export function ScopeLine({ completeness, onJump }: {
   if (!completeness) return null;
   const range = completeness.textRange;
   return <div className="scope-block">
-    <p className="scope"><Icon name="file" small />读取范围：{describeCompleteness(completeness)}</p>
+    <p className="scope"><Icon name="file" small />读了：{describeCompleteness(completeness)}</p>
     {range && <details className="scope-details">
       <summary>核对读取范围</summary>
       <p>仅包括当前已加载、被提取的内容。起止位置供核对，不代表尚未加载的部分也已读取。</p>
@@ -90,42 +80,74 @@ export function ScopeLine({ completeness, onJump }: {
   </div>;
 }
 
-export function ErrorBanner({ error, onDismiss }: { error: AppError; onDismiss?: () => void }) {
+export type BannerAction = { label: string; onClick: () => void };
+
+/** 失败：一句人话 + 解决它的按钮（有的话）+ 关闭。 */
+export function ErrorBanner({ error, action, onDismiss }: { error: AppError; action?: BannerAction; onDismiss?: () => void }) {
   return (
     <div className="banner banner-error" role="alert">
       <p>
         <Icon name="info" small />
         {error.message}
       </p>
-      {onDismiss && (
-        <button type="button" className="link" onClick={onDismiss}>
-          关闭提示
-        </button>
+      {(action || onDismiss) && (
+        <div className="banner-actions">
+          {action && <button type="button" className="small" onClick={action.onClick}>{action.label}</button>}
+          {onDismiss && <button type="button" className="link" onClick={onDismiss}>关闭提示</button>}
+        </div>
       )}
     </div>
   );
 }
 
-export function Notice({ text, onDismiss }: { text: string; onDismiss?: () => void }) {
+export function Notice({ text, action, onDismiss }: { text: string; action?: BannerAction; onDismiss?: () => void }) {
   return (
     <div className="banner banner-info" role="status">
       <p>
         <Icon name="info" small />
         {text}
       </p>
-      {onDismiss && (
-        <button type="button" className="link" onClick={onDismiss}>
-          关闭
-        </button>
+      {(action || onDismiss) && (
+        <div className="banner-actions">
+          {action && <button type="button" className="small" onClick={action.onClick}>{action.label}</button>}
+          {onDismiss && <button type="button" className="link" onClick={onDismiss}>关闭</button>}
+        </div>
       )}
     </div>
   );
 }
 
+/** 开场卡：这一页的网站、标题、读取范围，以及摘要或开始入口。全界面唯一的“重”元素。 */
+export function Opening({ pageUrl, title, badge, children }: {
+  pageUrl: string | null;
+  title: string;
+  badge?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <section className="opening" aria-label="这一页">
+      {(badge || siteOf(pageUrl)) && <p className="opening-meta">
+        {badge && <span className="opening-badge">{badge}</span>}
+        <span className="opening-site">{siteOf(pageUrl)}</span>
+      </p>}
+      {title && <h2 className="opening-title">{title}</h2>}
+      {children}
+    </section>
+  );
+}
+
+function siteOf(url: string | null): string {
+  try {
+    return url ? new URL(url).hostname.replace(/^www\./, '') : '';
+  } catch {
+    return '';
+  }
+}
+
 export function Busy({ label, chars, onStop }: { label: string; chars: number; onStop?: () => void }) {
   return (
     <div className="busy" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
+      <BrandMark size={20} thinking />
       <span>
         {label}
         {chars > 0 ? `（已生成约 ${chars} 字）` : '…'}
@@ -177,7 +199,7 @@ export function Drafting({
         </div>
       ) : null}
       <div className="busy" role="status">
-        <span className="spinner" aria-hidden="true" />
+        <BrandMark size={20} thinking />
         <span className="sr-only">正在写下这段</span>
         {onStop && (
           <button type="button" onClick={onStop}>

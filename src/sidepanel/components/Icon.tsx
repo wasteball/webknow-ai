@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { DIAGRAM_ICON_PATHS, type DiagramIconName } from '../../core/diagram-icons';
 
 /**
@@ -9,22 +9,27 @@ import { DIAGRAM_ICON_PATHS, type DiagramIconName } from '../../core/diagram-ico
  * 只收录界面真正用到的那些：每多一个就多一份要维护的路径数据。
  * 需要新图标时从原型 sprite 里再抄一条（id 形如 `i-xxx`）。
  */
-/** 品牌印：朱红方印里一枚书签。颜色跟 currentColor，外框由调用方设成印色。 */
-export function BrandMark({ size = 28 }: { size?: number }) {
+/**
+ * 品牌光点：同一个光点既是 logo，也是助手状态。平时静止；thinking 时外晕与内核一起呼吸
+ * （style.css 的 .orb，尊重“减少动态效果”）。渐变 ID 每处唯一，免得同页多个光点互相引用。
+ */
+let orbSeq = 0;
+export function BrandMark({ size = 28, thinking = false }: { size?: number; thinking?: boolean }) {
+  const [id] = useState(() => `orb-g${++orbSeq}`);
   return (
-    <svg
-      className="brand-seal"
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <rect width="32" height="32" rx="8" fill="currentColor" />
-      <path
-        fill="var(--paper, #fff)"
-        d="M11.2 5.2h9.6v16.4L16 18.2l-4.8 3.4V5.2Z"
-      />
+    <svg className="orb" data-state={thinking ? 'thinking' : 'idle'} width={size} height={size}
+      viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <defs>
+        <radialGradient id={id} cx="34%" cy="30%" r="75%">
+          <stop offset="0" stopColor="#a5b4fc" />
+          <stop offset=".55" stopColor="#6366f1" />
+          <stop offset="1" stopColor="#5b21b6" />
+        </radialGradient>
+      </defs>
+      <circle className="orb-halo" cx="16" cy="16" r="15" fill="#818cf8" opacity=".18" />
+      <circle cx="16" cy="16" r="12" fill={`url(#${id})`} />
+      <circle className="orb-core" cx="16" cy="16" r="4.6" fill="#fff" />
+      <circle cx="23.2" cy="8.8" r="2.3" fill="#fbbf24" />
     </svg>
   );
 }
@@ -50,7 +55,19 @@ type BaseIconName =
   | 'x'
   | 'lock'
   | 'puzzle'
-  | 'grid';
+  | 'grid'
+  | 'more'
+  | 'trash'
+  | 'help'
+  | 'back'
+  | 'chev'
+  | 'key'
+  | 'quote'
+  | 'arrowTurn'
+  | 'sliders'
+  | 'sun'
+  | 'shelf'
+  | 'play';
 
 export type IconName = BaseIconName | DiagramIconName;
 
@@ -153,6 +170,45 @@ const PATHS: Record<BaseIconName, ReactNode> = {
       <rect x="14" y="14" width="7" height="7" rx="1" />
     </>
   ),
+  more: (
+    <>
+      <circle cx="5" cy="12" r="1.4" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" />
+      <circle cx="19" cy="12" r="1.4" fill="currentColor" />
+    </>
+  ),
+  trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />,
+  help: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01" />
+    </>
+  ),
+  back: <path d="M15 5l-7 7 7 7" />,
+  chev: <path d="M9 6l6 6-6 6" />,
+  key: (
+    <>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M10.8 12.2L20 3M16 7l3 3" />
+    </>
+  ),
+  quote: <path d="M7 7h4v4c0 3-2 5-4 6M15 7h4v4c0 3-2 5-4 6" />,
+  arrowTurn: <path d="M5 5v6a3 3 0 0 0 3 3h11M15 10l4 4-4 4" />,
+  sliders: (
+    <>
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="17" r="2" />
+    </>
+  ),
+  sun: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M5 19l1.4-1.4M17.6 6.4L19 5" />
+    </>
+  ),
+  shelf: <path d="M4 4h4v16H4zM10 4h4v16h-4zM15.5 5.2l3.8-1 3.7 14.5-3.8 1z" />,
+  play: <path d="M8 5v14l11-7Z" />,
 };
 
 /**

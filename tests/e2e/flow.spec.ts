@@ -109,7 +109,7 @@ test.describe('主路径', () => {
     // 但无论如何都不能已经出现摘要或读取范围。
     await expect(panel.getByText('点击后，我才读这一页。换页不会自动读。')).toBeVisible();
     await expect(panel.getByText('这篇文章讲了什么')).toBeHidden();
-    await expect(panel.getByText(/读取范围：/)).toBeHidden();
+    await expect(panel.getByText(/读了：/)).toBeHidden();
 
     const start = panel.getByRole('button', { name: '开始阅读' });
     await expect(start).toBeEnabled();
@@ -126,9 +126,9 @@ test.describe('主路径', () => {
 
     // 有真 Key 时必须走完整条链路。
     await expect(panel.getByText('等你在浏览器里允许读取这个网站')).toBeHidden({ timeout: 20_000 }).catch(() => {});
-    await expect(panel.locator('.chip').first()).toBeVisible({ timeout: 60_000 });
-    await expect(panel.getByText(/读取范围：.*当前加载/)).toBeVisible();
-    const bubbles = panel.locator('.chip');
+    await expect(panel.locator('.next-item').first()).toBeVisible({ timeout: 60_000 });
+    await expect(panel.getByText(/读了：.*当前加载/)).toBeVisible();
+    const bubbles = panel.locator('.next-item');
     await expect(bubbles.first()).toBeVisible();
     expect(await bubbles.count()).toBeGreaterThan(0);
     // 留一张首屏截图作为人工复核材料；无头容器若缺中文字体，截图里会显示为方块。
@@ -162,6 +162,6 @@ test.describe('主路径', () => {
     await expect(start).toBeEnabled({ timeout: 10_000 });
     await start.click();
     // 不再需要工具栏点击：地址由已授权的标签页查询得到。
-    await expect(panel.locator('.chip').first()).toBeVisible({ timeout: 60_000 });
+    await expect(panel.locator('.next-item').first()).toBeVisible({ timeout: 60_000 });
   });
 });

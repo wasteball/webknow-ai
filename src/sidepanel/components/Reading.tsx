@@ -7,7 +7,7 @@ import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { shouldSubmitComposer } from '../composer';
 import { visibleSuggestions } from '../suggest';
-import { Busy, ComposerField, ComposerTextarea, Drafting, SourceTag, SuggestRow, Thinking } from './bits';
+import { Busy, ComposerField, ComposerTextarea, Drafting, Opening, ScopeLine, SourceTag, SuggestRow, Thinking } from './bits';
 import { Icon } from './Icon';
 import { Rich } from './Rich';
 import { Conversation } from './Conversation';
@@ -16,6 +16,8 @@ import { SearchSources } from './SearchSources';
 import { ResearchClarification } from './ResearchClarification';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
+
+const QUOTE_ONLY_QUESTION = '这段是什么意思？';
 
 /**
  * 「问 AI」：摘要与话题在最上面，点一张卡片就是发出去一句；
@@ -98,8 +100,9 @@ export function Reading({ state, send, onSearchSettings, active = true, searchOn
     if (effectiveSearchOn && researching) void stop();
   };
   const sendQuestion = async (question: string, sentQuote: Quote | null = quote, retry = false) => {
-    if (!tabId || !question.trim() || busy || blocked || stopInFlight.current) return;
-    const text = question.trim();
+    // 有引用时可以不写问题直接发：替用户问最常见的那一句。
+    const text = question.trim() || (sentQuote ? QUOTE_ONLY_QUESTION : '');
+    if (!tabId || !text || busy || blocked || stopInFlight.current) return;
     concealSuggests();
     setPending({ question: text, quoteText: sentQuote?.text ?? null, at: state.chat.length });
     const sentQuoteKey = sentQuote?.id ?? sentQuote?.text ?? null;
@@ -115,6 +118,7 @@ export function Reading({ state, send, onSearchSettings, active = true, searchOn
     if (!retry) setDraft((current) => (current.trim() ? current : text));
   };
   const ask = (question: string) => void sendQuestion(question);
+  const canSend = Boolean(draft.trim() || quote);
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (!shouldSubmitComposer({ key: event.key, shiftKey: event.shiftKey, isComposing: event.nativeEvent.isComposing, keyCode: event.keyCode })) {
@@ -141,19 +145,30 @@ export function Reading({ state, send, onSearchSettings, active = true, searchOn
   return (
     <>
       <Conversation active={active} updateKey={updateKey} followRequest={followRequest}>
-        {guide && (
-          <article className="msg ai">
-            <Thinking text={guide.reasoning ?? ''} />
-            <div className="said said-guide">
+        <Opening pageUrl={state.pageUrl} title={state.pageTitle}>
+          {state.completeness && <ScopeLine completeness={state.completeness}
+            onJump={(blockId) => tabId !== null && void send({ type: 'jump', tabId, blockId })} />}
+          {guide ? (
+            <div className="opening-summary said-guide">
+              <Thinking text={guide.reasoning ?? ''} />
               <Rich text={guide.summary} diagrams={false} />
-              <SuggestRow
-                lead="想接着弄懂哪一点"
-                items={row.openers}
-                disabled={busy || blocked}
-                onPick={(item) => void sendTopic(item.id, item.question)}
-              />
             </div>
-          </article>
+          ) : guideRetryable && tabId !== null ? (
+            <p className="opening-note" role="status">
+              摘要暂时没生成，但你仍然可以直接提问。{' '}
+              <button type="button" className="link" onClick={() => void send({ type: 'start', tabId })}>
+                重试摘要
+              </button>
+            </p>
+          ) : null}
+        </Opening>
+        {guide && (
+          <SuggestRow
+            lead="想接着弄懂哪一点"
+            items={row.openers}
+            disabled={busy || blocked}
+            onPick={(item) => void sendTopic(item.id, item.question)}
+          />
         )}
 
         {state.chat.map((turn) => (
@@ -193,14 +208,6 @@ export function Reading({ state, send, onSearchSettings, active = true, searchOn
       </Conversation>
 
       <div className="dock">
-        {guideRetryable && tabId !== null && (
-          <p className="composer-notice" role="status">
-            摘要暂时没生成，但你仍然可以直接提问。{' '}
-            <button type="button" className="link" onClick={() => void send({ type: 'start', tabId })}>
-              重试摘要
-            </button>
-          </p>
-        )}
         {needsVerification && <p className="composer-notice" role="status">联网搜索未开启，本题需要实时核验，当前未核验。{onSearchSettings && <button type="button" className="link" onClick={onSearchSettings}>联网设置</button>}</p>}
         {blocked && <p className="composer-notice" role="status">AI 问正在生成，结束后可以继续提问。</p>}
         <form
@@ -217,7 +224,7 @@ export function Reading({ state, send, onSearchSettings, active = true, searchOn
             busy={busy}
             idleLabel="发送"
             onStop={stop}
-            submitDisabled={blocked || !draft.trim()}
+            submitDisabled={blocked || !canSend}
             context={quote && (
               <div className="quote-chip">
                 <div className="quote-chip-head">
@@ -273,7 +280,7 @@ export function Reading({ state, send, onSearchSettings, active = true, searchOn
               value={draft}
               rows={2}
               maxLength={500}
-              placeholder={quote ? '针对这段，你想问什么？' : '有什么不懂的？'}
+              placeholder={quote ? '想问这段什么？不写也行，直接发送' : '哪里不懂，直接问'}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onComposerKeyDown}
             />
@@ -310,28 +317,32 @@ function Turn({
           <SourceTag source={turn.source} />
           <Rich text={turn.answer} diagrams={diagrams} />
           {turn.citations.length > 0 && (
-            <details className="citations">
-              <summary>查看依据</summary>
+            <p className="cites">
               {turn.citations.map((citation, index) => (
                 <button
                   key={citation.blockId}
                   type="button"
-                  className="link"
+                  className="cite"
                   aria-label={`回到文中 ${index + 1}`}
+                  title="在网页上定位到这段"
                   onClick={() => tabId && void send({ type: 'jump', tabId, blockId: citation.blockId })}
                 >
-                  位置 {index + 1}
+                  <Icon name="quote" small />
+                  原文 {index + 1}
                 </button>
               ))}
-            </details>
+            </p>
           )}
           <SearchSources references={turn.webReferences ?? []} research={turn.research} />
           {turn.unanswered.length > 0 && (
-            <ul className="unanswered">
-              {turn.unanswered.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
+            <div className="aside">
+              <b>文章没写：</b>
+              <ul className="unanswered">
+                {turn.unanswered.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       </article>

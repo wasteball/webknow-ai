@@ -11,14 +11,11 @@ const question = { id: 'q1', text: '文章里的适用范围是什么？', multi
   choices: [{ id: 'A', label: '仅有三个团队' }, { id: 'B', label: '所有城市' }] };
 
 describe('学习也是对话流', () => {
-  it('文章依据默认收起，展开后仍可回跳核对', () => {
+  it('文章依据直接露出成“原文 N”标签，点了回跳到网页', () => {
     const send = vi.fn(async () => ({ ok: true as const }));
     render(<Reading state={panel({ chat: [{ id: 't1', question: '为什么？', answer: '因为样本有限。', source: 'original',
       citations: [{ blockId: 'b_1' }], references: [], unanswered: [], at: 1 }] })} send={send} />);
-    const toggle = screen.queryByText('查看依据');
-    expect(toggle).not.toBeNull();
-    expect(screen.queryByRole('button', { name: '看看原文1' })).toBeNull();
-    fireEvent.click(toggle!);
+    expect(screen.getByRole('button', { name: '回到文中 1' }).textContent).toContain('原文 1');
     fireEvent.click(screen.getByRole('button', { name: '回到文中 1' }));
     expect(send).toHaveBeenCalledWith({ type: 'jump', tabId: 7, blockId: 'b_1' });
   });
@@ -182,7 +179,6 @@ it('opening completed research details preserves scroll position, draft and loca
   expect(scroll.scrollTop).toBe(150);
   expect(input.value).toBe('保留草稿');
   expect(screen.getByRole('link', { name: '官方发布说明' }).getAttribute('href')).toBe(reference.url);
-  fireEvent.click(screen.getByText('查看依据'));
   fireEvent.click(screen.getByRole('button', { name: '回到文中 1' }));
   expect(send).toHaveBeenCalledWith({ type: 'jump', tabId: 7, blockId: 'b_1' });
 });

@@ -57,24 +57,17 @@ test('声明了 activeTab（否则扩展拿不到当前页地址，无法申请�
   expect(permissions).not.toContain('tabs');
 });
 
-test('未配置 Key 时侧栏引导去设置，不在侧栏里填钥匙', async () => {
+test('未配置 Key 时侧栏里直接走三步：选 AI → 拿钥匙 → 试一下，不开新标签页', async () => {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await expect(page.getByText('还没有填钥匙。去设置里配一下，顺带看看都能做什么。')).toBeVisible();
-  await expect(page.getByRole('button', { name: '去设置里填钥匙' })).toBeVisible();
-  // 钥匙输入不在侧栏：那是设置页的事，好让用户先看见还有哪些能力。
-  await expect(page.getByLabel(/把 .+ 的那串字符粘贴到这里/)).toHaveCount(0);
-  const [settings] = await Promise.all([
-    context.waitForEvent('page'),
-    page.getByRole('button', { name: '去设置里填钥匙' }).click(),
-  ]);
-  await expect(settings).toHaveURL(/options\.html.*#model/);
-  await expect(settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '模型' })).toHaveAttribute(
-    'aria-current',
-    'true',
-  );
+  await expect(page.getByRole('heading', { name: '哪里不懂，划哪里' })).toBeVisible();
+  await expect(page.getByText('第 1 步，共 3 步')).toBeVisible();
+  const pages = context.pages().length;
+  await page.getByRole('button', { name: '下一步' }).click();
+  await expect(page.getByLabel('粘贴到这里')).toBeVisible();
+  await expect(page.getByRole('link', { name: /打开 DeepSeek 官网/ })).toHaveAttribute('href', /platform\.deepseek\.com/);
+  expect(context.pages().length).toBe(pages);
   await page.screenshot({ path: 'test-results/panel-first-run.png', fullPage: true });
-  await settings.close();
   await page.close();
 });
 

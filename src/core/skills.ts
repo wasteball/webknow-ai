@@ -20,6 +20,8 @@ export type Skill = {
   target: SkillTarget;
   /** 策略段正文：与内置默认策略同一层级的指令文本。 */
   body: string;
+  /** 设置「读法」里展示的效果示例（固定示意，不是对当前文章的真实生成）。 */
+  example?: string;
   builtin?: boolean;
 };
 
@@ -31,7 +33,8 @@ export const BUILTIN_SKILLS: Skill[] = [
   {
     id: 'builtin.guide.outline',
     name: '要点清单',
-    description: '导读摘要改成一句话主张 + 逐条要点，适合快速抓重点。',
+    description: '一句话结论 + 几条要点，适合想快速抓重点的时候。',
+    example: '新方案让每单时间从 100 分钟降到 40 分钟，但还不能推广。\n· 只试了 3 个团队、4 周\n· 团队事先都受过培训',
     target: 'guide',
     builtin: true,
     body: [
@@ -45,7 +48,8 @@ export const BUILTIN_SKILLS: Skill[] = [
   {
     id: 'builtin.guide.feynman',
     name: '费曼式讲解',
-    description: '用日常语言拆解原文，优先用文章已有的例子帮助理解。',
+    description: '用大白话讲给外行听，适合读陌生领域的文章。',
+    example: '三个小组换了新路线，一个月里送得快了一倍多。不过他们之前都练过，所以还说不准是路线好，还是人练熟了。',
     target: 'guide',
     builtin: true,
     body: [
@@ -58,7 +62,8 @@ export const BUILTIN_SKILLS: Skill[] = [
   {
     id: 'builtin.guide.critical',
     name: '批判性阅读',
-    description: '核对作者主张、文中证据和已写明的限制，指出原文尚未说明之处。',
+    description: '看作者的证据站不站得住，适合观点类、评论类文章。',
+    example: '作者主张：新方案更快。\n证据：3 个团队 4 周的数据。\n原文自己也承认：培训和新方案同时发生，分不清原因。',
     target: 'guide',
     builtin: true,
     body: [
@@ -71,8 +76,9 @@ export const BUILTIN_SKILLS: Skill[] = [
   },
   {
     id: 'builtin.answer.stepwise',
-    name: '逐步解释',
-    description: '回答先给结论，再分步骤展开，最后说明依据边界。',
+    name: '一步一步讲',
+    description: '先一句结论，再 1、2、3 一步步讲，适合流程和原理类问题。',
+    example: '只试了很少的人。\n1. 参与的只有 3 个团队；\n2. 只试了 4 周；\n3. 所以一个团队的特殊情况就能拉动平均值。',
     target: 'answer',
     builtin: true,
     body: [
@@ -85,7 +91,8 @@ export const BUILTIN_SKILLS: Skill[] = [
   {
     id: 'builtin.learn.socratic',
     name: '苏格拉底式追问',
-    description: '用原文中可回答的小问题逐步检验理解，卡住时给提示或讲解。',
+    description: '一步步追问，直到你自己说清楚；卡住时给提示。',
+    example: '它问：作者为什么说结论不能推广？\n你答“人太少”→“对，还有一个原因，你看看这三个团队之前做过什么？”',
     target: 'learn',
     builtin: true,
     body: [
@@ -100,8 +107,9 @@ export const BUILTIN_SKILLS: Skill[] = [
   {
     // 保留旧 ID，兼容仍引用此预设的配置；写法已收紧为原文内的应用。
     id: 'builtin.learn.transfer',
-    name: '文内应用',
-    description: '结合文章已有的例子和条件，检验读者是否理解概念怎样使用。',
+    name: '用在文章例子里',
+    description: '拿文章里的例子考你，看你会不会用，而不只是记住。',
+    example: '它问：文中第二个团队的做法，体现了作者说的哪个条件？',
     target: 'learn',
     builtin: true,
     body: [
@@ -112,6 +120,76 @@ export const BUILTIN_SKILLS: Skill[] = [
       '反馈与收束使用简体中文，只描述本轮对原文的理解，不声称已经验证对文章外情境的应用能力。',
     ].join('\n'),
   },
+  {
+    id: 'builtin.guide.questions',
+    name: '带着问题读',
+    description: '先找出文章想回答的问题，再给出答案，适合说明文和报告。',
+    example: '这篇想回答：新方案快不快？能不能推广？\n答案：快了，但还不能推广——人太少，而且培训也可能是原因。',
+    target: 'guide',
+    builtin: true,
+    body: [
+      '你在为一位普通读者做网页阅读导览，只使用给定正文块，风格是“带着问题读”。',
+      'summary：先用一句话写出这篇文章想回答的核心问题（以“这篇想回答：”开头），再用两三句话写出文章给出的答案和它成立的条件。总长度控制在 260 字以内。',
+      '问题必须是文章自己在回答的问题，不要替作者提出原文没有回答的问题；答案只用正文明确支持的内容。',
+      'bubbles：给 0 到 3 个能凭本文回答的具体问题，引导读者看清答案背后的理由或限制。',
+    ].join('\n'),
+  },
+  {
+    id: 'builtin.answer.conclusion',
+    name: '先结论后展开',
+    description: '先一句话回答，再说为什么，适合大多数问题。',
+    example: '只有 3 个团队、4 周。\n数据这么少，偶然因素就可能左右结果，所以作者说还不能推广。',
+    target: 'answer',
+    builtin: true,
+    body: [
+      '你在网页旁回答读者关于当前文章的问题。',
+      '第一句直接回答问题，不铺垫；随后用一两段说明原文中的理由、依据和限制。简单问题只写结论和一句理由。',
+      '默认只依据原文解释；原文没给答案就说明缺什么。涉及正文的说法给出真正支持它的 citations。只有本次问题明确要求拓展或附带网络资料时，才按固定来源规则补充。',
+    ].join('\n'),
+  },
+  {
+    id: 'builtin.answer.example',
+    name: '举例子讲',
+    description: '优先用文章里的例子来解释，适合抽象的概念。',
+    example: '文中第一个团队就是例子：他们换方案前已经熟练使用工具，所以速度变快不一定是方案的功劳。',
+    target: 'answer',
+    builtin: true,
+    body: [
+      '你在网页旁回答读者关于当前文章的问题，优先借助原文已有的例子、数据或场景来解释。',
+      '先用一两句回答核心问题，再挑一个原文中的例子说明这个结论怎样体现；原文没有合适的例子时直接解释，不要自己编故事、类比或数据。',
+      '涉及正文的说法给出真正支持它的 citations。只有本次问题明确要求拓展或附带网络资料时，才按固定来源规则补充。',
+    ].join('\n'),
+  },
+  {
+    id: 'builtin.learn.ladder',
+    name: '由浅入深',
+    description: '从“文章说了什么”问到“为什么”，再到“换个情况还成立吗”。',
+    example: '先问“试点结果是什么”，再问“为什么不能推广”，最后问“文中哪个条件变了，结论就不成立”。',
+    target: 'learn',
+    builtin: true,
+    body: [
+      '你在用提问帮助读者由浅入深地理解当前文章。',
+      '按三个层次推进：先问文章说了什么（事实与结论），再问为什么（原文给出的理由与条件），最后问原文中的条件或例子变化时结论会怎样（只用原文已写明的条件）。读者答得吃力就退回上一层。',
+      '每次只提出一个主要问题，一个问句里只能有一个问号；答案必须能在原文找到依据，不编新情境，不考外部知识。',
+      '读者回答后先说对在哪，再点出最要紧的一个缺口，引导他自己补上；连续两次答不上同一个点时直接讲解。',
+      '反馈与收束使用简体中文，只描述本轮实际出现的证据。',
+    ].join('\n'),
+  },
+  {
+    id: 'builtin.learn.gentle',
+    name: '多鼓励',
+    description: '少追问、多肯定，适合刚接触的话题或只想轻松聊聊。',
+    example: '你答“人太少”→“很好，这正是关键之一！作者还提到了培训，你觉得它有影响吗？”',
+    target: 'learn',
+    builtin: true,
+    body: [
+      '你在用轻松、鼓励的方式陪读者检验对当前文章的理解。',
+      '每次只提出一个简单的问题，一个问句里只能有一个问号；答案必须能在原文找到依据。',
+      '读者回答后先具体地肯定他说对的部分；有缺口时用一句温和的提示带过，不连续追问。读者说不知道或答不上来时，直接用一两句话讲清楚，并引到原文。',
+      '不要连续否定，不要施压。反馈与收束使用简体中文，只描述本轮实际出现的证据。',
+    ].join('\n'),
+  },
+
 ];
 
 export function findSkill(id: string, customSkills: Skill[]): Skill | undefined {

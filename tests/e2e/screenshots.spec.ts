@@ -65,7 +65,7 @@ test.afterAll(async () => {
 test('首次配置界面', async () => {
   panel = await context.newPage();
   await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await expect(panel.getByRole('button', { name: '去设置里填钥匙' })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: '哪里不懂，划哪里' })).toBeVisible();
   await panel.screenshot({ path: join(OUTPUT_DIR, 'panel-01-setup.png'), fullPage: true });
   await panel.close();
 });
@@ -106,7 +106,7 @@ test('首屏摘要与话题', async () => {
   await panel.reload();
 
   await panel.getByRole('button', { name: '开始阅读' }).click();
-  await expect(panel.locator('.chip').first()).toBeVisible({ timeout: 60_000 });
+  await expect(panel.locator('.next-item').first()).toBeVisible({ timeout: 60_000 });
   await panel.screenshot({ path: join(LIVE_OUTPUT_DIR, 'panel-02-guide.png'), fullPage: true });
 
   // 「AI 问」：真答一轮再截图。只截第一题的话，画面大半是空白，

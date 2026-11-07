@@ -6,12 +6,12 @@ body.sidepanel .panel.ready-chat { overflow: hidden; }
 .panel-header { flex: none; }
 .conversation-top { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
 body.sidepanel .ready-chat .conversation-top .context { flex: 0 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; }
-body.sidepanel .ready-chat .modes { flex: none; }
+body.sidepanel .ready-chat .modes { flex: 1 1 auto; }
 body.sidepanel .ready-chat .conversation-notices { flex: 0 1 auto; min-height: 0; overflow: auto; scrollbar-width: thin; }
 /* 上方长说明先收缩并可滚动，为短窗口中的输入和工具栏保留空间。 */
 body.sidepanel .ready-chat [role='tabpanel'] { flex: 1 0 168px; }
 body.sidepanel .context, body.sidepanel .modes { position: static; }
-body.sidepanel .modes { margin: 4px 0 0; }
+body.sidepanel .modes:not(.topbar .modes) { margin: 4px 0 0; }
 .conversation { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; position: relative; }
 .chat-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 16px 0 0; }
 .chat-scroll:focus-visible { outline: 2px solid var(--ink-3); outline-offset: -2px; border-radius: 6px; }

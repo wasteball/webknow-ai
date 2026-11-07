@@ -6,6 +6,7 @@ import { GUIDE_DEFAULT_POLICY, summaryCharsFor } from '../../core/prompts/guide'
 import { LEARN_DEFAULT_POLICY } from '../../core/prompts/learn';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { PromptTarget } from '../../core/settings';
+import { findProvider } from '../../core/model-providers';
 import { BUILTIN_SKILLS, type Skill } from '../../core/skills';
 import { SearchSettings } from './SearchSettings';
 import { Notice, Section } from './bits';
@@ -15,23 +16,32 @@ import { ModelSettings as ModelAndKey } from './ModelSettings';
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
- * 设置（F2 / 2026-09-19 反馈改版）：整页界面，渲染在独立标签页里（entrypoints/options）。
- * 左侧分类导航 + 右侧内容区，像常规软件的设置窗——改配置不是阅读，不占用侧栏。
+ * 设置：同一套内容两种外壳。
+ * - 侧栏抽屉（variant="drawer"）：先是分组列表，点进去是二级页，返回 / Esc 回列表或关闭；
+ *   对话面板一直挂在下面，关掉抽屉就回到刚才读的位置。
+ * - 整页（options.html）：浏览器自带“扩展选项”入口仍会打开它，左侧分类 + 右侧内容。
  * 非敏感设置统一走 saveSettings；Key 仍是独立命令与独立校验。
- * 清除这一页、清除全部、删掉钥匙、恢复默认提示词，互不牵连（FR-033）。
+ * 清除这一页、清除全部、删掉钥匙、恢复默认读法，互不牵连（FR-033）。
  */
 
-type CategoryId = 'general' | 'model' | 'prompts' | 'search' | 'ima' | 'data' | 'about';
+export type CategoryId = 'model' | 'readway' | 'general' | 'appearance' | 'search' | 'ima' | 'data' | 'about';
 
-const CATEGORIES: { id: CategoryId; label: string; icon: IconName }[] = [
-  { id: 'general', label: '阅读', icon: 'book' },
-  { id: 'model', label: '模型', icon: 'cpu' },
-  { id: 'prompts', label: '提示词', icon: 'file' },
-  { id: 'search', label: '联网搜索', icon: 'globe' },
-  { id: 'ima', label: '知识库', icon: 'cloud' },
-  { id: 'data', label: '清除', icon: 'grid' },
-  { id: 'about', label: '关于', icon: 'info' },
+const CATEGORIES: { id: CategoryId; label: string; icon: IconName; group: number }[] = [
+  { id: 'model', label: 'AI 服务', icon: 'key', group: 0 },
+  { id: 'readway', label: '读法', icon: 'book', group: 0 },
+  { id: 'general', label: '阅读偏好', icon: 'sliders', group: 0 },
+  { id: 'appearance', label: '外观', icon: 'sun', group: 0 },
+  { id: 'search', label: '联网搜索', icon: 'globe', group: 1 },
+  { id: 'ima', label: '知识库', icon: 'shelf', group: 1 },
+  { id: 'data', label: '隐私与数据', icon: 'lock', group: 2 },
+  { id: 'about', label: '关于与帮助', icon: 'help', group: 2 },
 ];
+
+/** 旧链接（#prompts）仍能落到对应页。 */
+function categoryFrom(id: string): CategoryId | null {
+  if (id === 'prompts') return 'readway';
+  return CATEGORIES.some((item) => item.id === id) ? (id as CategoryId) : null;
+}
 
 function PageLead({ title, lead }: { title: string; lead: string }) {
   return (
@@ -99,28 +109,31 @@ function Seg<T extends string>({
   );
 }
 
-const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string }[] = [
+const PROMPT_TARGETS: { key: PromptTarget; title: string; hint: string; defaultExample: string }[] = [
   {
     key: 'guide',
-    title: '导读摘要',
-    hint: '决定“这篇文章讲了什么”怎么写、给几个话题。',
+    title: '怎么总结',
+    hint: '打开文章时那段摘要和可以点的问题。',
+    defaultExample: '三五句话说清这篇讲了什么、结论是什么，再给几个可以直接点的问题。',
   },
   {
     key: 'answer',
-    title: '问 AI',
-    hint: '决定回答的口径与风格。',
+    title: '怎么回答',
+    hint: '你在「问 AI」里提问时它的回答方式。',
+    defaultExample: '先用一两句回答你问的，再说文章里的依据和限制；文章没说的会直说没写。',
   },
   {
     key: 'learn',
-    title: 'AI 问',
-    hint: '决定它出什么题、怎么回应你的回答。',
+    title: '怎么考你',
+    hint: '「AI 问」里它怎么出题、怎么回应你的回答。',
+    defaultExample: '一次只问一个问题，先说你对在哪，再点出最要紧的一处，引导你自己补上。',
   },
 ];
 
 const TARGET_LABEL: Record<PromptTarget, string> = {
-  guide: '导读摘要',
-  answer: '问 AI',
-  learn: 'AI 问',
+  guide: '怎么总结',
+  answer: '怎么回答',
+  learn: '怎么考你',
 };
 
 export function Settings({
@@ -128,17 +141,79 @@ export function Settings({
   send,
   notice,
   onDismissNotice,
+  variant = 'page',
+  initial = null,
+  onClose,
 }: {
   state: PanelState;
   send: Send;
   notice: string | null;
   onDismissNotice: () => void;
+  variant?: 'page' | 'drawer';
+  initial?: CategoryId | null;
+  onClose?: () => void;
 }) {
-  const [category, setCategory] = useState<CategoryId>(() => {
-    const id = location.hash.replace(/^#/, '');
-    return CATEGORIES.some((item) => item.id === id) ? (id as CategoryId) : 'general';
-  });
+  const [category, setCategory] = useState<CategoryId | null>(() =>
+    variant === 'drawer' ? initial : categoryFrom(location.hash.replace(/^#/, '')) ?? 'general');
 
+  useEffect(() => {
+    if (variant !== 'drawer') return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (category) setCategory(null);
+      else onClose?.();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [variant, category, onClose]);
+
+  const content = (id: CategoryId) => <>
+    {id === 'general' && <ReadingPrefs state={state} send={send} />}
+    {id === 'appearance' && <Appearance state={state} send={send} />}
+    {id === 'model' && <ModelAndKey state={state} send={send} />}
+    {id === 'readway' && <>
+      <Readway state={state} send={send} />
+      <Skills state={state} send={send} />
+    </>}
+    {id === 'search' && <SearchSettings state={state} send={send} />}
+    {id === 'ima' && <ImaSettings state={state} send={send} />}
+    {id === 'data' && <Cleanup state={state} send={send} />}
+    {id === 'about' && <About />}
+  </>;
+
+  if (variant === 'drawer') {
+    const current = CATEGORIES.find((item) => item.id === category);
+    return (
+      <div className="drawer" role="dialog" aria-modal="true" aria-label={current?.label ?? '设置'}>
+        <header className="drawer-head">
+          <button type="button" className="icon-btn" autoFocus
+            aria-label={current ? '返回设置' : '关闭设置'} title={current ? '返回' : '关闭'}
+            onClick={() => (current ? setCategory(null) : onClose?.())}>
+            <Icon name="back" />
+          </button>
+          <h2>{current?.label ?? '设置'}</h2>
+        </header>
+        <div className="drawer-body">
+          {notice && <Notice text={notice} onDismiss={onDismissNotice} />}
+          {current ? content(current.id) : [0, 1, 2].map((group) => (
+            <div className="group" key={group}>
+              {CATEGORIES.filter((item) => item.group === group).map((item) => (
+                <button key={item.id} type="button" className="group-item" onClick={() => setCategory(item.id)}>
+                  <span className="group-ico"><Icon name={item.icon} small /></span>
+                  <span className="group-label">{item.label}</span>
+                  <span className="group-val">{summaryOf(item.id, state)}</span>
+                  <Icon name="chev" small />
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const active = category ?? 'general';
   return (
     <div className="settings-page">
       {/* 导航在窄屏会变成可横向滚动的长条，所以给键盘用户一条直通正文的捷径。 */}
@@ -158,7 +233,7 @@ export function Settings({
             <button
               key={item.id}
               type="button"
-              aria-current={category === item.id ? 'true' : undefined}
+              aria-current={active === item.id ? 'true' : undefined}
               onClick={() => setCategory(item.id)}
             >
               <Icon name={item.icon} small />
@@ -168,34 +243,52 @@ export function Settings({
         </nav>
         <main className="settings-content" id="settings-content" tabIndex={-1}>
           {notice && <Notice text={notice} onDismiss={onDismissNotice} />}
-          {category === 'general' && <ReadingPrefs state={state} send={send} />}
-          {category === 'model' && <ModelAndKey state={state} send={send} />}
-          {category === 'prompts' && (
-            <>
-              <Prompts state={state} send={send} />
-              <Skills state={state} send={send} />
-            </>
-          )}
-          {category === 'search' && <SearchSettings state={state} send={send} />}
-          {category === 'ima' && <ImaSettings state={state} send={send} />}
-          {category === 'data' && <Cleanup state={state} send={send} />}
-          {category === 'about' && <About />}
+          {content(active)}
         </main>
       </div>
     </div>
   );
 }
 
-/**
- * 提示词（2026-09-27 改版）：一块一个编辑框，框里就是正在生效的那段话。
- *
- * 从前这里是「默认 / 一排模板 / 自己写」的单选：选了模板，生效的东西变了，
- * 屏幕上一个字都没变——用户只能得出「选了没反应」。现在模板不再是一个隐藏的
- * 生效来源，它只是「把这份写法填进来」的按钮；填进来之后可以接着改。
- * 看到的 = 生效的，只有一个来源。
- */
-function Prompts({ state, send }: { state: PanelState; send: Send }) {
+/** 列表右侧的当前值：一眼知道现在是什么，不用点进去。 */
+function summaryOf(id: CategoryId, state: PanelState): string {
   const { settings } = state;
+  switch (id) {
+    case 'model': return findProvider(settings.provider).name + (settings.providerKeys[settings.provider] ? '' : '（没填钥匙）');
+    case 'readway': return methodName('guide', settings);
+    case 'general': return `摘要${{ short: '短', medium: '中', long: '长' }[settings.summaryLength]}`;
+    case 'appearance': return settings.fontSize === 'large' ? '大字' : '标准字号';
+    case 'search': return settings.search.enabled ? settings.search.providerName ?? '已开启' : '还没设置';
+    case 'ima': return settings.ima.enabled ? settings.ima.kbName ?? '已连接' : '未连接';
+    default: return '';
+  }
+}
+
+function methodsFor(target: PromptTarget, settings: PanelState['settings']): Skill[] {
+  return [...BUILTIN_SKILLS, ...settings.customSkills].filter((skill) => skill.target === target);
+}
+
+/** 当前生效的是哪一套：存的正文与某套现成方法一致就算选中它；没存就是默认。 */
+function currentMethod(target: PromptTarget, settings: PanelState['settings']): Skill | 'default' | 'custom' {
+  const saved = settings.prompts[target]?.trim();
+  if (!saved) return 'default';
+  return methodsFor(target, settings).find((skill) => skill.body.trim() === saved) ?? 'custom';
+}
+
+function methodName(target: PromptTarget, settings: PanelState['settings']): string {
+  const current = currentMethod(target, settings);
+  return current === 'default' ? '默认' : current === 'custom' ? '自己写的' : current.name;
+}
+
+/**
+ * 读法（原“提示词”）：三块各一组现成方法，点一下就换成那一套并立即保存。
+ * 仍然只有一个生效来源——存下的那段正文；“自己写 / 在这套基础上改”展开的编辑框里就是它。
+ */
+function Readway({ state, send }: { state: PanelState; send: Send }) {
+  const { settings } = state;
+  const [tab, setTab] = useState<PromptTarget>('guide');
+  const [busy, setBusy] = useState(false);
+  const target = PROMPT_TARGETS.find((item) => item.key === tab)!;
 
   const defaults: Record<PromptTarget, string> = {
     guide: GUIDE_DEFAULT_POLICY({
@@ -205,26 +298,70 @@ function Prompts({ state, send }: { state: PanelState; send: Send }) {
     answer: ANSWER_DEFAULT_POLICY,
     learn: LEARN_DEFAULT_POLICY,
   };
+  const methods = methodsFor(tab, settings);
+  const current = currentMethod(tab, settings);
+  const example = current === 'default' ? target.defaultExample
+    : current === 'custom' ? '你自己写的读法，效果以实际生成为准。'
+    : current.example ?? current.description;
+
+  const pick = async (body: string) => {
+    setBusy(true);
+    try { await send({ type: 'saveSettings', patch: { prompts: { [tab]: body } } }); }
+    finally { setBusy(false); }
+  };
 
   return (
-    <Section title="提示词">
-      <p className="hint">
-        每一块下面那段话就是它现在照着做的事。直接改、存下来就换成你的写法；想回到出厂那份，点「恢复默认」。
-        发给谁、怎么收费、输出什么格式仍由程序管，改这里改不动。
-      </p>
-      {PROMPT_TARGETS.map((target) => (
+    <section className="section readway">
+      <p className="hint">普通情况用默认就好。想让它换种方式总结、回答或考你，在这里挑一套；下一次生成就用新的方法。</p>
+      <div className="rtabs" role="tablist" aria-label="读法分类">
+        {PROMPT_TARGETS.map((item) => (
+          <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)}>
+            {item.title}
+          </button>
+        ))}
+      </div>
+      <p className="hint">{target.hint}</p>
+      <div className="preview" aria-live="polite">
+        <p className="preview-k"><Icon name="play" small />大致会是这样（示意）</p>
+        <p className="preview-body">{example}</p>
+      </div>
+      <div className="group" role="radiogroup" aria-label={target.title}>
+        <MethodOption name="默认" note="推荐" description="我们调好的做法，大多数文章都合适。"
+          checked={current === 'default'} disabled={busy} onPick={() => void pick('')} />
+        {methods.map((skill) => (
+          <MethodOption key={skill.id} name={skill.name} note={skill.builtin ? undefined : '我的'}
+            description={skill.description || '（没有说明）'}
+            checked={current !== 'default' && current !== 'custom' && current.id === skill.id}
+            disabled={busy} onPick={() => void pick(skill.body)} />
+        ))}
+        {current === 'custom' && <MethodOption name="自己写的" description="下面编辑框里的那段。" checked disabled={busy} onPick={() => {}} />}
+      </div>
+      <details className="readway-edit">
+        <summary>自己写，或在这套基础上改</summary>
         <PromptCard
-          key={target.key}
+          key={tab}
           target={target}
-          fallback={defaults[target.key]}
-          saved={settings.prompts[target.key] ?? ''}
-          templates={[...BUILTIN_SKILLS, ...settings.customSkills].filter(
-            (skill) => skill.target === target.key,
-          )}
+          fallback={defaults[tab]}
+          saved={settings.prompts[tab] ?? ''}
           send={send}
         />
-      ))}
-    </Section>
+      </details>
+      <p className="hint">无论怎么写，内容发给谁、钥匙、回答要标明依据这些规则都改不了。</p>
+    </section>
+  );
+}
+
+function MethodOption({ name, note, description, checked, disabled, onPick }: {
+  name: string; note?: string; description: string; checked: boolean; disabled: boolean; onPick: () => void;
+}) {
+  return (
+    <button type="button" role="radio" className="method" aria-checked={checked} disabled={disabled} onClick={onPick}>
+      <span className="radio" aria-hidden="true" />
+      <span className="method-copy">
+        <span className="method-name">{name}{note && <span className="method-note">{note}</span>}</span>
+        <span className="method-desc">{description}</span>
+      </span>
+    </button>
   );
 }
 
@@ -232,20 +369,18 @@ function PromptCard({
   target,
   fallback,
   saved,
-  templates,
   send,
 }: {
-  target: { key: PromptTarget; title: string; hint: string };
+  target: { key: PromptTarget; title: string };
   /** 没存过自己的写法时，用的是这份内置默认。 */
   fallback: string;
   saved: string;
-  templates: Skill[];
   send: Send;
 }) {
   const inEffect = saved || fallback;
   const [draft, setDraft] = useState(inEffect);
   const [busy, setBusy] = useState(false);
-  // 别处（比如恢复默认、或另一个设置页）改过之后，跟上新的生效内容；
+  // 别处（比如点了现成方法、恢复默认）改过之后，跟上新的生效内容；
   // 正在改的草稿不能被覆盖掉，所以只在草稿等于上一份生效内容时才跟。
   const [synced, setSynced] = useState(inEffect);
   if (synced !== inEffect) {
@@ -269,7 +404,7 @@ function PromptCard({
           {target.title}
           <span className="tag">{isDefault ? '出厂默认' : '你改过'}</span>
         </h3>
-        <p>{target.hint}</p>
+        <p>框里就是它现在照着做的那段话，改完保存就生效。</p>
       </div>
       <textarea
         id={`prompt-${target.key}`}
@@ -298,30 +433,11 @@ function PromptCard({
         </button>
       </div>
       {dirty && <p className="hint">改完要点保存才会生效。下一次生成才用新的写法，已经写出来的内容不会重写。</p>}
-      {templates.length > 0 && (
-        <details>
-          <summary className="link">换一种现成写法（{templates.length} 份）</summary>
-          <ul className="skill-list">
-            {templates.map((template) => (
-              <li key={template.id}>
-                <p className="skill-name">
-                  {template.name}
-                  <button type="button" disabled={busy} onClick={() => setDraft(template.body)}>
-                    填进上面
-                  </button>
-                </p>
-                <p className="hint">{template.description || '（没有说明）'}</p>
-              </li>
-            ))}
-          </ul>
-          <p className="hint">填进来只是起草，可以接着改；点保存才生效。</p>
-        </details>
-      )}
     </article>
   );
 }
 
-/** 我的写法模板：把常用写法存下来，之后在上面「换一种现成写法」里直接填进编辑框。 */
+/** 我的读法：把常用写法命名存下来，之后在上面的方法列表里一键切换。 */
 function Skills({ state, send }: { state: PanelState; send: Send }) {
   const customs = state.settings.customSkills;
   const [adding, setAdding] = useState(false);
@@ -349,10 +465,10 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
   };
 
   return (
-    <Section title="我的写法模板">
-      <p className="hint">存下来的写法会出现在上面每一块的「换一种现成写法」里，点一下就填进编辑框。</p>
+    <Section title="我的读法">
+      <p className="hint">存下来的读法会出现在上面对应那一块的方法列表里，点一下就换上。</p>
       <ul className="skill-list">
-        {customs.length === 0 && !adding && <li className="hint">还没有自己存的模板。</li>}
+        {customs.length === 0 && !adding && <li className="hint">还没有自己存的读法。</li>}
         {customs.map((skill) => (
           <li key={skill.id}>
             <p className="skill-name">
@@ -373,7 +489,7 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
       </ul>
       {adding ? (
         <div className="field">
-          <label htmlFor="skill-name">模板名称</label>
+          <label htmlFor="skill-name">起个名字</label>
           <input
             id="skill-name"
             type="text"
@@ -387,9 +503,9 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
             value={target}
             onChange={(event) => setTarget(event.target.value as PromptTarget)}
           >
-            <option value="guide">导读摘要</option>
-            <option value="answer">问 AI</option>
-            <option value="learn">AI 问</option>
+            <option value="guide">怎么总结</option>
+            <option value="answer">怎么回答</option>
+            <option value="learn">怎么考你</option>
           </select>
           <label htmlFor="skill-description">一句话说明（可选）</label>
           <input
@@ -399,7 +515,7 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
-          <label htmlFor="skill-body">模板内容（怎么干活的说明）</label>
+          <label htmlFor="skill-body">具体怎么做（写给 AI 的说明）</label>
           <textarea
             id="skill-body"
             rows={8}
@@ -410,7 +526,7 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
           />
           <div className="composer-actions">
             <button type="button" disabled={busy || !name.trim() || !body.trim()} onClick={() => void submit()}>
-              保存模板
+              保存这套读法
             </button>
             <button type="button" className="secondary" onClick={() => setAdding(false)}>
               取消
@@ -420,7 +536,7 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
       ) : (
         <div className="composer-actions">
           <button type="button" className="secondary" onClick={() => setAdding(true)}>
-            添加模板
+            新建一套读法
           </button>
         </div>
       )}
@@ -610,7 +726,7 @@ function ReadingPrefs({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <>
-      <PageLead title="阅读" lead="摘要多长、它怎么问你、字大不大。改完立刻生效。" />
+      <PageLead title="阅读偏好" lead="摘要多长、给几个问题、它怎么问你。改完立刻生效。" />
       <SetList>
         <SetRow title="它怎么问你" hint="选择题好勾；开口答能看出你是不是真懂。聊到哪里算完，你说了算。">
           <Seg
@@ -645,7 +761,7 @@ function ReadingPrefs({ state, send }: { state: PanelState; send: Send }) {
             }
           />
         </SetRow>
-        <SetRow title="话题条" hint="摘要下面那几张可点的卡片。">
+        <SetRow title="可点的问题" hint="摘要下面给几个可以直接点的问题。">
           <Seg
             name="话题卡片数量上限"
             value={String(settings.maxBubbles)}
@@ -673,6 +789,23 @@ function ReadingPrefs({ state, send }: { state: PanelState; send: Send }) {
             }
           />
         </SetRow>
+      </SetList>
+    </>
+  );
+}
+
+function Appearance({ state, send }: { state: PanelState; send: Send }) {
+  const { settings } = state;
+  const [busy, setBusy] = useState(false);
+  const change = (patch: Parameters<typeof send>[0]) => {
+    if (patch.type !== 'saveSettings') return;
+    setBusy(true);
+    void send(patch).finally(() => setBusy(false));
+  };
+  return (
+    <>
+      <PageLead title="外观" lead="深色、浅色跟随你的系统设置。" />
+      <SetList>
         <SetRow title="文字大小">
           <Seg
             name="文字大小"
@@ -701,8 +834,8 @@ function Cleanup({ state, send }: { state: PanelState; send: Send }) {
     setBusy(false);
   };
   return (
-    <Section title="清除">
-      <p className="hint">摘要和对话只在这次打开浏览器时留着。钥匙和设置不受影响。</p>
+    <Section title="隐私与数据">
+      <p className="hint">摘要和对话只在这次打开浏览器时留着，关掉浏览器就没了。钥匙只存在这台电脑上。下面的清除不影响钥匙和设置。</p>
       <SetList>
         <SetRow title="这一页" hint={tabId === null ? '从扩展选项进来时不知道你在读哪一页，请到那一页的侧栏里清。' : '清掉当前页的摘要、对话和 AI 问记录。'}>
           {tabId !== null ? (
@@ -726,8 +859,8 @@ function Cleanup({ state, send }: { state: PanelState; send: Send }) {
 function About() {
   const version = browser.runtime.getManifest().version;
   return (
-    <Section title="关于">
-      <p className="hint">WebKnow AI（webknow-ai）{version}：在当前网页旁，帮你看懂文章、发现问题，并通过双向对话检验理解。</p>
+    <Section title="关于与帮助">
+      <p className="hint">WebKnow AI（webknow-ai）{version}：读网页时随叫随到的导师。哪里不懂，划哪里。</p>
       <p className="hint">
         使用说明见{' '}
         <a href="https://github.com/wasteball/webknow-ai#readme" target="_blank" rel="noreferrer">

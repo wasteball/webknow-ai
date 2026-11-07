@@ -247,18 +247,13 @@ test('划词、搜索和发送在同一个输入框内，长问题不会挤走�
   test.setTimeout(120_000);
   const { panel, tabId } = await openPanel(560);
   await panel.getByLabel('向这篇文章提问').fill('配置搜索后继续发送的问题');
-  const [searchSettings] = await Promise.all([
-    context.waitForEvent('page'),
-    panel.getByRole('button', { name: '联网搜索', exact: true }).click(),
-  ]);
-  await expect(searchSettings).toHaveURL(/options\.html/);
-  await searchSettings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '联网搜索' }).click();
-  await expect(searchSettings.getByRole('radiogroup', { name: '搜索服务' })).toBeVisible();
-  await expect.poll(() => searchSettings.evaluate(async () =>
-    (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id,
-  )).not.toBe(tabId);
-  await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('配置搜索后继续发送的问题');
-  await searchSettings.close();
+  // 没配搜索时点联网：在侧栏里滑出「联网搜索」设置，不开新标签页；关掉后草稿还在。
+  await panel.getByRole('button', { name: '联网搜索', exact: true }).click();
+  const drawer = panel.getByRole('dialog', { name: '联网搜索' });
+  await expect(drawer.getByRole('radiogroup', { name: '搜索服务' })).toBeVisible();
+  await panel.keyboard.press('Escape');
+  await panel.keyboard.press('Escape');
+  await expect(panel.getByRole('dialog')).toHaveCount(0);
   await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('配置搜索后继续发送的问题');
   await context.serviceWorkers()[0]!.evaluate(
     async ([id, outbound]) => {
@@ -277,7 +272,7 @@ test('划词、搜索和发送在同一个输入框内，长问题不会挤走�
   await pushState(panel, tabId);
   await expect(panel.getByRole('button', { name: /新方案把平均处理时间/ })).toBeVisible();
   await expect(panel.getByRole('button', { name: '不用这段' })).toBeVisible();
-  const input = panel.getByPlaceholder(/针对这段/);
+  const input = panel.getByPlaceholder(/想问这段什么/);
   await expect(input).toBeVisible();
   const composer = panel.locator('#mode-panel-qa .composer-field');
   await expect(composer.getByRole('button', { name: /新方案把平均处理时间/ })).toBeVisible();
@@ -311,8 +306,9 @@ test('划词、搜索和发送在同一个输入框内，长问题不会挤走�
       await chrome.storage.local.set({ config: { ...(config as Record<string, unknown>), appearance: { fontSize: size } } });
     }, fontSize);
     await pushState(panel, tabId);
-    await expect.poll(() => panel.locator('.panel').evaluate((node) => getComputedStyle(node).zoom))
-      .toBe(fontSize === 'large' ? '1.15' : '1');
+    // 大字号改用字号变量，不再 zoom（zoom 会让 320px 侧栏横向溢出）。
+    await expect(panel.locator('.panel.font-large')).toHaveCount(fontSize === 'large' ? 1 : 0);
+    expect(await panel.locator('.panel').evaluate((node) => getComputedStyle(node).zoom)).toBe('1');
     const bounds = await composer.getByRole('button', { name: '发送' }).boundingBox();
     expect(bounds!.y + bounds!.height).toBeLessThan(360);
   }
@@ -330,7 +326,7 @@ test('划词、搜索和发送在同一个输入框内，长问题不会挤走�
   await panel.close();
 });
 
-test('报错时设置与文章标题同排，错误提示不被齿轮遮挡', async () => {
+test('报错时顶栏仍是一行，错误提示不被顶栏遮挡', async () => {
   const { panel, tabId } = await openPanel(360);
   await context.serviceWorkers()[0]!.evaluate(async (id) => {
     const stored = await chrome.storage.session.get(`sess:${id}`);
@@ -340,14 +336,13 @@ test('报错时设置与文章标题同排，错误提示不被齿轮遮挡', as
   }, tabId);
   await pushState(panel, tabId);
 
-  const title = await panel.locator('.page-title').boundingBox();
-  const settings = await panel.getByRole('button', { name: '设置' }).boundingBox();
+  const tabs = await panel.getByRole('tablist', { name: '功能切换' }).boundingBox();
+  const more = await panel.getByRole('button', { name: '更多' }).boundingBox();
+  const header = await panel.locator('.panel-header').boundingBox();
   const warning = await panel.getByRole('alert').boundingBox();
-  expect(title).not.toBeNull();
-  expect(settings).not.toBeNull();
-  expect(warning).not.toBeNull();
-  expect(Math.abs(title!.y - settings!.y)).toBeLessThan(44);
-  expect(warning!.y).toBeGreaterThanOrEqual(Math.max(title!.y + title!.height, settings!.y + settings!.height));
+  expect(Math.abs(tabs!.y + tabs!.height / 2 - (more!.y + more!.height / 2))).toBeLessThan(6);
+  expect(header!.height).toBeLessThan(64);
+  expect(warning!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
   await panel.close();
 });
 
@@ -434,7 +429,7 @@ test('READY 视图在三种宽度下排版正确', async () => {
   for (const width of WIDTHS) {
     const { panel } = await openPanel(width);
     await expect(panel.getByText('样本只有三个经过培训的团队')).toBeVisible();
-    await expect(panel.locator('.chip').first()).toBeVisible();
+    await expect(panel.locator('.next-item').first()).toBeVisible();
     // 一进来就停在顶部：摘要与话题是这一栏最重要的一段，不该被推到屏幕外。
     expect(await panel.evaluate(() => window.scrollY)).toBe(0);
     await panel.screenshot({ path: join(OUTPUT_DIR, `ready-${width}.png`), fullPage: true });
@@ -447,7 +442,7 @@ test('点开一张卡片后开场卡全部收起，联想问题只跟在最新�
   const { panel, tabId } = await openPanel(560);
   // 有对话时，开场那三张不再出现；最新回答后面才是联想。
   await expect(panel.getByRole('button', { name: BUBBLES[0]!.question })).toBeHidden();
-  await expect(panel.locator('.chip:visible')).toHaveCount(2);
+  await expect(panel.locator('.next-item:visible')).toHaveCount(2);
   await expect(panel.getByText('可以接着问')).toBeVisible();
 
   await context.serviceWorkers()[0]!.evaluate(async (id) => {
@@ -457,7 +452,7 @@ test('点开一张卡片后开场卡全部收起，联想问题只跟在最新�
     await chrome.storage.session.set({ [`sess:${id}`]: session });
   }, tabId);
   await pushState(panel, tabId);
-  await expect(panel.locator('.chip:visible')).toHaveCount(3);
+  await expect(panel.locator('.next-item:visible')).toHaveCount(3);
   await expect(panel.getByText('想接着弄懂哪一点')).toBeVisible();
   await panel.close();
 });
@@ -491,8 +486,9 @@ test('LEARNING 视图在宽面板下排版正确', async () => {
       await chrome.storage.local.set({ config: { ...(config as Record<string, unknown>), appearance: { fontSize: size } } });
     }, fontSize);
     await pushState(_panel, tabId);
-    await expect.poll(() => _panel.locator('.panel').evaluate((node) => getComputedStyle(node).zoom))
-      .toBe(fontSize === 'large' ? '1.15' : '1');
+    // 大字号改用字号变量，不再 zoom（zoom 会让 320px 侧栏横向溢出）。
+    await expect(_panel.locator('.panel.font-large')).toHaveCount(fontSize === 'large' ? 1 : 0);
+    expect(await _panel.locator('.panel').evaluate((node) => getComputedStyle(node).zoom)).toBe('1');
     for (const name of ['回答', '我不知道', '提示', '讲解']) {
       await expect(_panel.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
     }
@@ -556,34 +552,29 @@ test('选择题轮在宽面板下可交互', async () => {
   await quizPanel.close();
 });
 
-test('设置是独立标签页：分类导航与内容区排版正确', async () => {
+test('整页设置（扩展选项入口）：分类导航与内容区排版正确', async () => {
   test.setTimeout(120_000);
-  const panel = await context.newPage();
-  await panel.setViewportSize({ width: 720, height: 920 });
-  await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  // 设置不在侧栏里展开：非工作时的界面不该被侧栏宽度限制。
-  const [settings] = await Promise.all([
-    context.waitForEvent('page'),
-    panel.getByRole('button', { name: '设置' }).click(),
-  ]);
+  // 侧栏里的设置是抽屉；浏览器自带的“扩展选项”仍打开这张整页。
+  const settings = await context.newPage();
   await settings.setViewportSize({ width: 1100, height: 900 });
-  await expect(settings).toHaveURL(/options\.html/);
+  await settings.goto(`chrome-extension://${extensionId}/options.html`);
 
   // 左侧分类导航可切换，右侧内容随分类变化。
   await expect(settings.getByRole('radiogroup', { name: '「AI 问」怎么出题' })).toBeVisible();
   const nav = settings.getByRole('navigation', { name: '设置分类' });
   // 这台浏览器里已经有钥匙（beforeAll 放的），所以模型这一步直接可选。
-  await nav.getByRole('button', { name: '模型' }).click();
-  await expect(nav.getByRole('button', { name: '模型' })).toHaveAttribute('aria-current', 'true');
+  await nav.getByRole('button', { name: 'AI 服务' }).click();
+  await expect(nav.getByRole('button', { name: 'AI 服务' })).toHaveAttribute('aria-current', 'true');
   await expect(settings.getByRole('heading', { name: '模型' })).toBeVisible();
   await expect(settings.getByRole('button', { name: /DeepSeek 使用中/ })).toBeVisible();
   await expect(settings.getByRole('button', { name: /智谱 未连接/ })).toBeVisible();
   await expect(settings.getByLabel('DeepSeek 的钥匙已保存')).toBeVisible();
   await settings.locator('.model-advanced summary').click();
   await expect(settings.getByLabel('用哪个模型')).toBeVisible();
-  // 提示词：编辑框里直接就是正在生效的那段话——看到的就是生效的，不存在“选了没变化”。
-  await nav.getByRole('button', { name: '提示词' }).click();
-  const guideBox = settings.getByLabel('导读摘要：现在照着做的那段话');
+  // 读法：编辑框里直接就是正在生效的那段话——看到的就是生效的，不存在“选了没变化”。
+  await nav.getByRole('button', { name: '读法' }).click();
+  await settings.getByText('自己写，或在这套基础上改').click();
+  const guideBox = settings.getByLabel('怎么总结：现在照着做的那段话');
   await expect(guideBox).toBeVisible();
   expect((await guideBox.inputValue()).trim().length).toBeGreaterThan(0);
 
@@ -592,7 +583,6 @@ test('设置是独立标签页：分类导航与内容区排版正确', async ()
   await settings.screenshot({ path: join(OUTPUT_DIR, 'settings-page.png'), fullPage: true });
 
   await settings.close();
-  await panel.close();
 });
 
 test('模式切换是完整的 tab 组件：ARIA 关系与方向键都能用', async () => {
@@ -642,7 +632,7 @@ test('深色模式跟随系统配色', async () => {
   // 卡片背景有 140ms 过渡。配色一切换，getComputedStyle 会读到过渡中的浅色，
   // 必须等到落定，不能只采样一次。
   await expect.poll(() => isDark(panel, 'body')).toBe(true);
-  await expect.poll(() => isDark(panel, '#mode-panel-qa .chip')).toBe(true);
+  await expect.poll(() => isDark(panel, '#mode-panel-qa .next-item')).toBe(true);
   await panel.screenshot({ path: join(OUTPUT_DIR, 'ready-560-dark.png'), fullPage: true });
   await panel.close();
 });
@@ -657,17 +647,20 @@ function isDark(page: Page, selector: string): Promise<boolean> {
   }, selector);
 }
 
-test('文章标题与设置始终同排，模式条在下面且不被遮挡', async () => {
+test('顶栏一行常驻：光点、页签、更多同排，滚动对话不被遮挡，窄栏不溢出', async () => {
   test.setTimeout(120_000);
   const { panel, tabId } = await openPanel(560);
   await panel.setViewportSize({ width: 560, height: 360 });
 
-  const gear = await panel.getByRole('button', { name: '设置' }).boundingBox();
-  const title = await panel.locator('.page-title').boundingBox();
-  expect(gear!.y).toBeLessThanOrEqual(1);
-  expect(title!.y).toBeGreaterThanOrEqual(gear!.y);
-  expect(title!.y + title!.height).toBeLessThanOrEqual(gear!.y + gear!.height);
-  expect(title!.x + title!.width).toBeLessThanOrEqual(gear!.x + 1);
+  const row = async () => {
+    const more = (await panel.getByRole('button', { name: '更多' }).boundingBox())!;
+    const tab = (await panel.getByRole('tab', { name: '问 AI' }).boundingBox())!;
+    expect(more.y).toBeLessThan(16);
+    expect(Math.abs(tab.y + tab.height / 2 - (more.y + more.height / 2))).toBeLessThan(6);
+    expect(tab.x + tab.width).toBeLessThanOrEqual(more.x + 1);
+    return more;
+  };
+  const top = await row();
   await panel.screenshot({ path: join(OUTPUT_DIR, 'header-top.png') });
 
   await panel.locator('#mode-panel-qa .chat-scroll').evaluate((node) => {
@@ -676,15 +669,10 @@ test('文章标题与设置始终同排，模式条在下面且不被遮挡', as
   const chip = panel.getByRole('button', { name: '三个团队的试点为什么不能代表其他城市？' });
   const chipBox = await chip.boundingBox();
   const dockBox = await panel.locator('#mode-panel-qa .dock').boundingBox();
-  expect(chipBox).toBeTruthy();
-  expect(dockBox).toBeTruthy();
+  expect(chipBox!.y).toBeGreaterThanOrEqual(top.y + top.height);
   expect(chipBox!.y + chipBox!.height).toBeLessThanOrEqual(dockBox!.y + 1);
   expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual(360 + 1);
-
-  const stuckGear = await panel.getByRole('button', { name: '设置' }).boundingBox();
-  const tab = await panel.getByRole('tab', { name: '问 AI' }).boundingBox();
-  expect(stuckGear!.y).toBeLessThanOrEqual(1);
-  expect(tab!.y).toBeGreaterThanOrEqual(stuckGear!.y + stuckGear!.height);
+  await row();
   await panel.getByRole('tab', { name: 'AI 问' }).click();
   await expect(panel.getByRole('tab', { name: 'AI 问' })).toHaveAttribute('aria-selected', 'true');
   await panel.screenshot({ path: join(OUTPUT_DIR, 'header-stuck.png') });
@@ -698,12 +686,7 @@ test('文章标题与设置始终同排，模式条在下面且不被遮挡', as
   }, tabId);
   await pushState(panel, tabId);
   await panel.setViewportSize({ width: 280, height: 360 });
-  const narrowTitle = await panel.locator('.context-actions .page-title').boundingBox();
-  const narrowGear = await panel.getByRole('button', { name: '设置' }).boundingBox();
-  expect(narrowTitle).toBeTruthy();
-  expect(narrowGear).toBeTruthy();
-  expect(narrowTitle!.y + narrowTitle!.height).toBeLessThanOrEqual(narrowGear!.y + narrowGear!.height);
-  expect(narrowTitle!.x + narrowTitle!.width).toBeLessThanOrEqual(narrowGear!.x + 1);
+  await row();
   expect(await panel.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(280);
   await panel.close();
 });
@@ -788,8 +771,8 @@ test('设置：窄窗口下分类导航变成横向可滚动条，正文不横�
   await settings.keyboard.press('Tab');
   await expect(settings.getByRole('link', { name: '跳到设置内容' })).toBeFocused();
 
-  await nav.getByRole('button', { name: '关于' }).click();
-  await expect(settings.getByRole('heading', { name: '关于' })).toBeVisible();
+  await nav.getByRole('button', { name: '关于与帮助' }).click();
+  await expect(settings.getByRole('heading', { name: '关于与帮助' })).toBeVisible();
   await settings.screenshot({ path: join(OUTPUT_DIR, 'settings-narrow.png'), fullPage: true });
   await settings.close();
 });
@@ -799,7 +782,7 @@ test('模型：钥匙保存后掩码显示；没钥匙不给模型选择器', as
   const settings = await context.newPage();
   await settings.setViewportSize({ width: 1100, height: 900 });
   const openModelCategory = async () => {
-    await settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '模型' }).click();
+    await settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: 'AI 服务' }).click();
   };
   await settings.goto(`chrome-extension://${extensionId}/options.html`);
   await openModelCategory();

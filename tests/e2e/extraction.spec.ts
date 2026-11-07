@@ -199,7 +199,6 @@ test.describe('提取覆盖面', () => {
 
     await panel.getByLabel('向这篇文章提问').fill('试点结果适用于哪里？');
     await panel.getByRole('button', { name: '发送' }).click();
-    await panel.getByText('查看依据', { exact: true }).click();
     await panel.getByRole('button', { name: '回到文中 1' }).click();
     await expect(page.locator('#js_content .wka-evidence-highlight')).toHaveText(
       '这段证据位于微信小节中，说明新方案只在本次试点内缩短了处理时间。',

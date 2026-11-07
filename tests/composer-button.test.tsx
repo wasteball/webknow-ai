@@ -96,7 +96,7 @@ describe('发出去的话立刻出现', () => {
         }),
     );
     render(<Reading state={panel()} send={send} />);
-    const box = screen.getByPlaceholderText('有什么不懂的？') as HTMLTextAreaElement;
+    const box = screen.getByPlaceholderText('哪里不懂，直接问') as HTMLTextAreaElement;
     fireEvent.change(box, { target: { value: '这句话什么意思' } });
     fireEvent.submit(box.closest('form')!);
 
@@ -141,7 +141,7 @@ describe('对话里的发送和停止', () => {
 
     const field = document.querySelector('.composer-field');
     const stop = screen.getByRole('button', { name: '停止' });
-    const box = screen.getByPlaceholderText('有什么不懂的？');
+    const box = screen.getByPlaceholderText('哪里不懂，直接问');
     expect(field?.contains(stop)).toBe(true);
     expect(field?.contains(box)).toBe(true);
     expect(screen.getAllByRole('button', { name: '停止' })).toHaveLength(1);
@@ -157,7 +157,7 @@ describe('对话里的发送和停止', () => {
     rerender(<Reading state={panel()} send={send} />);
     const sendButton = screen.getByRole('button', { name: '发送' });
     expect(document.querySelector('.composer-field')?.contains(sendButton)).toBe(true);
-    expect(document.querySelector('.composer-field')?.contains(screen.getByPlaceholderText('有什么不懂的？'))).toBe(true);
+    expect(document.querySelector('.composer-field')?.contains(screen.getByPlaceholderText('哪里不懂，直接问'))).toBe(true);
     expect(screen.queryByRole('button', { name: '停止' })).toBeNull();
   });
 

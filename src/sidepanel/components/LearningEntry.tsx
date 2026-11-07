@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import type { LearnEntry, MasteryLabel } from '../../core/session';
-import { Thinking, VerdictTag } from './bits';
+import type { LearnEntry } from '../../core/session';
+import { Thinking } from './bits';
 import { Rich, RichInline } from './Rich';
 import { SearchSources } from './SearchSources';
 
@@ -35,20 +35,10 @@ export function LearningEntry({ entry, diagrams, quizContent }: { entry: LearnEn
             <SearchSources references={entry.supplement.references ?? []} research={entry.supplement.research} />
           </aside>
         )}
-        {entry.mastery && <MasteryTag mastery={entry.mastery} />}
-        {entry.role === 'question' && <Rich text={entry.text} diagrams={false} />}
+        {entry.role === 'question' && <div className="ask-now"><Rich text={entry.text} diagrams={false} /></div>}
         {entry.role === 'quiz' && (quizContent ?? <QuizEntryView entry={entry} />)}
-        {entry.role === 'feedback' && (
-          <>
-            {entry.verdict && <VerdictTag verdict={entry.verdict} />}
-            {entry.score && (
-              <span className="tag">
-                {entry.score.correct}/{entry.score.total} 题正确
-              </span>
-            )}
-            <Rich text={entry.text} diagrams={diagrams} />
-          </>
-        )}
+        {/* 导师不打分：判定、对几题、掌握标签仍随记录保存，但只用说话的方式表达。 */}
+        {entry.role === 'feedback' && <Rich text={entry.text} diagrams={diagrams} />}
         {entry.role === 'hint' && (
           <>
             <span className="tag">提示</span>
@@ -65,17 +55,6 @@ export function LearningEntry({ entry, diagrams, quizContent }: { entry: LearnEn
       </div>
     </article>
   );
-}
-
-const MASTERY_LABELS: Record<MasteryLabel, string> = {
-  independent: '已能独立说明',
-  basic: '基本理解',
-  review: '需要再看',
-  unverified: '尚未验证',
-};
-
-function MasteryTag({ mastery }: { mastery: MasteryLabel }) {
-  return <span className="tag">{MASTERY_LABELS[mastery]}</span>;
 }
 
 /**

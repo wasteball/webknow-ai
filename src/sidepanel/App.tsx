@@ -3,15 +3,17 @@ import { browser } from 'wxt/browser';
 
 import { findProvider } from '../core/model-providers';
 import type { Command, PanelState, Reply } from '../core/protocol';
-import { activeTabId, createClient, openSettingsTab, type Client } from './api';
+import { activeTabId, createClient, type Client } from './api';
 import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
-import { Busy, Drafting, ErrorBanner, Notice, ScopeLine, Section } from './components/bits';
+import { Busy, Drafting, ErrorBanner, Notice, Opening, type BannerAction } from './components/bits';
 import { BrandMark, Icon } from './components/Icon';
 import { outboundReceiverLines, outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
 import { needsPageHost, type PageEntryId } from './page-entry';
 import { PageEntry } from './components/PageEntry';
+import { Settings, type CategoryId } from './components/Settings';
+import type { AppError } from '../core/errors';
 
 /**
  * 已就绪后的两个能力用文字标签切换：「问 AI」是摘要 + 话题 + 自己提问，
@@ -43,6 +45,15 @@ export function App() {
     : state?.learning?.status === 'active' ? 'learn' : 'qa';
   const setView = (next: View) => setSelection({ session: conversationKey, view: next });
   const clientRef = useRef<Client | null>(null);
+  const [drawer, setDrawer] = useState<{ category: CategoryId | null } | null>(null);
+  const [drawerNotice, setDrawerNotice] = useState<string | null>(null);
+  const [menu, setMenu] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  // 第一次用的三步：钥匙一存好，阶段就离开 UNCONFIGURED，但第 3 步“试一下”还要留着。
+  const [onboarding, setOnboarding] = useState(false);
+  useEffect(() => {
+    if (state?.phase === 'UNCONFIGURED') setOnboarding(true);
+  }, [state?.phase]);
 
   useEffect(() => {
     setSearchOn(false);
@@ -143,17 +154,29 @@ export function App() {
     })();
   };
 
-  /**
-   * 设置打开成独立标签页，不在侧栏里展开：阅读才在侧栏，改配置不是阅读，
-   * 不该被侧栏宽度限制。地址带上当前页号，设置页里的“清掉这一页的内容”才指得准。
-   */
-  // ponytail: 连点两次会开两个设置标签页。要复用已有那个得用 runtime.getContexts 找出来再聚焦，
-  // 现在不值得。真的烦了再加。
+  /** 设置在侧栏里滑出；对话面板留在下面不卸载，关掉就回到刚才的位置。 */
   const openSettings = (category?: string) => {
-    const url = new URL(browser.runtime.getURL('/options.html'));
-    if (state?.tabId != null) url.searchParams.set('tab', String(state.tabId));
-    if (category) url.hash = category;
-    void openSettingsTab(url.toString()).catch(() => setNotice('设置页没有打开，请再试一次。'));
+    setMenu(false);
+    setDrawerNotice(null);
+    setDrawer({ category: (category === 'prompts' ? 'readway' : category ?? null) as CategoryId | null });
+  };
+  const closeSettings = useCallback(() => setDrawer(null), []);
+  const sendFromDrawer = useCallback(async (command: Command): Promise<Reply | undefined> => {
+    setDrawerNotice(null);
+    const reply = await clientRef.current?.send(command);
+    if (reply && !reply.ok) setDrawerNotice(reply.error.message);
+    else if (reply?.message) setDrawerNotice(reply.message);
+    return reply;
+  }, []);
+  const quietSend = useCallback(async (command: Command) => clientRef.current?.send(command), []);
+
+  /** 失败提示配一个能解决它的按钮：钥匙类去检查钥匙，其余能重试的给重试。 */
+  const errorAction = (error: AppError): BannerAction | undefined => {
+    if (['NO_KEY', 'KEY_INVALID', 'INSUFFICIENT_BALANCE', 'UNSUPPORTED_MODEL'].includes(error.code)) {
+      return { label: error.code === 'INSUFFICIENT_BALANCE' ? '去看看' : '检查钥匙', onClick: () => openSettings('model') };
+    }
+    if (error.code === 'SEARCH_FAILED') return { label: '联网设置', onClick: () => openSettings('search') };
+    return undefined;
   };
 
   /** WAI-ARIA tabs 的键盘约定：左右移动选择并把焦点带过去，Home/End 到头尾。 */
@@ -174,14 +197,8 @@ export function App() {
   const phase = state?.phase ?? 'READY_TO_START';
   const busy = state?.busy ?? null;
   const readyShell = phase === 'READY' || phase === 'LEARNING';
-  // 「还没有填钥匙」那句要带上当前供应商的名字，所以它在映射之外单独拼。
-  const phaseText = readyShell
-    ? null
-    : phase === 'UNCONFIGURED'
-      ? '还没有填钥匙。去设置里配一下，顺带看看都能做什么。'
-      : PHASE_TEXT[phase];
-  const pageEntryPhase = Boolean(state) &&
-    (phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE');
+  // 没填钥匙时由首次使用的三步来说明，不再另起一行状态文字。
+  const phaseText = readyShell || phase === 'UNCONFIGURED' ? null : PHASE_TEXT[phase];
   const awaitingNewReceiver = !state?.outboundConfirmed &&
     (state?.sessionState === 'READY' || state?.sessionState === 'LEARNING');
 
@@ -214,63 +231,85 @@ export function App() {
               </div>
   );
 
+  const thinking = busy !== null;
+  const pageTab = state?.tabId ?? null;
+
   return (
-    <div
-      className={readyShell ? "panel ready-chat" : "panel"}
-      style={state?.settings.fontSize === 'large' ? { zoom: 1.15 } : undefined}
-    >
+    <div className={[readyShell ? 'panel ready-chat' : 'panel', state?.settings.fontSize === 'large' ? 'font-large' : ''].join(' ').trim()}>
       <div className="conversation-top">
-      <header className="context-actions panel-header">
-        <span role="img" aria-label="WebKnow AI"><BrandMark /></span>
-        {!pageEntryPhase && state?.pageTitle && <p className="page-title">{state.pageTitle}</p>}
-        <button type="button" className="icon-btn" onClick={() => openSettings()} aria-label="设置" title="设置"><Icon name="settings" /></button>
+      <header className="topbar panel-header">
+        <span className="topbar-brand" role="img" aria-label={thinking ? 'WebKnow AI 正在想' : 'WebKnow AI'}><BrandMark size={26} thinking={thinking} /></span>
+        {modeTabs || <span className="topbar-spacer" />}
+        <div className="menu-wrap">
+          <button type="button" className="icon-btn" aria-label="更多" title="更多" aria-haspopup="menu" aria-expanded={menu}
+            onClick={() => { setMenu((open) => !open); setConfirmClear(false); }}>
+            <Icon name="more" />
+          </button>
+          {menu && <>
+            <div className="menu-scrim" onClick={() => setMenu(false)} />
+            <div className="menu" role="menu" onKeyDown={(event) => { if (event.key === 'Escape') setMenu(false); }}>
+              <button type="button" role="menuitem" autoFocus onClick={() => openSettings()}><Icon name="settings" small />设置</button>
+              {confirmClear ? (
+                <button type="button" role="menuitem" className="danger-item" disabled={busy !== null || pageTab === null}
+                  onClick={() => { setMenu(false); setConfirmClear(false); if (pageTab !== null) void send({ type: 'clearSession', tabId: pageTab }); }}>
+                  <Icon name="trash" small />确定清空？摘要和对话都会删掉
+                </button>
+              ) : (
+                <button type="button" role="menuitem" disabled={busy !== null || pageTab === null} onClick={() => setConfirmClear(true)}>
+                  <Icon name="trash" small />清空这一页的对话
+                </button>
+              )}
+              <hr />
+              <a role="menuitem" href="https://github.com/wasteball/webknow-ai#readme" target="_blank" rel="noreferrer" onClick={() => setMenu(false)}>
+                <Icon name="help" small />使用帮助
+              </a>
+            </div>
+          </>}
+        </div>
       </header>
-      {state?.completeness && <div className="context" role="region" aria-label="文章信息" tabIndex={0}>
-        <ScopeLine completeness={state.completeness} onJump={(blockId) => state.tabId !== null && void send({ type: 'jump', tabId: state.tabId, blockId })} />
-      </div>}
-
-      {modeTabs}
       </div>
-
-      {(notice || state?.error) && <div className="conversation-notices" role="region" aria-label="状态提示" tabIndex={0}>
-        {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
-        {state?.error && <ErrorBanner error={state.error} />}
-      </div>}
 
       {!state ? (
         <p className="hint">正在连接后台…</p>
       ) : (
         <>
-          {phaseText && (
+          {phaseText && !onboarding && (
             <p className="phase" role="status" aria-live="polite">
               {phaseText}
             </p>
           )}
 
-          {phase === 'UNCONFIGURED' && <Setup settings={state.settings} onOpenSettings={() => openSettings('model')} />}
+          {(phase === 'UNCONFIGURED' || onboarding) && (
+            <Setup state={state} send={quietSend}
+              canRead={phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE'}
+              onRead={() => readPage('summary')} onDone={() => setOnboarding(false)} />
+          )}
 
-          {(phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE') && (
-            <>
+          {!onboarding && (phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE') && (
+            <Opening pageUrl={state.pageUrl} title={state.pageTitle} badge={phase === 'STALE' ? '换了一页' : undefined}>
               {!state.outboundConfirmed ? (
                 <OutboundNotice
                   state={state}
                 />
               ) : (
-                <p className="hint">
-                  {outboundConfirmedHint(
-                    findProvider(state.settings.provider).receiver,
-                    state.settings.provider === 'deepseek',
-                    state.settings,
-                  )}
-                </p>
+                <details className="fine">
+                  <summary>读的时候会发生什么</summary>
+                  <p>
+                    {outboundConfirmedHint(
+                      findProvider(state.settings.provider).receiver,
+                      state.settings.provider === 'deepseek',
+                      state.settings,
+                    )}
+                  </p>
+                </details>
               )}
               {awaitingNewReceiver ? (
-                <Section title="外发接收方或范围已变化">
-                  <p>之前的摘要与对话仍在，由此前的模型生成。阅读新的外发说明并确认后可以继续；新的提问使用当前接收方和范围。</p>
-                  <button type="button" disabled={busy !== null} onClick={() => readPage('retry')}>
+                <div className="opening-entry">
+                  <p>换了 AI 服务或发送范围。之前的摘要与对话仍在，由此前的模型生成；确认上面的说明后可以继续，新的提问用现在的设置。</p>
+                  <button type="button" className="block" disabled={busy !== null} onClick={() => readPage('retry')}>
                     我确认，继续伴读
                   </button>
-                </Section>
+                </div>
               ) : (
                 <PageEntry
                   pageTitle={state.pageTitle}
@@ -281,7 +320,7 @@ export function App() {
                   onPick={readPage}
                 />
               )}
-            </>
+            </Opening>
           )}
 
           {phase === 'ANALYZING' &&
@@ -300,9 +339,9 @@ export function App() {
             ))}
 
           {phase === 'ERROR' && (
-            <Section title="重新试一次">
-              <p className="hint">
-                刚才那一步没成功，失败了的结果不会拿来充数。可以重新开始，页面内容还留着。
+            <section className="banner banner-error phase-error">
+              <p>
+                刚才那一步没成功，失败的结果不会拿来充数。可以重新开始，页面内容还留着。
               </p>
               <div className="composer-actions">
                 <button
@@ -321,15 +360,20 @@ export function App() {
                   清掉这一页的内容
                 </button>
               </div>
-            </Section>
+            </section>
           )}
 
           {phase === 'UNSUPPORTED' && (
-            <Section title="这一页读不了">
+            <Opening pageUrl={state.pageUrl} title={state.pageTitle} badge="这一页读不了">
               <p>{state.unsupportedReason}</p>
               <p className="hint">目前只支持公开的文章类网页。列表页、搜索结果、要登录才能看的页面都不行。</p>
-            </Section>
+            </Opening>
           )}
+
+          {(notice || state.error) && <div className="conversation-notices" role="region" aria-label="状态提示" tabIndex={0}>
+            {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
+            {state.error && <ErrorBanner error={state.error} action={errorAction(state.error)} />}
+          </div>}
 
           {holdConversation && (
             <>
@@ -356,6 +400,10 @@ export function App() {
           )}
         </>
       )}
+      {drawer && state && (
+        <Settings variant="drawer" state={state} send={sendFromDrawer} initial={drawer.category}
+          notice={drawerNotice} onDismissNotice={() => setDrawerNotice(null)} onClose={closeSettings} />
+      )}
     </div>
   );
 }
@@ -368,7 +416,7 @@ function OutboundNotice({
 }) {
   const provider = findProvider(state.settings.provider);
   return (
-    <div className="banner banner-info">
+    <div className="outbound">
       <p>开始之前，请先确认这几件事：</p>
       <ul>
         {outboundReceiverLines(state.settings).map(line => <li key={line}>{line}</li>)}

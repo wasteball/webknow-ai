@@ -124,19 +124,31 @@ function show(range: Range, text: string): void {
   root.innerHTML = `
     <style>
       button {
-        font: 650 13px/1.2 ui-sans-serif, system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
-        color: #f7f4ef;
-        background: #b42318;
-        border: 0;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font: 600 13px/1.2 ui-sans-serif, system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: #1e1b3a;
+        background: #ffffff;
+        border: 1px solid #e3e5ef;
         border-radius: 999px;
         min-height: 44px;
-        padding: 0 12px;
+        padding: 0 14px 0 10px;
         cursor: pointer;
-        box-shadow: 0 6px 20px rgba(28, 24, 20, .18);
+        box-shadow: 0 6px 20px rgba(30, 27, 58, .16);
       }
-      button:hover { background: #8e1a12; }
+      button::before {
+        content: '';
+        flex: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 34% 30%, #a5b4fc, #6366f1 55%, #5b21b6);
+        box-shadow: inset 0 0 0 5.5px transparent;
+      }
+      button:hover { background: #f6f7fb; }
       button:disabled { cursor: wait; opacity: .7; }
-      button:focus-visible { outline: 2px solid #b42318; outline-offset: 3px; }
+      button:focus-visible { outline: 2px solid #6366f1; outline-offset: 3px; }
     </style>
     <button type="button">引用提问</button>
   `;

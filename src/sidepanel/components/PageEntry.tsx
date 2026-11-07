@@ -21,32 +21,22 @@ export function PageEntry({
   onPick: (entry: PageEntryId) => void;
   onOpenSettings?: () => void;
 }) {
+  // 标题与网站名由外层开场卡显示；这里只放说明和唯一的主操作。
+  void pageTitle; void phase; void onOpenSettings;
   return (
-    <section className="section">
-      <div className="page-entry-heading">
-        <div className="page-entry-heading-copy">
-          <h2>{phase === 'STALE' ? '换了一页' : '读这一页'}</h2>
-          {pageTitle && <p className="page-title">{pageTitle}</p>}
-        </div>
-        {onOpenSettings && (
-          <button type="button" className="icon-btn" onClick={onOpenSettings} aria-label="设置" title="设置">
-            <Icon name="settings" />
-          </button>
-        )}
-      </div>
+    <div className="opening-entry">
       <p>
         点击后，我才读这一页。换页不会自动读。
       </p>
-      <div className="composer-actions">
-        <button type="button" disabled={busy} onClick={() => onPick('summary')}>
-          {outboundConfirmed ? '开始阅读' : '我确认，开始阅读'}
-        </button>
-      </div>
+      <button type="button" className="block" disabled={busy} onClick={() => onPick('summary')}>
+        <Icon name="play" small />
+        {outboundConfirmed ? '开始阅读' : '我确认，开始阅读'}
+      </button>
       {askHost && (
         <p className="hint">
-          点这里可能会请求读取所有 HTTP(S) 网页的可选权限；授权后仍只在点阅读入口时读取正文。若只想授权当前页，可先再点一次工具栏上的WebKnow AI图标，然后点阅读入口。
+          点这里可能会请求读取所有网页的可选权限；授权后仍只在你点开始阅读时才读正文。只想授权当前页的话，先再点一次工具栏上的 WebKnow AI 图标，再点开始阅读。
         </p>
       )}
-    </section>
+    </div>
   );
 }

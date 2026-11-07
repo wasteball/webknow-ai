@@ -65,46 +65,52 @@ function openPrompts(state: PanelState) {
     sent.push(command);
     return { ok: true as const };
   });
-  render(<Settings state={state} send={send} notice={null} onDismissNotice={() => {}} />);
-  fireEvent.click(screen.getByRole('button', { name: /提示词/ }));
-  return { sent };
+  const view = render(<Settings state={state} send={send} notice={null} onDismissNotice={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: /读法/ }));
+  fireEvent.click(screen.getByRole('tab', { name: '怎么考你' }));
+  fireEvent.click(screen.getByText('自己写，或在这套基础上改'));
+  return { sent, view, send };
 }
 
 function learnBox(): HTMLTextAreaElement {
-  return screen.getByLabelText('AI 问：现在照着做的那段话') as HTMLTextAreaElement;
+  return screen.getByLabelText('怎么考你：现在照着做的那段话') as HTMLTextAreaElement;
 }
 
-describe('设置 - 提示词', () => {
-  it('没改过时，框里直接就是内置默认那段话', () => {
+/**
+ * 读法（原“提示词”）的验收点仍是：看到的就是生效的。
+ * 现成方法点一下就换成那一套并保存；编辑框里永远是正在生效的正文。
+ */
+describe('设置 - 读法', () => {
+  it('没改过时选中“默认”，框里直接就是内置默认那段话', () => {
     openPrompts(panel());
     expect(learnBox().value).toBe(LEARN_DEFAULT_POLICY);
+    expect(screen.getByRole('radio', { name: /默认/ }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getAllByText('出厂默认').length).toBeGreaterThan(0);
   });
 
-  it('改过之后，框里是自己的那段话，并标出「你改过」', () => {
+  it('改过之后，框里是自己的那段话，并标出「你改过」「自己写的」', () => {
     openPrompts(panel({ prompts: { learn: '只问一句话能答的问题。' } }));
     expect(learnBox().value).toBe('只问一句话能答的问题。');
     expect(screen.getAllByText('你改过').length).toBe(1);
+    expect(screen.getByRole('radio', { name: /自己写的/ }).getAttribute('aria-checked')).toBe('true');
   });
 
-  it('点现成写法会把正文填进框里——屏幕上立刻看得见，这才叫选了有反应', () => {
+  it('点一套现成方法就保存成那一套，并在列表里标为选中', async () => {
     const template = BUILTIN_SKILLS.find((skill) => skill.target === 'learn');
     if (!template) throw new Error('缺少内置模板');
-    openPrompts(panel());
-    const card = learnBox().closest('article') as HTMLElement;
-    fireEvent.click(card.querySelector('summary') as HTMLElement);
-    const row = [...card.querySelectorAll('.skill-name')].find((item) =>
-      item.textContent?.includes(template.name),
-    );
-    fireEvent.click(row?.querySelector('button') as HTMLButtonElement);
+    const { sent, view, send } = openPrompts(panel());
+    fireEvent.click(screen.getByRole('radio', { name: new RegExp(template.name) }));
+    await waitFor(() => expect(sent.length).toBe(1));
+    expect(sent[0]).toEqual({ type: 'saveSettings', patch: { prompts: { learn: template.body } } });
+    view.rerender(<Settings state={panel({ prompts: { learn: template.body } })} send={send} notice={null} onDismissNotice={() => {}} />);
+    expect(screen.getByRole('radio', { name: new RegExp(template.name) }).getAttribute('aria-checked')).toBe('true');
     expect(learnBox().value).toBe(template.body);
-    // 还没点保存，所以要明说「点保存才生效」，不能让用户以为已经换了。
-    expect(screen.getByText(/改完要点保存才会生效/)).toBeTruthy();
   });
 
-  it('保存下去的就是框里的文字', async () => {
+  it('自己写：保存下去的就是框里的文字', async () => {
     const { sent } = openPrompts(panel());
     fireEvent.change(learnBox(), { target: { value: '每次只问一件事。' } });
+    expect(screen.getByText(/改完要点保存才会生效/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
     await waitFor(() => expect(sent.length).toBe(1));
     expect(sent[0]).toEqual({
@@ -120,6 +126,14 @@ describe('设置 - 提示词', () => {
     expect(learnBox().value).toBe(LEARN_DEFAULT_POLICY);
     await waitFor(() => expect(sent.length).toBe(1));
     expect(sent[0]).toEqual({ type: 'saveSettings', patch: { prompts: { learn: '' } } });
+  });
+
+  it('三块都有现成方法可换，每套都有效果示例', () => {
+    for (const target of ['guide', 'answer', 'learn'] as const) {
+      const methods = BUILTIN_SKILLS.filter((skill) => skill.target === target);
+      expect(methods.length).toBeGreaterThanOrEqual(3);
+      for (const skill of methods) expect(skill.example?.length ?? 0).toBeGreaterThan(10);
+    }
   });
 });
 

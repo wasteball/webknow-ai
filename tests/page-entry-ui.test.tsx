@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PageEntry } from '../src/sidepanel/components/PageEntry';
+import { Opening } from '../src/sidepanel/components/bits';
 
 describe('换页入口界面', () => {
   it('只有一个清楚的阅读主操作，点下去才读这一页', () => {
@@ -29,19 +30,22 @@ describe('换页入口界面', () => {
 
   it('有当前页标题时写出来，未确认外发时总结按钮带上确认', () => {
     render(
-      <PageEntry
-        pageTitle="城市配送试点研究"
-        phase="READY_TO_START"
-        outboundConfirmed={false}
-        busy={false}
-        askHost={false}
-        onPick={() => {}}
-      />,
+      <Opening pageUrl="https://www.example.com/a" title="城市配送试点研究">
+        <PageEntry
+          pageTitle="城市配送试点研究"
+          phase="READY_TO_START"
+          outboundConfirmed={false}
+          busy={false}
+          askHost={false}
+          onPick={() => {}}
+        />
+      </Opening>,
     );
 
-    expect(screen.getByText(/城市配送试点研究/)).toBeTruthy();
-    const heading = document.querySelector('.page-entry-heading');
-    expect(heading?.contains(screen.getByText('城市配送试点研究'))).toBe(true);
+    // 标题与网站名只在开场卡里出现一次。
+    expect(screen.getAllByText('城市配送试点研究')).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: '城市配送试点研究' })).toBeTruthy();
+    expect(screen.getByText('example.com')).toBeTruthy();
     const summary = screen.getByRole('button', { name: /开始阅读/ }) as HTMLButtonElement;
     expect(summary.textContent).toContain('我确认');
     expect(summary.disabled).toBe(false);

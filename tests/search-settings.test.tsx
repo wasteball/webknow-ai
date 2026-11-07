@@ -46,7 +46,8 @@ it('keeps six providers, masks keys, requests permissions in the gesture then te
 it('shows shared receiver boundaries before initial key setup', () => {
   const state = panel(); state.settings.provider = 'zhipu';
   state.settings.search.providerName = 'Firecrawl'; state.settings.search.sourceCapabilities.providerContent = true;
-  render(<Setup settings={state.settings} onOpenSettings={vi.fn()} />);
+  render(<Setup state={state} send={vi.fn()} canRead onRead={vi.fn()} onDone={vi.fn()} />);
+  fireEvent.click(screen.getByText('要花钱吗？安全吗？'));
   expect(screen.getByText(/智谱（Zhipu） 接收当前文章正文/)).toBeTruthy();
   expect(screen.getByText(/内容接口（Firecrawl）接收所选来源 URL/)).toBeTruthy();
   expect(screen.getByText(/自己的认证通道/)).toBeTruthy();

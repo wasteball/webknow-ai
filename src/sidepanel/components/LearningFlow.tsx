@@ -135,7 +135,7 @@ export function Learning({ state, send, active = true, searchOn = false, onSearc
         {learning.log.map((entry, i) => <Entry key={`${entry.role}-${entry.at}-${i}`} entry={entry} diagrams={diagrams}
           quizContent={inRound && quizRecorded && i === lastQuiz ? quizContent : undefined} />)}
         {inRound && quiz && !quizRecorded && <article className="msg ai"><div className="said">{quizContent}</div></article>}
-        {inRound && current?.kind === 'open' && !openRecorded && <article className="msg ai"><div className="said"><Rich text={current.question} diagrams={false} /></div></article>}
+        {inRound && current?.kind === 'open' && !openRecorded && <article className="msg ai"><div className="said"><div className="ask-now"><Rich text={current.question} diagrams={false} /></div></div></article>}
       </> : <article className="msg ai"><div className="said"><p>我会先问一个问题。你可以用自己的话回答，答不上来也可以要提示或讲解。</p>
         {startFailed && !busy && <button type="button" className="secondary" disabled={blocked} onClick={() => void startWith(DEFAULT_LEARN_GOAL, true)}>重新提问</button>}
       </div></article>}
