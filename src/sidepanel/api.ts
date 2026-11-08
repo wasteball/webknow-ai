@@ -181,38 +181,39 @@ export async function activeTabId(): Promise<number | null> {
  * 已经开着一个设置页时，换成这次要去的分类并切过去，不再多开标签页。
  */
 export async function openSettingsTab(url: string): Promise<void> {
+  // 复用时也要先在后台加载完再切过去：加载中途激活，侧栏认不出这是设置页，会把它当成“当前这一页”。
   const existing = await findSettingsTab();
-  if (existing) {
-    await browser.tabs.update(existing.tabId, { url, active: true });
-    if (existing.windowId !== undefined) await browser.windows.update(existing.windowId, { focused: true }).catch(() => {});
-    return;
-  }
-  const tab = await browser.tabs.create({ url, active: false });
-  const id = tab.id;
-  if (id === undefined) return;
-  if (tab.status !== 'complete') {
-    await new Promise<void>((resolve, reject) => {
-      const finish = (error?: Error) => {
-        browser.tabs.onUpdated.removeListener(updated);
-        browser.tabs.onRemoved.removeListener(removed);
-        if (error) reject(error);
-        else resolve();
-      };
-      const updated = (tabId: number, change: { status?: string }) => {
-        if (tabId === id && change.status === 'complete') finish();
-      };
-      const removed = (tabId: number) => {
-        if (tabId === id) finish(new Error('设置标签页已关闭'));
-      };
-      browser.tabs.onUpdated.addListener(updated);
-      browser.tabs.onRemoved.addListener(removed);
-      // 监听注册之前也可能已经加载完，补查一次防止漏掉事件。
-      void browser.tabs.get(id).then((current) => {
-        if (current.status === 'complete') finish();
-      }, (error: Error) => finish(error));
-    });
-  }
+  const tab = existing
+    ? await browser.tabs.update(existing.tabId, { url })
+    : await browser.tabs.create({ url, active: false });
+  const id = tab?.id;
+  if (!tab || id === undefined) return;
+  if (tab.status !== 'complete' || existing) await loaded(id);
   await browser.tabs.update(id, { active: true });
+  if (existing?.windowId !== undefined) await browser.windows.update(existing.windowId, { focused: true }).catch(() => {});
+}
+
+function loaded(id: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const finish = (error?: Error) => {
+      browser.tabs.onUpdated.removeListener(updated);
+      browser.tabs.onRemoved.removeListener(removed);
+      if (error) reject(error);
+      else resolve();
+    };
+    const updated = (tabId: number, change: { status?: string }) => {
+      if (tabId === id && change.status === 'complete') finish();
+    };
+    const removed = (tabId: number) => {
+      if (tabId === id) finish(new Error('设置标签页已关闭'));
+    };
+    browser.tabs.onUpdated.addListener(updated);
+    browser.tabs.onRemoved.addListener(removed);
+    // 监听注册之前也可能已经加载完，补查一次防止漏掉事件。
+    void browser.tabs.get(id).then((current) => {
+      if (current.status === 'complete') finish();
+    }, (error: Error) => finish(error));
+  });
 }
 
 /** 没有 tabs 权限也能找到自家页面：runtime.getContexts 只列本扩展的文档（Chrome 116+；更早的版本直接新开）。 */
