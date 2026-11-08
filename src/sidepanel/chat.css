@@ -1,6 +1,5 @@
 /* 只用于阅读侧栏；整页设置不加载本文件。 */
-body.sidepanel { --ink-3: #6b6b6b; }
-@media (prefers-color-scheme: dark) { body.sidepanel { --ink-3: #a3a3a3; } }
+/* 弱字色由全局令牌统一（已实测 ≥ 4.5:1），侧栏不再单独覆盖。 */
 body.sidepanel .panel:not(.ready-chat) { overflow: auto; }
 body.sidepanel .panel.ready-chat { overflow: hidden; }
 .panel-header { flex: none; }
@@ -13,7 +12,9 @@ body.sidepanel .ready-chat [role='tabpanel'] { flex: 1 0 168px; }
 body.sidepanel .context, body.sidepanel .modes { position: static; }
 body.sidepanel .modes:not(.topbar .modes) { margin: 4px 0 0; }
 .conversation { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; position: relative; }
-.chat-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 16px 0 0; }
+.chat-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0; }
+/* 顶部留白放在内容里而不是滚动容器上：吸顶的“这一页”条才能贴住容器上沿，不漏出下面的字。 */
+body.sidepanel .conversation .chat { padding-top: 16px; }
 .chat-scroll:focus-visible { outline: 2px solid var(--ink-3); outline-offset: -2px; border-radius: 6px; }
 body.sidepanel .conversation .chat { overflow: visible; flex: none; }
 .chat-latest { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; font-size: 13px; min-width: 44px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); box-shadow: var(--sh-2); border-radius: 999px; z-index: 2; }

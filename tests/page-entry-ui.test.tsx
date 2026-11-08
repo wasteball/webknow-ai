@@ -24,7 +24,7 @@ describe('换页入口界面', () => {
     expect(onPick.mock.calls.map((call) => call[0])).toEqual(['summary']);
     expect(screen.queryByRole('button', { name: '出几个问题' })).toBeNull();
     expect(screen.queryByRole('button', { name: '让它问我' })).toBeNull();
-    expect(screen.getByText(/点击后，我才读这一页/)).toBeTruthy();
+    expect(screen.getByText(/点了才读，换页不会自动读/)).toBeTruthy();
     expect(screen.getByText(/换页不会自动读/)).toBeTruthy();
   });
 

@@ -194,7 +194,7 @@ export function App() {
   const busy = state?.busy ?? null;
   const readyShell = phase === 'READY' || phase === 'LEARNING';
   // 没填钥匙时由首次使用的三步来说明，不再另起一行状态文字。
-  const phaseText = readyShell || phase === 'UNCONFIGURED' ? null : PHASE_TEXT[phase];
+  const phaseText = readyShell ? null : PHASE_TEXT[phase] ?? null;
   const awaitingNewReceiver = !state?.outboundConfirmed &&
     (state?.sessionState === 'READY' || state?.sessionState === 'LEARNING');
 
@@ -245,7 +245,10 @@ export function App() {
       <div className="conversation-top">
       <header className="topbar panel-header">
         <span className="topbar-brand" role="img" aria-label={thinking ? 'WebKnow AI 正在想' : 'WebKnow AI'}><BrandMark size={26} thinking={thinking} /></span>
-        {modeTabs || <span className="topbar-spacer" />}
+        {/* 读之前：顶栏写这一页的标题；读之后：顶栏放页签，标题收进对话区顶部（重构方案 4.1）。 */}
+        {modeTabs || (state?.pageTitle && !onboarding && phase !== 'UNCONFIGURED'
+          ? <p className="topbar-title" title={state.pageTitle}>{state.pageTitle}</p>
+          : <span className="topbar-spacer" />)}
         <div className="menu-wrap">
           <button type="button" className="icon-btn" aria-label="更多" title="更多" aria-haspopup="menu" aria-expanded={menu}
             onClick={() => { setMenu((open) => !open); setConfirmClear(false); }}>
@@ -293,48 +296,40 @@ export function App() {
 
           {!onboarding && (phase === 'PERMISSION_REQUIRED' || phase === 'READY_TO_START' || phase === 'STALE') && (
             <Opening pageUrl={state.pageUrl} title={state.pageTitle} badge={phase === 'STALE' ? '换了一页' : undefined}>
-              {!state.outboundConfirmed ? (
-                <OutboundNotice
-                  state={state}
-                />
-              ) : (
-                <details className="fine">
-                  <summary>读的时候会发生什么</summary>
-                  <p>
-                    {outboundConfirmedHint(
-                      findProvider(state.settings.provider).receiver,
-                      state.settings.provider === 'deepseek',
-                      state.settings,
-                    )}
-                  </p>
-                </details>
+              {state.quote && !awaitingNewReceiver && (
+                <blockquote className="pending-quote">
+                  <span className="pending-quote-label"><Icon name="quote" small />你划的这段</span>
+                  {state.quote.text}
+                  <span className="hint">读完这一页后，它会放进输入框，你可以接着问。</span>
+                </blockquote>
               )}
               {awaitingNewReceiver ? (
                 <div className="opening-entry">
-                  <p>换了 AI 服务或发送范围。之前的摘要与对话仍在，由此前的模型生成；确认上面的说明后可以继续，新的提问用现在的设置。</p>
+                  <p>换了 AI 服务或发送范围。之前的摘要与对话还在；确认下面的说明后继续，新的提问用现在的设置。</p>
                   <button type="button" className="block" disabled={busy !== null} onClick={() => readPage('retry')}>
                     我确认，继续伴读
                   </button>
                 </div>
               ) : (
-                <>
-                {state.quote && (
-                  <blockquote className="pending-quote">
-                    <span className="pending-quote-label"><Icon name="quote" small />你划的这段</span>
-                    {state.quote.text}
-                    <span className="hint">读完这一页后，它会放进输入框，你可以接着问。</span>
-                  </blockquote>
-                )}
                 <PageEntry
                   pageTitle={state.pageTitle}
                   phase={phase}
                   outboundConfirmed={state.outboundConfirmed}
                   busy={busy !== null}
-                  askHost={needsPageHost(state.permission, state.error?.code ?? null)}
+                  askHost={false}
                   onPick={readPage}
                 />
-                </>
               )}
+              {/* 说明一字不删，只是不再挡在主按钮前面：首次外发确认时默认展开。 */}
+              <details className="fine opening-fine" open={!state.outboundConfirmed}>
+                <summary>{state.outboundConfirmed ? '读的时候会发生什么' : '开始之前，请先看一下这几件事'}</summary>
+                {!state.outboundConfirmed ? <OutboundNotice state={state} /> : (
+                  <p>{outboundConfirmedHint(findProvider(state.settings.provider).receiver, state.settings.provider === 'deepseek', state.settings)}</p>
+                )}
+                {needsPageHost(state.permission, state.error?.code ?? null) && (
+                  <p className="hint">点开始阅读时，浏览器可能会请求“读取所有网页”的可选权限；授权后仍只在你点开始阅读时才读正文。只想授权当前页，就先再点一次工具栏上的 WebKnow AI 图标，再点开始阅读。</p>
+                )}
+              </details>
             </Opening>
           )}
 
@@ -429,7 +424,6 @@ function OutboundNotice({
   const provider = findProvider(state.settings.provider);
   return (
     <div className="outbound">
-      <p>开始之前，请先确认这几件事：</p>
       <ul>
         {outboundReceiverLines(state.settings).map(line => <li key={line}>{line}</li>)}
         <li>模型、搜索服务、自建实例地址、来源读取方式或告知版本变化后，需要再次确认外发范围。</li>
@@ -450,11 +444,11 @@ function safeOrigin(url: string): string | null {
   }
 }
 
+/**
+ * 阶段旁白：一次只在一处说话（重构方案 4.5）。开始、换页、读不了这几种状态由开场卡自己说清楚，
+ * 不再在卡片上面另起一行重复；只有卡片说不到的“正在读”“失败了”在这里说。
+ */
 const PHASE_TEXT: Record<string, string> = {
-  PERMISSION_REQUIRED: '点一个，我才读你正在看的这一页。',
-  // 能读的时候，这句话写在入口段落里。状态行再写一遍，页面上会有两句一样的话。
   ANALYZING: '正在读这一页，马上给你摘要。',
-  STALE: '换了一页。上一页的内容已经放下。',
-  UNSUPPORTED: '这一页暂时读不了。',
   ERROR: '上一步没成功。',
 };

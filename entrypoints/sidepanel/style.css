@@ -13,37 +13,28 @@
 :root {
   color-scheme: light dark;
 
-  --canvas: #f5f5f5;
+  /* 2026-11-08 重构色板（界面体验重构方案第三节）：靛紫品牌色，所有文字实测 ≥ 4.5:1。 */
+  --canvas: #fafafc;
   --paper: #ffffff;
-  --paper-2: #fafafa;
-  --paper-3: #f2f2f2;
+  --paper-2: #f6f6fa;
+  --paper-3: #efeff5;
 
-  --ink: #171717;
-  --ink-2: #5c5c5c;
-  --ink-3: #8a8a8a;
+  --ink: #1c1b2e;
+  --ink-2: #4e4f66;
+  --ink-3: #66677d;
 
-  --line: #e8e8e8;
-  --line-soft: #f2f2f2;
+  --line: #e4e4ec;
+  --line-soft: #efeff5;
 
-  /* 主操作与强调：一律是墨色本身。没有品牌色块。 */
-  --accent: #171717;
-  --accent-strong: #000000;
-  --accent-soft: #f2f2f2;
+  /* 主色只用在三处：主按钮、用户气泡、“请回答”的当前问题。 */
+  --accent: #5b4bdb;
+  --accent-strong: #4a3bc4;
+  --accent-soft: #f0eeff;
   --accent-ink: #ffffff;
 
-  /* 曾经的「品牌印」「荧光笔」「翡翠」都并入中性色，保留变量名以免遗漏引用。 */
-  --seal: #171717;
-  --seal-strong: #000000;
-  --seal-soft: #f2f2f2;
-  --mark: #fafafa;
-  --mark-ink: #171717;
-  --jade: #8a8a8a;
-  --jade-strong: #171717;
-  --jade-soft: #f7f7f7;
-
-  /* 唯一的有彩色：出错必须能被看见。 */
-  --danger: #b3261e;
-  --danger-soft: #fdf1f0;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --success: #067647;
 
   --radius-sm: 8px;
   --radius: 12px;
@@ -74,34 +65,26 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas: #0f0f0f;
-    --paper: #141414;
-    --paper-2: #1a1a1a;
-    --paper-3: #212121;
+    --canvas: #121218;
+    --paper: #121218;
+    --paper-2: #1b1b24;
+    --paper-3: #24242f;
 
-    --ink: #ededed;
-    --ink-2: #a8a8a8;
-    --ink-3: #757575;
+    --ink: #ececf4;
+    --ink-2: #b4b5c8;
+    --ink-3: #9a9bb0;
 
-    --line: #2a2a2a;
-    --line-soft: #202020;
+    --line: #2e2e3a;
+    --line-soft: #24242f;
 
-    --accent: #ededed;
-    --accent-strong: #ffffff;
-    --accent-soft: #212121;
-    --accent-ink: #141414;
+    --accent: #a99cff;
+    --accent-strong: #c2b9ff;
+    --accent-soft: rgba(169, 156, 255, 0.16);
+    --accent-ink: #121218;
 
-    --seal: #ededed;
-    --seal-strong: #ffffff;
-    --seal-soft: #212121;
-    --mark: #1c1c1c;
-    --mark-ink: #ededed;
-    --jade: #757575;
-    --jade-strong: #ededed;
-    --jade-soft: #1a1a1a;
-
-    --danger: #ff9a94;
-    --danger-soft: #2a1716;
+    --danger: #fda29b;
+    --danger-soft: #2a1515;
+    --success: #75e0a7;
   }
 }
 
@@ -574,7 +557,7 @@ body.sidepanel .dock:has(.composer-field) {
 
 .bubble.user {
   color: var(--accent-ink);
-  background: var(--ink);
+  background: var(--accent);
   border-radius: var(--radius) var(--radius) var(--radius-sm) var(--radius);
   font-size: 14px;
   line-height: 1.65;
@@ -1520,9 +1503,9 @@ button.link:hover:not(:disabled) {
 }
 
 .choice-row button[aria-checked='true'] {
-  color: var(--paper);
-  background: var(--ink);
-  border-color: var(--ink);
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .choice-grid {
@@ -2152,7 +2135,11 @@ button.next-item .icon-sm { margin-top: 3px; color: var(--ink-2); }
 /* ── 对话：导师无气泡，用户气泡 ── */
 .bubble.user { border-radius: 20px 20px 6px 20px; padding: 9px 14px; line-height: 1.6; }
 .quote-in-bubble { opacity: .8; font-size: 13px; border-left: 2px solid currentColor; padding-left: 8px; margin: 0 0 6px; }
-.ask-now { margin: 4px 0 8px; padding: 10px 12px; border-radius: 14px; background: var(--paper-3); font-weight: 600; }
+.ask-now { position: relative; margin: 4px 0 8px; padding: 26px 12px 10px 14px; border-radius: 4px 14px 14px 4px;
+  background: var(--accent-soft); border-left: 3px solid var(--accent); font-weight: 600; }
+/* “请回答”：一眼分清哪句是要你回答的（不只靠颜色，带文字前缀）。 */
+.ask-now::before { content: '请回答'; position: absolute; top: 7px; left: 14px; font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: .02em; }
+@media (prefers-color-scheme: dark) { .ask-now::before { color: var(--accent); } }
 .ask-now .rich-p:last-child { margin-bottom: 0; }
 .cites { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
 button.cite {
@@ -2191,7 +2178,7 @@ button.method {
 button.method + button.method { border-top: 1px solid var(--line); }
 button.method:hover:not(:disabled) { background: var(--paper-2); }
 .radio { flex: none; width: 18px; height: 18px; margin-top: 3px; border-radius: 50%; border: 2px solid var(--ink-3); transition: border-color var(--t-fast) var(--ease); }
-button.method[aria-checked='true'] .radio { border: 6px solid var(--ink); }
+button.method[aria-checked='true'] .radio { border: 6px solid var(--accent); }
 .method-copy { display: flex; flex-direction: column; gap: 2px; }
 .method-name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .method-note { font-size: 12px; font-weight: 500; padding: 0 7px; border-radius: 999px; background: var(--paper-3); color: var(--ink-2); }
@@ -2215,7 +2202,7 @@ button.method[aria-checked='true'] .radio { border: 6px solid var(--ink); }
 .onb h2 { margin: 4px 0 0; font-size: 17px; }
 .stepper { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 12.5px; color: var(--ink-3); }
 .stepper-bar { flex: 1; height: 4px; border-radius: 999px; background: var(--paper-3); overflow: hidden; }
-.stepper-bar i { display: block; height: 100%; background: var(--ink); border-radius: inherit; transition: width var(--t-med) var(--ease); }
+.stepper-bar i { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width var(--t-med) var(--ease); }
 .howto { margin: 0; padding-left: 1.3em; font-size: 14px; line-height: 1.8; }
 .onb .field { display: flex; flex-direction: column; gap: 6px; }
 .onb .field input { width: 100%; }
@@ -2261,3 +2248,43 @@ button.save-btn:hover:not(:disabled) { background: var(--paper-2); color: var(--
 .save-failed { color: var(--danger); }
 /* 回答里的网页原图：缩略、可点回原位 */
 .said .rich-img img, .opening-summary .rich-img img { max-height: 220px; width: auto; max-width: 100%; border-radius: var(--r-s); }
+
+/* ═══ 2026-11-08 界面体验重构 1–3 步（界面体验重构方案）═══ */
+
+/* 顶栏：读之前写这一页的标题 */
+.topbar-title { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* “这一页”折叠条：开场卡滚走后吸在对话区顶部 */
+button.page-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; width: 100%;
+  min-height: 36px; margin: 0 0 8px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--paper); box-shadow: 0 6px 12px -6px rgba(28, 27, 46, .18), 0 0 0 6px var(--paper);
+  color: var(--ink); font-size: 13px; font-weight: 500; text-align: left; justify-content: flex-start; }
+button.page-bar:hover:not(:disabled) { background: var(--paper-2); color: var(--ink); }
+.page-bar-k { flex: none; font-size: 12px; font-weight: 600; color: var(--accent); }
+.page-bar-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 开始卡：一个主按钮在前，说明在后 */
+.opening { background: linear-gradient(160deg, var(--paper), var(--accent-soft)); border-color: var(--line); }
+.opening-entry > p:first-child { color: var(--ink-2); }
+.opening-promise { margin: 0; text-align: center; font-size: 12.5px; }
+.opening-fine { margin-top: 10px; }
+.opening-fine > summary { color: var(--ink-2); }
+.opening-fine .outbound { margin: 6px 0 0; }
+
+/* 主色出现的三处之一：主按钮（全局 button 已用 --accent）；次按钮保持中性 */
+button.secondary, a.button { color: var(--ink); background: var(--paper); border-color: var(--line); }
+
+/* 动效：一屏最多一两处——新消息淡入、按压反馈 */
+@keyframes msg-in { from { opacity: 0; transform: translateY(8px); } }
+.chat > .msg, .chat > .next, .chat > .banner { animation: msg-in 200ms var(--ease) both; }
+button:active:not(:disabled) { transform: scale(.98); transition: transform 80ms var(--ease); }
+button.next-item:active:not(:disabled), button.method:active:not(:disabled), .menu > button:active:not(:disabled) { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .chat > .msg, .chat > .next, .chat > .banner { animation: none; }
+  button:active:not(:disabled) { transform: none; }
+}
+
+/* 焦点环：主色，深浅色都可见；吸顶条不遮焦点 */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-scroll { scroll-padding-top: 48px; }

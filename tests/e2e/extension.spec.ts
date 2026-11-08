@@ -153,7 +153,7 @@ test('保存的 Key 留在扩展本地存储，且不进入页面会话', async 
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
   // 有 Key、但还没点工具栏对着一篇文章打开：应停在“去点图标”，而不是继续外发。
-  await expect(page.getByText('点一个，我才读你正在看的这一页。')).toBeVisible();
+  await expect(page.getByText('点了才读，换页不会自动读。')).toBeVisible();
 
   // 真实反馈回归：未确认外发时，入口曾经是禁用且不说明原因，
   // 用户点了没反应。现在的合同是：按钮始终可用，并用文案说明这一下会同时记下确认。

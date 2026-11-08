@@ -1,6 +1,6 @@
 /* 独立画布；图表颜色由本地 Mermaid SVG 提供。 */
-:root { color-scheme: light dark; --bg: #fff; --fg: #171717; --muted: #6b6b6b; --line: #e8e8e8; --surface: #f7f7f7; --accent: #3478dc; }
-@media (prefers-color-scheme: dark) { :root { --bg: #131313; --fg: #ededed; --muted: #aaa; --line: #333; --surface: #202020; --accent: #8cbcff; } }
+:root { color-scheme: light dark; --bg: #fafafc; --fg: #1c1b2e; --muted: #66677d; --line: #e4e4ec; --surface: #f6f6fa; --accent: #5b4bdb; }
+@media (prefers-color-scheme: dark) { :root { --bg: #121218; --fg: #ececf4; --muted: #9a9bb0; --line: #2e2e3a; --surface: #1b1b24; --accent: #a99cff; } }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; height: 100dvh; display: flex; overflow: hidden; background: var(--bg); color: var(--fg); font: 400 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
@@ -23,7 +23,7 @@ button:focus-visible, .stage:focus-visible { outline: 2px solid var(--accent); o
 .minimap { position: absolute; bottom: 16px; right: 16px; display: flex; flex-direction: column; height: auto; padding: 8px; gap: 5px; background: var(--bg); border-radius: 10px; box-shadow: 0 4px 20px #0001; cursor: crosshair; }
 .minimap > span { color: var(--muted); font-size: 11px; align-self: flex-start; }
 .mini-overview { display: block; max-width: min(180px, 32vw); height: auto; }
-.mini-visible { fill: #3478dc18; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.mini-visible { fill: #5b4bdb18; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .empty-state { margin: auto; padding: 32px; max-width: 480px; }
 .empty-state h1 { font-size: 20px; font-weight: 500; }
 .empty-state p { color: var(--muted); }

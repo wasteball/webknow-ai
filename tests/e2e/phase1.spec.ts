@@ -151,6 +151,12 @@ for (const scheme of ['light', 'dark'] as const) {
       await panel.getByRole('tab', { name: '问 AI', exact: true }).click();
       await expect(panel.getByRole('heading', { name: BASE.title })).toBeVisible();
       await expect(panel.getByRole('button', { name: '回到文中 1' })).toBeVisible();
+      // 开场卡滚走后，对话区顶部出现“这一页”折叠条（重构方案 4.3）。
+      await panel.locator('#mode-panel-qa .chat-scroll').evaluate((node) => { node.scrollTop = node.scrollHeight; });
+      if (await panel.locator('#mode-panel-qa .opening').evaluate((node) => {
+        const box = node.getBoundingClientRect(); const view = node.closest('.chat-scroll')!.getBoundingClientRect();
+        return box.bottom <= view.top;
+      })) await expect(panel.getByRole('button', { name: /这一页/ })).toBeVisible();
       await noOverflow(panel);
       await panel.screenshot({ path: `${OUT}/ask-${width}-${scheme}.png` });
 
@@ -207,6 +213,14 @@ test('二期：连续 50 轮对话一条不丢，最新的在底部，接着问�
   await expect(panel.getByText('第 50 个问题', { exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: '最后一轮的接着问' })).toBeVisible();
   await expect(panel.locator('#mode-panel-qa .msg.user')).toHaveCount(50);
+  // 开场卡早已滚走：顶部吸着“这一页”折叠条，点它回到摘要。
+  const bar = panel.getByRole('button', { name: /这一页/ });
+  await expect(bar).toBeVisible();
+  // 吸顶条贴住对话区上沿，上方不漏出被盖住的文字。
+  expect(await bar.evaluate((node) => node.getBoundingClientRect().top - node.closest('.chat-scroll')!.getBoundingClientRect().top)).toBeLessThanOrEqual(1);
+  await panel.screenshot({ path: `${OUT}/page-bar-360-light.png` });
+  await bar.click();
+  await expect(panel.locator('#mode-panel-qa .opening')).toBeInViewport();
   await noOverflow(panel);
   await panel.close();
 });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 
 import type { ChatTurn } from '../../core/session';
 import type { Quote } from '../../core/quote';
@@ -27,6 +27,7 @@ const QUOTE_ONLY_QUESTION = '这段是什么意思？';
  */
 export function Reading({ state, send, onSearchSettings, onImaSettings, active = true, searchOn, onSearchChange }: { state: PanelState; send: Send; onSearchSettings?: () => void; onImaSettings?: () => void; active?: boolean; searchOn?: boolean; onSearchChange?: (value: boolean) => void }) {
   const [draft, setDraft] = useState('');
+  const openingRef = useRef<HTMLDivElement>(null);
   const [localSearchOn, setLocalSearchOn] = useState(false);
   const effectiveSearchOn = searchOn ?? localSearchOn;
   const setEffectiveSearchOn = onSearchChange ?? setLocalSearchOn;
@@ -145,6 +146,8 @@ export function Reading({ state, send, onSearchSettings, onImaSettings, active =
   return (
     <>
       <Conversation active={active} updateKey={updateKey} followRequest={followRequest}>
+        <PageBar title={state.pageTitle} watch={openingRef} />
+        <div ref={openingRef}>
         <Opening pageUrl={state.pageUrl} title={state.pageTitle}>
           {state.completeness && <ScopeLine completeness={state.completeness}
             onJump={(blockId) => tabId !== null && void send({ type: 'jump', tabId, blockId })} />}
@@ -164,6 +167,7 @@ export function Reading({ state, send, onSearchSettings, onImaSettings, active =
             </p>
           ) : null}
         </Opening>
+        </div>
         {guide && (
           <SuggestRow
             lead="想接着弄懂哪一点"
@@ -349,5 +353,30 @@ function Turn({
         </div>
       </article>
     </>
+  );
+}
+
+/**
+ * “这一页”折叠条（重构方案 4.3）：开场卡滚出视野后，在对话区顶部吸一行标题，点一下回到开场卡。
+ * 用 IntersectionObserver 判断，不监听滚动事件。
+ */
+function PageBar({ title, watch }: { title: string; watch: RefObject<HTMLDivElement | null> }) {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const target = watch.current;
+    if (!target || typeof IntersectionObserver === 'undefined') return;
+    // 滚动发生在对话容器里，不是整页：以它为视口来判断开场卡是否已滚走。
+    const root = target.closest('.chat-scroll');
+    const observer = new IntersectionObserver(([entry]) => setShown(entry ? !entry.isIntersecting : false), { root, threshold: 0 });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [watch]);
+  if (!shown || !title) return null;
+  return (
+    <button type="button" className="page-bar" title="回到这一页的摘要"
+      onClick={() => watch.current?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })}>
+      <span className="page-bar-k">这一页</span>
+      <span className="page-bar-title">{title}</span>
+    </button>
   );
 }
