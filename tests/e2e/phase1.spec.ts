@@ -178,9 +178,10 @@ for (const scheme of ['light', 'dark'] as const) {
       await panel.getByRole('menuitem', { name: '设置' }).click();
       await expect.poll(() => settings.url()).toMatch(/options\.html/);
       expect(context.pages().length).toBe(before);
-      await settings.close();
-      // 侧栏里的草稿不受影响
+      // 设置页开着、被复用时，侧栏仍附着原文章，草稿不受影响。
+      // （关掉设置页后焦点落到哪个标签页由浏览器决定，测试环境里侧栏本身是普通标签页，不在这里断言。）
       await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('保留的草稿');
+      await settings.close();
 
       // 大字号：不再用 zoom，仍不溢出
       await saveSettings(panel, { fontSize: 'large' });
