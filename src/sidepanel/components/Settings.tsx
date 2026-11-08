@@ -6,7 +6,6 @@ import { GUIDE_DEFAULT_POLICY, summaryCharsFor } from '../../core/prompts/guide'
 import { LEARN_DEFAULT_POLICY } from '../../core/prompts/learn';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { PromptTarget } from '../../core/settings';
-import { findProvider } from '../../core/model-providers';
 import { BUILTIN_SKILLS, type Skill } from '../../core/skills';
 import { SearchSettings } from './SearchSettings';
 import { Notice, Section } from './bits';
@@ -16,10 +15,8 @@ import { ModelSettings as ModelAndKey } from './ModelSettings';
 type Send = (command: Command) => Promise<Reply | undefined>;
 
 /**
- * 设置：同一套内容两种外壳。
- * - 侧栏抽屉（variant="drawer"）：先是分组列表，点进去是二级页，返回 / Esc 回列表或关闭；
- *   对话面板一直挂在下面，关掉抽屉就回到刚才读的位置。
- * - 整页（options.html）：浏览器自带“扩展选项”入口仍会打开它，左侧分类 + 右侧内容。
+ * 设置：整页标签页（options.html），左侧分类（按组排列）+ 右侧内容。
+ * 侧栏 ⋯ → 设置、扩展选项入口都打开这里；改设置时注意力本就不在阅读上，也不该被侧栏宽度限制。
  * 非敏感设置统一走 saveSettings；Key 仍是独立命令与独立校验。
  * 清除这一页、清除全部、删掉钥匙、恢复默认读法，互不牵连（FR-033）。
  */
@@ -141,32 +138,19 @@ export function Settings({
   send,
   notice,
   onDismissNotice,
-  variant = 'page',
-  initial = null,
-  onClose,
 }: {
   state: PanelState;
   send: Send;
   notice: string | null;
   onDismissNotice: () => void;
-  variant?: 'page' | 'drawer';
-  initial?: CategoryId | null;
-  onClose?: () => void;
 }) {
-  const [category, setCategory] = useState<CategoryId | null>(() =>
-    variant === 'drawer' ? initial : categoryFrom(location.hash.replace(/^#/, '')) ?? 'general');
-
+  const [category, setCategory] = useState<CategoryId>(() => categoryFrom(location.hash.replace(/^#/, '')) ?? 'general');
+  // 侧栏再次点设置会把已开着的设置页改到新的 #分类，这里跟上。
   useEffect(() => {
-    if (variant !== 'drawer') return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      if (category) setCategory(null);
-      else onClose?.();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [variant, category, onClose]);
+    const onHash = () => { const next = categoryFrom(location.hash.replace(/^#/, '')); if (next) setCategory(next); };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   const content = (id: CategoryId) => <>
     {id === 'general' && <ReadingPrefs state={state} send={send} />}
@@ -182,38 +166,7 @@ export function Settings({
     {id === 'about' && <About />}
   </>;
 
-  if (variant === 'drawer') {
-    const current = CATEGORIES.find((item) => item.id === category);
-    return (
-      <div className="drawer" role="dialog" aria-modal="true" aria-label={current?.label ?? '设置'}>
-        <header className="drawer-head">
-          <button type="button" className="icon-btn" autoFocus
-            aria-label={current ? '返回设置' : '关闭设置'} title={current ? '返回' : '关闭'}
-            onClick={() => (current ? setCategory(null) : onClose?.())}>
-            <Icon name="back" />
-          </button>
-          <h2>{current?.label ?? '设置'}</h2>
-        </header>
-        <div className="drawer-body">
-          {notice && <Notice text={notice} onDismiss={onDismissNotice} />}
-          {current ? content(current.id) : [0, 1, 2].map((group) => (
-            <div className="group" key={group}>
-              {CATEGORIES.filter((item) => item.group === group).map((item) => (
-                <button key={item.id} type="button" className="group-item" onClick={() => setCategory(item.id)}>
-                  <span className="group-ico"><Icon name={item.icon} small /></span>
-                  <span className="group-label">{item.label}</span>
-                  <span className="group-val">{summaryOf(item.id, state)}</span>
-                  <Icon name="chev" small />
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const active = category ?? 'general';
+  const active = category;
   return (
     <div className="settings-page">
       {/* 导航在窄屏会变成可横向滚动的长条，所以给键盘用户一条直通正文的捷径。 */}
@@ -229,9 +182,10 @@ export function Settings({
       </header>
       <div className="settings-shell">
         <nav className="settings-nav" aria-label="设置分类">
-          {CATEGORIES.map((item) => (
+          {CATEGORIES.map((item, index) => (
             <button
               key={item.id}
+              data-group-start={index > 0 && CATEGORIES[index - 1]!.group !== item.group ? 'true' : undefined}
               type="button"
               aria-current={active === item.id ? 'true' : undefined}
               onClick={() => setCategory(item.id)}
@@ -250,20 +204,6 @@ export function Settings({
   );
 }
 
-/** 列表右侧的当前值：一眼知道现在是什么，不用点进去。 */
-function summaryOf(id: CategoryId, state: PanelState): string {
-  const { settings } = state;
-  switch (id) {
-    case 'model': return findProvider(settings.provider).name + (settings.providerKeys[settings.provider] ? '' : '（没填钥匙）');
-    case 'readway': return methodName('guide', settings);
-    case 'general': return `摘要${{ short: '短', medium: '中', long: '长' }[settings.summaryLength]}`;
-    case 'appearance': return settings.fontSize === 'large' ? '大字' : '标准字号';
-    case 'search': return settings.search.enabled ? settings.search.providerName ?? '已开启' : '还没设置';
-    case 'ima': return settings.ima.enabled ? settings.ima.kbName ?? '已连接' : '未连接';
-    default: return '';
-  }
-}
-
 function methodsFor(target: PromptTarget, settings: PanelState['settings']): Skill[] {
   return [...BUILTIN_SKILLS, ...settings.customSkills].filter((skill) => skill.target === target);
 }
@@ -273,11 +213,6 @@ function currentMethod(target: PromptTarget, settings: PanelState['settings']): 
   const saved = settings.prompts[target]?.trim();
   if (!saved) return 'default';
   return methodsFor(target, settings).find((skill) => skill.body.trim() === saved) ?? 'custom';
-}
-
-function methodName(target: PromptTarget, settings: PanelState['settings']): string {
-  const current = currentMethod(target, settings);
-  return current === 'default' ? '默认' : current === 'custom' ? '自己写的' : current.name;
 }
 
 /**
@@ -312,7 +247,7 @@ function Readway({ state, send }: { state: PanelState; send: Send }) {
 
   return (
     <section className="section readway">
-      <p className="hint">普通情况用默认就好。想让它换种方式总结、回答或考你，在这里挑一套；下一次生成就用新的方法。</p>
+      <PageLead title="读法" lead="普通情况用默认就好。想让它换种方式总结、回答或考你，在这里挑一套；下一次生成就用新的方法。" />
       <div className="rtabs" role="tablist" aria-label="读法分类">
         {PROMPT_TARGETS.map((item) => (
           <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} onClick={() => setTab(item.key)}>

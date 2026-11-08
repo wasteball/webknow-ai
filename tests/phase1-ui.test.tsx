@@ -28,16 +28,12 @@ it('有引用时不写问题也能直接发', () => {
   expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'ask', question: '这段是什么意思？', quote: '选中的一段话' }));
 });
 
-it('设置抽屉：分组列表 → 二级页，返回回到列表，Esc 关闭', () => {
-  const onClose = vi.fn();
-  render(<Settings variant="drawer" state={panel()} send={vi.fn()} notice={null} onDismissNotice={() => {}} onClose={onClose} />);
-  for (const name of ['AI 服务', '读法', '阅读偏好', '外观', '联网搜索', '知识库', '隐私与数据', '关于与帮助']) {
-    expect(screen.getByRole('button', { name: new RegExp(name) })).toBeTruthy();
-  }
-  fireEvent.click(screen.getByRole('button', { name: /隐私与数据/ }));
-  expect(screen.getByRole('dialog', { name: '隐私与数据' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '返回设置' }));
-  expect(screen.getByRole('dialog', { name: '设置' })).toBeTruthy();
-  fireEvent.keyDown(window, { key: 'Escape' });
-  expect(onClose).toHaveBeenCalled();
+it('整页设置：分组顺序按 AI 服务、读法、阅读偏好、外观…，旧的 #prompts 落到读法', () => {
+  location.hash = '#prompts';
+  render(<Settings state={panel()} send={vi.fn()} notice={null} onDismissNotice={() => {}} />);
+  const nav = screen.getByRole('navigation', { name: '设置分类' });
+  const names = [...nav.querySelectorAll('button')].map((button) => button.textContent);
+  expect(names).toEqual(['AI 服务', '读法', '阅读偏好', '外观', '联网搜索', '知识库', '隐私与数据', '关于与帮助']);
+  expect(screen.getByRole('button', { name: '读法' }).getAttribute('aria-current')).toBe('true');
+  location.hash = '';
 });

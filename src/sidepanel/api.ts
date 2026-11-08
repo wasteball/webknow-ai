@@ -176,8 +176,17 @@ export async function activeTabId(): Promise<number | null> {
   return tab.id;
 }
 
-/** 设置页先加载再激活，避免尚无扩展视图的瞬间把侧栏切到空白新标签。 */
+/**
+ * 设置页先加载再激活，避免尚无扩展视图的瞬间把侧栏切到空白新标签。
+ * 已经开着一个设置页时，换成这次要去的分类并切过去，不再多开标签页。
+ */
 export async function openSettingsTab(url: string): Promise<void> {
+  const existing = await findSettingsTab();
+  if (existing) {
+    await browser.tabs.update(existing.tabId, { url, active: true });
+    if (existing.windowId !== undefined) await browser.windows.update(existing.windowId, { focused: true }).catch(() => {});
+    return;
+  }
   const tab = await browser.tabs.create({ url, active: false });
   const id = tab.id;
   if (id === undefined) return;
@@ -204,4 +213,17 @@ export async function openSettingsTab(url: string): Promise<void> {
     });
   }
   await browser.tabs.update(id, { active: true });
+}
+
+/** 没有 tabs 权限也能找到自家页面：runtime.getContexts 只列本扩展的文档（Chrome 116+；更早的版本直接新开）。 */
+async function findSettingsTab(): Promise<{ tabId: number; windowId?: number } | null> {
+  if (typeof browser.runtime.getContexts !== 'function') return null;
+  try {
+    const page = browser.runtime.getURL('/options.html');
+    const contexts = await browser.runtime.getContexts({ contextTypes: ['TAB' as never] });
+    const hit = contexts.find((context) => context.tabId >= 0 && context.documentUrl?.startsWith(page));
+    return hit ? { tabId: hit.tabId, windowId: hit.windowId >= 0 ? hit.windowId : undefined } : null;
+  } catch {
+    return null;
+  }
 }

@@ -3,7 +3,7 @@ import { browser } from 'wxt/browser';
 
 import { findProvider } from '../core/model-providers';
 import type { Command, PanelState, Reply } from '../core/protocol';
-import { activeTabId, createClient, type Client } from './api';
+import { activeTabId, createClient, openSettingsTab, type Client } from './api';
 import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
@@ -12,7 +12,6 @@ import { BrandMark, Icon } from './components/Icon';
 import { outboundReceiverLines, outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
 import { needsPageHost, type PageEntryId } from './page-entry';
 import { PageEntry } from './components/PageEntry';
-import { Settings, type CategoryId } from './components/Settings';
 import type { AppError } from '../core/errors';
 
 /**
@@ -45,8 +44,6 @@ export function App() {
     : state?.learning?.status === 'active' ? 'learn' : 'qa';
   const setView = (next: View) => setSelection({ session: conversationKey, view: next });
   const clientRef = useRef<Client | null>(null);
-  const [drawer, setDrawer] = useState<{ category: CategoryId | null } | null>(null);
-  const [drawerNotice, setDrawerNotice] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   // 第一次用的三步：钥匙一存好，阶段就离开 UNCONFIGURED，但第 3 步“试一下”还要留着。
@@ -154,20 +151,18 @@ export function App() {
     })();
   };
 
-  /** 设置在侧栏里滑出；对话面板留在下面不卸载，关掉就回到刚才的位置。 */
+  /**
+   * 设置打开成整页标签页（2026-11-08 用户决定）：改设置时注意力本就不在阅读上，
+   * 侧栏太窄放不下读法、AI 服务这类内容。已开着设置页就切过去，不再多开一个。
+   * 地址带上当前页号，设置页里的“清掉这一页”才指得准。
+   */
   const openSettings = (category?: string) => {
     setMenu(false);
-    setDrawerNotice(null);
-    setDrawer({ category: (category === 'prompts' ? 'readway' : category ?? null) as CategoryId | null });
+    const url = new URL(browser.runtime.getURL('/options.html'));
+    if (state?.tabId != null) url.searchParams.set('tab', String(state.tabId));
+    if (category) url.hash = category;
+    void openSettingsTab(url.toString()).catch(() => setNotice('设置页没有打开，请再试一次。'));
   };
-  const closeSettings = useCallback(() => setDrawer(null), []);
-  const sendFromDrawer = useCallback(async (command: Command): Promise<Reply | undefined> => {
-    setDrawerNotice(null);
-    const reply = await clientRef.current?.send(command);
-    if (reply && !reply.ok) setDrawerNotice(reply.error.message);
-    else if (reply?.message) setDrawerNotice(reply.message);
-    return reply;
-  }, []);
   const quietSend = useCallback(async (command: Command) => clientRef.current?.send(command), []);
 
   /** 失败提示配一个能解决它的按钮：钥匙类去检查钥匙，其余能重试的给重试。 */
@@ -399,10 +394,6 @@ export function App() {
             </>
           )}
         </>
-      )}
-      {drawer && state && (
-        <Settings variant="drawer" state={state} send={sendFromDrawer} initial={drawer.category}
-          notice={drawerNotice} onDismissNotice={() => setDrawerNotice(null)} onClose={closeSettings} />
       )}
     </div>
   );

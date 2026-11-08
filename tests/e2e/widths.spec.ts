@@ -247,13 +247,17 @@ test('划词、搜索和发送在同一个输入框内，长问题不会挤走�
   test.setTimeout(120_000);
   const { panel, tabId } = await openPanel(560);
   await panel.getByLabel('向这篇文章提问').fill('配置搜索后继续发送的问题');
-  // 没配搜索时点联网：在侧栏里滑出「联网搜索」设置，不开新标签页；关掉后草稿还在。
-  await panel.getByRole('button', { name: '联网搜索', exact: true }).click();
-  const drawer = panel.getByRole('dialog', { name: '联网搜索' });
-  await expect(drawer.getByRole('radiogroup', { name: '搜索服务' })).toBeVisible();
-  await panel.keyboard.press('Escape');
-  await panel.keyboard.press('Escape');
-  await expect(panel.getByRole('dialog')).toHaveCount(0);
+  const [searchSettings] = await Promise.all([
+    context.waitForEvent('page'),
+    panel.getByRole('button', { name: '联网搜索', exact: true }).click(),
+  ]);
+  await expect(searchSettings).toHaveURL(/options\.html.*#search/);
+  await expect(searchSettings.getByRole('radiogroup', { name: '搜索服务' })).toBeVisible();
+  await expect.poll(() => searchSettings.evaluate(async () =>
+    (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id,
+  )).not.toBe(tabId);
+  await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('配置搜索后继续发送的问题');
+  await searchSettings.close();
   await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('配置搜索后继续发送的问题');
   await context.serviceWorkers()[0]!.evaluate(
     async ([id, outbound]) => {

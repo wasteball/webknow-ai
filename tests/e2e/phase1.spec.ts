@@ -137,7 +137,7 @@ for (const scheme of ['light', 'dark'] as const) {
     }
   });
 
-  test(`读这一页、问 AI、AI 问、⋯ 菜单、设置抽屉（${scheme}）`, async () => {
+  test(`读这一页、问 AI、AI 问、⋯ 菜单、整页设置（${scheme}）`, async () => {
     await setConfig(true);
     for (const width of WIDTHS) {
       const entry = await open(width, scheme, null);
@@ -165,18 +165,21 @@ for (const scheme of ['light', 'dark'] as const) {
       await panel.getByLabel('向这篇文章提问').fill('保留的草稿');
       await panel.getByRole('button', { name: '更多' }).click();
       await panel.screenshot({ path: `${OUT}/menu-${width}-${scheme}.png` });
+      // 设置是整页标签页；再点一次只切过去，不多开。
+      const [settings] = await Promise.all([context.waitForEvent('page'), panel.getByRole('menuitem', { name: '设置' }).click()]);
+      await expect(settings).toHaveURL(/options\.html/);
+      await settings.emulateMedia({ colorScheme: scheme });
+      await settings.setViewportSize({ width: 1100, height: 820 });
+      await settings.getByRole('navigation', { name: '设置分类' }).getByRole('button', { name: '读法' }).click();
+      await expect(settings.getByRole('tab', { name: '怎么总结' })).toBeVisible();
+      if (width === WIDTHS[0]) await settings.screenshot({ path: `${OUT}/readway-page-${scheme}.png`, fullPage: true });
+      const before = context.pages().length;
+      await panel.getByRole('button', { name: '更多' }).click();
       await panel.getByRole('menuitem', { name: '设置' }).click();
-      await expect(panel.getByRole('dialog', { name: '设置' })).toBeVisible();
-      await noOverflow(panel);
-      await panel.screenshot({ path: `${OUT}/settings-${width}-${scheme}.png` });
-      await panel.getByRole('button', { name: /读法/ }).click();
-      await expect(panel.getByRole('tab', { name: '怎么总结' })).toBeVisible();
-      await noOverflow(panel);
-      await panel.screenshot({ path: `${OUT}/readway-${width}-${scheme}.png`, fullPage: true });
-      await panel.keyboard.press('Escape');
-      await panel.keyboard.press('Escape');
-      await expect(panel.getByRole('dialog')).toHaveCount(0);
-      // 关掉设置回到刚才的位置：草稿还在
+      await expect.poll(() => settings.url()).toMatch(/options\.html/);
+      expect(context.pages().length).toBe(before);
+      await settings.close();
+      // 侧栏里的草稿不受影响
       await expect(panel.getByLabel('向这篇文章提问')).toHaveValue('保留的草稿');
 
       // 大字号：不再用 zoom，仍不溢出

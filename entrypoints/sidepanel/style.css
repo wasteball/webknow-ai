@@ -2180,30 +2180,8 @@ body.sidepanel .conversation-notices { margin: 0 0 8px; display: flex; flex-dire
 .composer-field { border-radius: var(--r-l); }
 .search-chip { border-radius: 999px; }
 
-/* ── 设置抽屉：侧栏内滑出，盖住对话但不卸载它 ── */
-.panel { position: relative; }
-.drawer {
-  position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; background: var(--paper);
-  animation: drawer-in var(--t-med) var(--ease);
-}
-@keyframes drawer-in { from { transform: translateX(28px); opacity: 0; } }
-.drawer-head { display: flex; align-items: center; gap: 4px; padding: 8px 10px 4px 6px; flex: none; }
-.drawer-head h2 { margin: 0; font-size: 17px; flex: 1; }
-.drawer-body { flex: 1 1 auto; min-height: 0; overflow: auto; overflow-x: hidden; padding: 6px 14px 24px; }
-.drawer-body .section, .drawer-body .page-head { padding: 0; }
-.drawer-body .page-head h2 { display: none; }
-.drawer-body > .section > h2:first-child { font-size: 15px; }
+/* 设置页分组卡（读法方法、首次选 AI 共用） */
 .group { margin: 0 0 14px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-m); overflow: hidden; }
-button.group-item {
-  display: flex; width: 100%; align-items: center; gap: 12px; min-height: 52px; padding: 10px 14px; border: 0; border-radius: 0;
-  font-size: 15px; font-weight: 500; color: var(--ink); background: none; text-align: left; justify-content: flex-start;
-}
-button.group-item + button.group-item { border-top: 1px solid var(--line); }
-button.group-item:hover { background: var(--paper-2); }
-.group-ico { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--paper-3); color: var(--ink); }
-.group-label { flex: none; }
-.group-val { flex: 1; text-align: right; font-size: 13px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-button.group-item > .icon-sm:last-child { color: var(--ink-3); }
 
 /* 单选列表（读法方法、首次选 AI） */
 button.method {
@@ -2256,15 +2234,16 @@ button.method[aria-checked='true'] .radio { border: 6px solid var(--ink); }
 
 /* 修正：全局 button 的墨色底不能盖到这些“透明底”的控件上。 */
 .rtabs button:hover:not(:disabled), .topbar .mode:hover:not(:disabled),
-button.method:hover:not(:disabled), button.group-item:hover, button.next-item:hover:not(:disabled) { color: var(--ink); }
+button.method:hover:not(:disabled), button.next-item:hover:not(:disabled) { color: var(--ink); }
 .rtabs button:not([aria-selected='true']):hover:not(:disabled) { background: var(--line-soft); }
 .rtabs button[aria-selected='true']:hover:not(:disabled) { background: var(--paper); }
 .topbar .mode:hover:not(:disabled) { background: none; }
-button.method:hover:not(:disabled), button.group-item:hover, button.next-item:hover:not(:disabled) { background: var(--paper-2); }
-.onb h2, .opening-title, .drawer-head h2 { color: var(--ink); font-weight: 650; }
+button.method:hover:not(:disabled), button.next-item:hover:not(:disabled) { background: var(--paper-2); }
+.onb h2, .opening-title { color: var(--ink); font-weight: 650; }
 .onb h2 { font-size: 17px; }
 .opening-title { font-size: 16px; }
-.drawer-head h2 { font-size: 17px; }
 .opening .fine { margin: 0 0 4px; }
 body.sidepanel .panel > .phase { margin: 8px 0 0; padding: 0; background: none; font-size: 13px; color: var(--ink-2); }
 .opening-summary.said-guide { padding-bottom: 0; border-bottom: 0; }
+.settings-nav button[data-group-start='true'] { margin-top: 12px; }
+@media (max-width: 720px) { .settings-nav button[data-group-start='true'] { margin-top: 0; margin-left: 8px; } }
