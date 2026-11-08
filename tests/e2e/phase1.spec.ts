@@ -239,3 +239,16 @@ test('三期：回答里显示 AI 读过的网页原图，摘要下有收藏入�
     server.close();
   }
 });
+
+test('四期：知识库设置里有飞书连接步骤，App Secret 不明文显示', async () => {
+  await setConfig(true);
+  const settings = await context.newPage();
+  await settings.setViewportSize({ width: 1100, height: 900 });
+  await settings.goto(`chrome-extension://${extensionId}/options.html#ima`);
+  await expect(settings.getByRole('heading', { name: '知识库（飞书）' })).toBeVisible();
+  await expect(settings.getByRole('link', { name: '飞书开发者后台' })).toHaveAttribute('href', 'https://open.feishu.cn/app');
+  await expect(settings.getByLabel('App Secret')).toHaveAttribute('type', 'password');
+  await expect(settings.getByRole('button', { name: '授权并连接' }).last()).toBeDisabled();
+  await settings.screenshot({ path: `${OUT}/feishu-settings.png`, fullPage: true });
+  await settings.close();
+});

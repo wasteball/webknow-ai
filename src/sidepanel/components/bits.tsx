@@ -319,7 +319,8 @@ export class Guard extends Component<{ children: ReactNode; whole?: boolean }, {
 }
 
 /**
- * 收藏到知识库（三期）：一次保存 = 这一页的网址 + 整理好的阅读笔记（摘要、问答、学习小结）。
+ * 收藏到知识库（三期 ima / 四期飞书）：存到用户选定的那一家。ima 存网址 + 阅读笔记；
+ * 飞书在所选知识库里新建一篇文档写入阅读笔记（摘要、问答、学习小结）。
  * 已连接时一点即存；没连接时点它去设置里连接。结果就地显示一句话。
  */
 export function SaveButton({ connected, kbName, tabId, send, onConnect, disabled }: {
@@ -348,7 +349,7 @@ export function SaveButton({ connected, kbName, tabId, send, onConnect, disabled
   return (
     <div className="save-row">
       <button type="button" className="save-btn" disabled={disabled || saving} onClick={() => void save()}
-        title={connected && kbName ? `把这一页和阅读笔记存到「${kbName}」` : '先连接知识库'}>
+        title={connected && kbName ? `把这一页的阅读笔记存到「${kbName}」` : '先连接 ima 或飞书知识库'}>
         <Icon name="shelf" small />
         {saving ? '正在存…' : connected && kbName ? '收藏到知识库' : '连接知识库后收藏'}
       </button>

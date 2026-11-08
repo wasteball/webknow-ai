@@ -39,6 +39,10 @@ export type PanelSettings = {
     receiver?: string | null };
   /** 知识库（K-ima）：只暴露状态；凭证永不进界面。 */
   ima: { enabled: boolean; kbName: string | null };
+  /** 飞书知识库（四期）：只暴露状态；App Secret 与访问凭证永不进界面。 */
+  feishu: { enabled: boolean; spaceName: string | null };
+  /** 收藏按钮存到哪里：已连接且选好位置的那一家；都没有则为 null。 */
+  saveTo: { target: 'ima' | 'feishu'; name: string } | null;
   maxBubbles: number;
   summaryLength: SummaryLength;
   fontSize: FontSize;
@@ -113,11 +117,16 @@ export type Command =
   | { type: 'listImaKb'; credentials?: { clientId: string; apiKey: string } }
   | { type: 'deleteImaConfig' }
   | { type: 'saveToIma'; tabId: number }
+  | { type: 'saveFeishuConfig'; appId: string; appSecret: string }
+  | { type: 'listFeishuSpaces'; credentials?: { appId: string; appSecret: string } }
+  | { type: 'saveFeishuSpace'; spaceId: string; spaceName: string }
+  | { type: 'deleteFeishuConfig' }
+  | { type: 'setSaveTarget'; target: 'ima' | 'feishu' }
   | { type: 'listModels'; provider: ProviderId }
   | { type: 'confirmOutbound' };
 
 export type Reply =
-  | { ok: true; message?: string; data?: { models?: string[]; imaKbItems?: { id: string; name: string; contentCount: number }[] } }
+  | { ok: true; message?: string; data?: { models?: string[]; imaKbItems?: { id: string; name: string; contentCount: number }[]; feishuSpaces?: { id: string; name: string }[] } }
   | { ok: false; error: AppError };
 
 export type Event =

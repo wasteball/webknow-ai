@@ -69,6 +69,15 @@ export type Config = {
     kbId?: string;
     kbName?: string;
   };
+  /** 飞书知识库（四期）：自建应用凭证与默认知识空间；只存这里，只由 background 边界读取。 */
+  feishu?: {
+    appId?: string;
+    appSecret?: string;
+    spaceId?: string;
+    spaceName?: string;
+  };
+  /** 收藏默认存到哪：两个都连上时由用户选；只连了一个就用那个。 */
+  saveTarget?: 'ima' | 'feishu';
   /** 首屏探索气泡上限（0–3，默认 3）。 */
   maxBubbles?: number;
   /** 摘要长度偏好（默认 medium）。 */
@@ -265,6 +274,36 @@ export async function clearImaConfig(): Promise<void> {
     if (!current.ima) return;
     const { ima: _removed, ...rest } = current;
     await storage.setItem(CONFIG_KEY, rest);
+  });
+}
+
+/** 保存飞书凭证与默认知识空间；空值字段被丢弃，不覆盖已有有效值。 */
+export async function saveFeishuConfig(patch: { appId?: string; appSecret?: string; spaceId?: string; spaceName?: string }): Promise<void> {
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    const feishu = { ...current.feishu };
+    for (const key of ['appId', 'appSecret', 'spaceId', 'spaceName'] as const) {
+      const value = patch[key]?.trim();
+      if (value) feishu[key] = value.slice(0, 500);
+    }
+    await storage.setItem(CONFIG_KEY, { ...current, feishu });
+  });
+}
+
+/** 删除飞书配置（独立操作；已存进飞书的文档不受影响）。 */
+export async function clearFeishuConfig(): Promise<void> {
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    if (!current.feishu) return;
+    const { feishu: _removed, ...rest } = current;
+    await storage.setItem(CONFIG_KEY, rest.saveTarget === 'feishu' ? { ...rest, saveTarget: undefined } : rest);
+  });
+}
+
+export async function saveSaveTarget(target: 'ima' | 'feishu'): Promise<void> {
+  return serializeConfig(async () => {
+    const current = await readStoredConfig();
+    await storage.setItem(CONFIG_KEY, { ...current, saveTarget: target });
   });
 }
 

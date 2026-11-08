@@ -10,7 +10,7 @@ export function panel(overrides: Partial<PanelState> = {}): PanelState {
       models: {}, model: 'deepseek-flash', thinking: 'off', prompts: {}, customSkills: [],
       learningStyle: 'mixed', maxBubbles: 3, summaryLength: 'medium', fontSize: 'normal',
       diagrams: 'off', search: { enabled: false, providerName: null, hasCredentials: false, agent: effectiveAgentSettings({}), sourceCapabilities: { providerContent: false, directRead: false, directReadReason: '直接读取尚未验证' } },
-      ima: { enabled: false, kbName: null },
+      ima: { enabled: false, kbName: null }, feishu: { enabled: false, spaceName: null }, saveTo: null,
     },
     outboundConfirmed: true, completeness: null,
     guide: { summary: '这是一篇文章的摘要。', bubbles: [] }, chat: [], learning: null,

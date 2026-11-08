@@ -38,7 +38,7 @@ function panel(over: Partial<PanelState['settings']> = {}): PanelState {
       providerKeys: { deepseek: true, zhipu: false },
       models: {},
       search: sharedPanel().settings.search,
-      ima: { enabled: false, kbName: null },
+      ima: { enabled: false, kbName: null }, feishu: { enabled: false, spaceName: null }, saveTo: null,
       maxBubbles: 3,
       summaryLength: 'medium',
       fontSize: 'normal',

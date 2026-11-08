@@ -67,13 +67,28 @@ function ask(text: string): void {
     stale(button, host);
     return;
   }
-  void (sent as Promise<{ ok?: boolean; error?: { message?: string } } | undefined>).then(
-    (reply: { ok?: boolean; error?: { message?: string } } | undefined) => {
+  void (sent as Promise<{ ok?: boolean; panelOpen?: boolean; error?: { message?: string } } | undefined>).then(
+    (reply) => {
       if (!reply?.ok) { retry(reply?.error?.message ?? '引用没有加入，请再试一次。'); return; }
-      if (document.getElementById(HOST_ID) === host) hide();
+      if (document.getElementById(HOST_ID) === host) confirmed(host, reply.panelOpen !== false);
     },
     (error: unknown) => (String(error).includes('context invalidated') ? stale(button, host) : retry('连接暂时不可用，请重试引用。')),
   );
+}
+
+/**
+ * 就地小卡片（四期）：点完「引用提问」在原处告诉用户这段去了哪里，几秒后自己消失。
+ * 侧栏没打开（浏览器不让自动打开）时，明确说怎么打开，不会“点了没反应”。
+ * 只显示固定文字，不把回答或网页内容放进页面。
+ */
+function confirmed(host: HTMLElement, panelOpen: boolean): void {
+  const button = host.shadowRoot?.querySelector('button');
+  if (!button) { hide(); return; }
+  host.dataset.pending = 'false';
+  button.disabled = true;
+  button.classList.add('done');
+  button.textContent = panelOpen ? '已放进侧栏，去那边接着问' : '已记下。点右上角 WebKnow AI 图标打开侧栏查看';
+  setTimeout(() => { if (document.getElementById(HOST_ID) === host) hide(); }, panelOpen ? 2_000 : 5_000);
 }
 
 function stale(button: HTMLButtonElement, host: HTMLElement): void {
@@ -164,6 +179,7 @@ function show(range: Range, text: string): void {
       }
       button:hover { background: #f6f7fb; }
       button:disabled { cursor: wait; opacity: .7; }
+      button.done { cursor: default; opacity: 1; max-width: 260px; white-space: normal; line-height: 1.4; padding: 8px 14px 8px 10px; }
       button:focus-visible { outline: 2px solid #6366f1; outline-offset: 3px; }
     </style>
     <button type="button">引用提问</button>

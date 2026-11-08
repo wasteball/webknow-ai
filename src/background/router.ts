@@ -14,6 +14,7 @@ import { DIRECT_READ_VERIFIED } from '../core/search/source-reader';
 import { sameDocument } from '../core/page-drift';
 import { clipQuote, prepareQuote } from '../core/quote';
 import { createSession, emptySession, markStale, type PageSession } from '../core/session';
+import { hasFeishuCredentials, listFeishuSpaces, saveReadingToFeishu } from './feishu';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
 import { assertOutboundConfirmation, listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
@@ -24,6 +25,9 @@ import {
   applySettings,
   clearAllSessions,
   clearImaConfig,
+  clearFeishuConfig,
+  saveFeishuConfig,
+  saveSaveTarget,
   clearPending,
   deleteApiKey,
   deleteCustomSkill,
@@ -86,6 +90,15 @@ function readPictures(session: PageSession | null): { id: string; src: string; a
   return list.length ? list : undefined;
 }
 
+/** 收藏存到哪：用户选过且那一家可用就用它；否则用唯一可用的那一家；都不可用则 null。 */
+function saveTargetOf(config: Awaited<ReturnType<typeof readConfig>>, settings: { ima: { enabled: boolean; kbName: string | null }; feishu: { enabled: boolean; spaceName: string | null } }) {
+  const ima = settings.ima.enabled && settings.ima.kbName ? { target: 'ima' as const, name: settings.ima.kbName } : null;
+  const feishu = settings.feishu.enabled && settings.feishu.spaceName ? { target: 'feishu' as const, name: settings.feishu.spaceName } : null;
+  if (config.saveTarget === 'feishu' && feishu) return feishu;
+  if (config.saveTarget === 'ima' && ima) return ima;
+  return ima ?? feishu;
+}
+
 function permissionFor(url: string | null): 'granted' | 'missing' | 'unknown' {
   return url ? 'granted' : 'missing';
 }
@@ -97,7 +110,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     MODEL_PROVIDERS.map((item) => [item.id, Boolean(config.apiKeys?.[item.id]?.trim())]),
   ) as Record<string, boolean>;
   const hasKey = providerKeys[provider.id] === true;
-  const settings = {
+  const base = {
     ...effectiveSettings(config),
     provider: provider.id,
     providerKeys,
@@ -108,7 +121,12 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
       enabled: await hasImaCredentials(),
       kbName: config.ima?.kbName?.trim() || null,
     },
+    feishu: {
+      enabled: await hasFeishuCredentials(),
+      spaceName: config.feishu?.spaceName?.trim() || null,
+    },
   };
+  const settings = { ...base, saveTo: saveTargetOf(config, base) };
   // 换供应商 = 换接收方：旧确认只对原来那家有效，换个名字就要重新确认一次。
   const outboundConfirmed = hasOutboundConfirmation(config);
 
@@ -252,6 +270,11 @@ async function saveQuote(tabId: number, text: string): Promise<AppError | null> 
   broadcast(tabId, { type: 'quote', tabId, sessionId: session.id, quote });
   await pushState(tabId);
   return null;
+}
+
+/** 这个标签页现在有没有侧栏连着：页面上的小卡片据此说“已放进侧栏”还是“点图标打开”。 */
+export function panelOpenFor(tabId: number): boolean {
+  return [...ports].some((port) => port.tabId === tabId);
 }
 
 /** 内容脚本在用户点「引用提问」时上报。先开侧栏（赶在手势消失前），再写入划词。 */
@@ -557,10 +580,48 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
         await pushAllStates();
         return { ok: true, message: '知识库凭证已删除。已存入 ima 的内容不受影响。' };
 
+      case 'saveFeishuConfig': {
+        await saveFeishuConfig({ appId: command.appId, appSecret: command.appSecret });
+        await pushAllStates();
+        return { ok: true, message: '飞书应用已保存。' };
+      }
+
+      case 'listFeishuSpaces': {
+        try {
+          return { ok: true, data: { feishuSpaces: await listFeishuSpaces(command.credentials) } };
+        } catch (error) {
+          return { ok: false, error: fromThrown(error) };
+        }
+      }
+
+      case 'saveFeishuSpace': {
+        await saveFeishuConfig({ spaceId: command.spaceId, spaceName: command.spaceName });
+        await pushAllStates();
+        return { ok: true, message: '默认飞书知识库已保存。' };
+      }
+
+      case 'deleteFeishuConfig':
+        await clearFeishuConfig();
+        await pushAllStates();
+        return { ok: true, message: '飞书配置已删除。已存进飞书的文档不受影响。' };
+
+      case 'setSaveTarget':
+        await saveSaveTarget(command.target);
+        await pushAllStates();
+        return { ok: true };
+
       case 'saveToIma': {
         const session = await getSession(command.tabId);
         if (!session || (session.state !== 'READY' && session.state !== 'LEARNING')) {
           return { ok: false, error: appError('STALE_PAGE', '这一页还没有可保存的阅读成果。', true) };
+        }
+        if ((await buildPanelState(command.tabId)).settings.saveTo?.target === 'feishu') {
+          try {
+            const { spaceName } = await saveReadingToFeishu(session);
+            return { ok: true, message: `已存到飞书「${spaceName}」：阅读笔记。` };
+          } catch (error) {
+            return { ok: false, error: fromThrown(error) };
+          }
         }
         try {
           const outcome = await saveReadingToIma(session);

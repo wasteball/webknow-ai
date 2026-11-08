@@ -91,6 +91,12 @@ src/sidepanel/          界面 + 端口客户端（侧栏与设置页共用；�
 - 模型只能用 `![](img:<块编号>)` 引用本页 role=image 的块，裸 URL 图片在解析层就降级为文字。`PanelState.pictures` 只列出 AI 读过（有 image 块）的图及其网页原地址；界面按这张白名单渲染，表外编号丢弃，每条消息最多两张，题干、提示等位置关闭出图。
 - 「收藏到知识库」调用既有 `saveToIma`：网址幂等导入 + 一条 Markdown 阅读笔记；笔记里的问答用 `condenseHistory` 控制总量。
 
+## 飞书知识库（四期）
+
+- `core/feishu/client.ts`：自建应用 `tenant_access_token/internal` 换取访问凭证（缓存到过期前 5 分钟），列知识空间（分页）、在空间顶层建 docx 节点、向文档根块按每批 50 个追加块。`noteToBlocks` 把 `buildReadingNote` 的受控 Markdown 映射为标题、引用、列表、文本块。
+- `background/feishu.ts` 是唯一读取 App Secret 的地方；界面只得到 `feishu.enabled / spaceName` 与收藏位置 `saveTo`。`open.feishu.cn` 不是固定权限，在设置里点“授权并连接”时按手势申请。
+- 收藏走同一个 `saveToIma` 命令，按 `saveTo.target` 分派到 ima 或飞书。
+
 ## 状态与竞态
 
 - 页面身份 = 标签页 + URL。正文指纹用来发现同一页被改过。

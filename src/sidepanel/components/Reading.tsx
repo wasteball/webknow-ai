@@ -152,7 +152,7 @@ export function Reading({ state, send, onSearchSettings, onImaSettings, active =
             <div className="opening-summary said-guide">
               <Thinking text={guide.reasoning ?? ''} />
               <Rich text={guide.summary} diagrams={false} />
-              <SaveButton connected={state.settings.ima.enabled} kbName={state.settings.ima.kbName} tabId={tabId}
+              <SaveButton connected={state.settings.saveTo !== null} kbName={state.settings.saveTo?.name ?? null} tabId={tabId}
                 send={send} onConnect={onImaSettings} disabled={state.busy !== null} />
             </div>
           ) : guideRetryable && tabId !== null ? (

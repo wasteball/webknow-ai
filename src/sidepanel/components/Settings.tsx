@@ -7,6 +7,7 @@ import { LEARN_DEFAULT_POLICY } from '../../core/prompts/learn';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { PromptTarget } from '../../core/settings';
 import { BUILTIN_SKILLS, type Skill } from '../../core/skills';
+import { FEISHU_ORIGIN } from '../../core/feishu/client';
 import { SearchSettings } from './SearchSettings';
 import { Notice, Section } from './bits';
 import { BrandMark, Icon, type IconName } from './Icon';
@@ -161,7 +162,11 @@ export function Settings({
       <Skills state={state} send={send} />
     </>}
     {id === 'search' && <SearchSettings state={state} send={send} />}
-    {id === 'ima' && <ImaSettings state={state} send={send} />}
+    {id === 'ima' && <>
+      <SaveTargetPicker state={state} send={send} />
+      <ImaSettings state={state} send={send} />
+      <FeishuSettings state={state} send={send} />
+    </>}
     {id === 'data' && <Cleanup state={state} send={send} />}
     {id === 'about' && <About />}
   </>;
@@ -479,6 +484,112 @@ function Skills({ state, send }: { state: PanelState; send: Send }) {
   );
 }
 
+
+/** 两家都连上时，选收藏默认存到哪。只连了一家就不出现。 */
+function SaveTargetPicker({ state, send }: { state: PanelState; send: Send }) {
+  const { ima, feishu, saveTo } = state.settings;
+  if (!(ima.enabled && ima.kbName && feishu.enabled && feishu.spaceName)) return null;
+  return (
+    <Section title="收藏默认存到">
+      <Seg name="收藏默认存到" value={saveTo?.target ?? 'ima'}
+        options={[{ value: 'ima', label: `ima「${ima.kbName}」` }, { value: 'feishu', label: `飞书「${feishu.spaceName}」` }]}
+        onChange={(target) => void send({ type: 'setSaveTarget', target })} />
+    </Section>
+  );
+}
+
+/**
+ * 飞书知识库（四期）：用飞书“自建应用”的凭证连接。App Secret 只存在这台电脑上、只在后台使用；
+ * 拿到它的人能以这个应用的身份读写它被授权的知识库，所以建议只把一个知识库授权给这个应用。
+ */
+function FeishuSettings({ state, send }: { state: PanelState; send: Send }) {
+  const current = state.settings.feishu;
+  const [appId, setAppId] = useState('');
+  const [appSecret, setAppSecret] = useState('');
+  const [spaces, setSpaces] = useState<{ id: string; name: string }[] | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (command: Command) => {
+    setBusy(true);
+    try { return await send(command); } finally { setBusy(false); }
+  };
+  const list = async (credentials?: { appId: string; appSecret: string }) => {
+    // 访问飞书的权限在这次点击里第一个申请，前面不能有 await。
+    let granted = false;
+    try { granted = await browser.permissions.request({ origins: [FEISHU_ORIGIN] }); } catch { granted = false; }
+    if (!granted) { setHint('没有获得访问飞书的许可，再点一次并选择允许。'); return; }
+    const reply = await run({ type: 'listFeishuSpaces', ...(credentials ? { credentials } : {}) });
+    if (reply?.ok && reply.data?.feishuSpaces) {
+      setSpaces(reply.data.feishuSpaces);
+      setHint(reply.data.feishuSpaces.length
+        ? `连接成功，找到 ${reply.data.feishuSpaces.length} 个知识库。选一个作为收藏位置。`
+        : '连接成功，但这个应用还看不到任何知识库：请在飞书知识库的“设置 → 成员”里把这个应用加为成员（可编辑）。');
+    } else if (reply && !reply.ok) setHint(reply.error.message);
+  };
+  const pick = (spaceId: string, spaceName: string, first: boolean) => {
+    void (async () => {
+      if (first) await run({ type: 'saveFeishuConfig', appId: appId.trim(), appSecret: appSecret.trim() });
+      await run({ type: 'saveFeishuSpace', spaceId, spaceName });
+      setAppSecret('');
+    })();
+  };
+  const picker = (first: boolean) => spaces && spaces.length > 0 && (
+    <div className="field">
+      <label htmlFor="feishu-space">收藏存到</label>
+      <select id="feishu-space" disabled={busy} defaultValue=""
+        onChange={(event) => { const option = event.target.selectedOptions[0]; if (option?.value) pick(option.value, option.text, first); }}>
+        <option value="" disabled>选择知识库…</option>
+        {spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}
+      </select>
+    </div>
+  );
+
+  return (
+    <Section title="知识库（飞书）">
+      {current.enabled ? (
+        <>
+          <p className="hint">已连接{current.spaceName ? `，收藏存到「${current.spaceName}」` : '，还没有选择知识库'}。每次收藏会在这个知识库里新建一篇文档。</p>
+          <div className="composer-actions">
+            <button type="button" className="secondary" disabled={busy} onClick={() => void list()}>
+              {current.spaceName ? '换一个知识库' : '选择知识库'}
+            </button>
+            <button type="button" className="danger" disabled={busy} onClick={() => void run({ type: 'deleteFeishuConfig' })}>删除飞书连接</button>
+          </div>
+          {picker(false)}
+          {hint && <p className="hint">{hint}</p>}
+          <p className="hint">删除连接不影响已存进飞书的文档。</p>
+        </>
+      ) : (
+        <>
+          <p className="hint">飞书需要你自己建一个“自建应用”来授权，一次设置好之后一点即存：</p>
+          <ol className="howto">
+            <li>打开 <a href="https://open.feishu.cn/app" target="_blank" rel="noreferrer">飞书开发者后台</a>，创建一个企业自建应用。</li>
+            <li>在“权限管理”里开通：查看、编辑和管理知识库；创建及编辑新版文档。然后创建版本并发布。</li>
+            <li>打开要存进去的飞书知识库 → 设置 → 成员，把这个应用加为成员（可编辑）。</li>
+            <li>回到应用的“凭证与基础信息”，复制 App ID 和 App Secret 填到下面。</li>
+          </ol>
+          <div className="field">
+            <label htmlFor="feishu-app-id">App ID</label>
+            <input id="feishu-app-id" type="text" autoComplete="off" spellCheck={false} value={appId} placeholder="cli_ 开头" onChange={(event) => setAppId(event.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="feishu-app-secret">App Secret</label>
+            <input id="feishu-app-secret" type="password" autoComplete="off" spellCheck={false} value={appSecret} onChange={(event) => setAppSecret(event.target.value)} />
+          </div>
+          <p className="hint">App Secret 只存在这台电脑上、只在后台使用。能打开这个浏览器的人也能用它以这个应用的身份读写被授权的知识库，所以建议只把一个知识库授权给这个应用。</p>
+          {hint && <p className="hint">{hint}</p>}
+          {picker(true)}
+          <div className="composer-actions">
+            <button type="button" disabled={busy || !appId.trim() || !appSecret.trim()} onClick={() => void list({ appId: appId.trim(), appSecret: appSecret.trim() })}>
+              授权并连接
+            </button>
+          </div>
+        </>
+      )}
+    </Section>
+  );
+}
 
 function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
   const current = state.settings.ima;

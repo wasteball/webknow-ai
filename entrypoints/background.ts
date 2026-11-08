@@ -8,6 +8,7 @@ import {
   onPageChanged,
   onPermissionsRemoved,
   onQuoteSelected,
+  panelOpenFor,
   onTabNavigating,
   onTabRemoved,
   onTabSettled,
@@ -32,7 +33,9 @@ export default defineBackground(() => {
     }
     if (data?.type === 'quoteSelected' && tabId !== undefined && typeof data.text === 'string') {
       void onQuoteSelected(tabId, data.text).then(
-        (error) => sendResponse(error ? { ok: false, error } : { ok: true }),
+        // 稍等侧栏连上再回答“开没开”，页面上的小卡片才说得准。
+        (error) => error ? sendResponse({ ok: false, error })
+          : setTimeout(() => sendResponse({ ok: true, panelOpen: panelOpenFor(tabId) }), 600),
         (error) => sendResponse({ ok: false, error: fromThrown(error) }),
       );
       return true;

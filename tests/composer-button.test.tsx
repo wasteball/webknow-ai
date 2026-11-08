@@ -26,7 +26,7 @@ function panel(over: Partial<PanelState> = {}): PanelState {
       providerKeys: { deepseek: true, zhipu: false },
       models: {},
       search: sharedPanel().settings.search,
-      ima: { enabled: false, kbName: null },
+      ima: { enabled: false, kbName: null }, feishu: { enabled: false, spaceName: null }, saveTo: null,
       maxBubbles: 4,
       summaryLength: 'medium',
       fontSize: 'normal',

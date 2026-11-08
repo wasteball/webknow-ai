@@ -62,6 +62,14 @@ describe('划词提问按钮', () => {
     expect(quoteButton()?.disabled).toBe(true);
   });
 
+  it('四期：引用成功后在原处说明去了哪里；侧栏没打开时说清怎么打开', async () => {
+    sendMessage.mockImplementationOnce(async () => ({ ok: true, panelOpen: false }) as never);
+    selectParagraph();
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    quoteButton()?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(quoteButton()?.textContent).toContain('点右上角 WebKnow AI 图标'));
+  });
+
   it('划完一段会出现引用提问', () => {
     selectParagraph();
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));

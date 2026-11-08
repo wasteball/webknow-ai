@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => {
     setSession: (value: Record<string, unknown> | null) => {
       session = value;
     },
+    ima: false,
+    feishu: false,
+    config: {} as Record<string, unknown>,
     reset: () => {
       pending = null;
       session = null;
@@ -34,6 +37,7 @@ vi.mock('../src/background/store', () => ({
   OUTBOUND_NOTICE_VERSION: '2026-09-19.2',
   hasOutboundConfirmation: vi.fn(() => true),
   readConfig: vi.fn(async () => ({
+    ...mocks.config,
     provider: 'deepseek',
     apiKeys: { deepseek: 'sk-configured' },
     outbound: {
@@ -48,7 +52,8 @@ vi.mock('../src/background/store', () => ({
   putSession: vi.fn(async () => {}),
 }));
 
-vi.mock('../src/background/ima', () => ({ hasImaCredentials: vi.fn(async () => false) }));
+vi.mock('../src/background/ima', () => ({ hasImaCredentials: vi.fn(async () => mocks.ima) }));
+vi.mock('../src/background/feishu', () => ({ hasFeishuCredentials: vi.fn(async () => mocks.feishu) }));
 vi.mock('../src/background/page', () => ({ extractPage: mocks.extractPage }));
 vi.mock('../src/background/runner', () => ({ handleIntent: vi.fn(), abortRun: vi.fn(), recoverInterruptedRun: mocks.getSession }));
 
@@ -127,5 +132,31 @@ describe('三期：回答里可显示的网页原图', () => {
     });
     const state = await buildPanelState(42);
     expect(state.pictures).toEqual([{ id: 'img_0', src: 'https://cdn.example.com/a.png', alt: 'a' }]);
+  });
+});
+
+describe('四期：收藏存到哪', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.reset();
+  });
+  const target = async (ima: boolean, feishu: boolean, config: Record<string, unknown>) => {
+    Object.assign(mocks, { ima, feishu, config });
+    return (await buildPanelState(42)).settings.saveTo;
+  };
+
+  it('都没连：没有收藏位置', async () => {
+    expect(await target(false, false, {})).toBeNull();
+  });
+  it('只连了飞书且选好知识库：存飞书', async () => {
+    expect(await target(false, true, { feishu: { spaceName: '读书' } })).toEqual({ target: 'feishu', name: '读书' });
+  });
+  it('两家都连上：按用户选的；没选默认 ima', async () => {
+    const both = { ima: { kbName: 'A' }, feishu: { spaceName: 'B' } };
+    expect(await target(true, true, both)).toEqual({ target: 'ima', name: 'A' });
+    expect(await target(true, true, { ...both, saveTarget: 'feishu' })).toEqual({ target: 'feishu', name: 'B' });
+  });
+  it('连了飞书但还没选知识库：不能收藏', async () => {
+    expect(await target(false, true, { feishu: {} })).toBeNull();
   });
 });
