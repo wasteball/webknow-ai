@@ -524,7 +524,7 @@ function ImaSettings({ state, send }: { state: PanelState; send: Send }) {
         <Icon name="external" small />
       </a>
       <p className="hint">扫码只登录 ima 官网；若要让WebKnow AI访问知识库，还需配置开放接口凭证。</p>
-      <p className="hint">开放接口连接用于选择默认知识库；侧栏保存入口仍在联调。</p>
+      <p className="hint">连好并选定默认知识库后，侧栏摘要下面的「收藏到知识库」一点就能把这一页和阅读笔记（摘要、问答、学习小结）存进去。</p>
       {current.enabled ? (
         <>
           <p className="hint">已连接{current.kbName ? `，默认保存到「${current.kbName}」` : '，还没有选择默认知识库'}。</p>

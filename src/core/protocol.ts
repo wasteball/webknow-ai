@@ -61,6 +61,11 @@ export type PanelState = {
   settings: PanelSettings;
   outboundConfirmed: boolean;
   completeness: Completeness | null;
+  /**
+   * AI 真的读过的那几张网页图（三期）：回答里的 ![](img:id) 只按这张表显示，表外的一律不显示。
+   * 地址就是网页自己加载这张图用的地址，不会把内容发往新的网站。
+   */
+  pictures?: { id: string; src: string; alt: string }[];
   guide: { summary: string; bubbles: Bubble[]; reasoning?: string } | null;
   chat: ChatTurn[];
   learning: LearningState | null;

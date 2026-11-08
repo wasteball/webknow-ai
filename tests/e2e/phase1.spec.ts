@@ -210,3 +210,32 @@ test('二期：连续 50 轮对话一条不丢，最新的在底部，接着问�
   await noOverflow(panel);
   await panel.close();
 });
+
+test('三期：回答里显示 AI 读过的网页原图，摘要下有收藏入口', async () => {
+  await setConfig(true);
+  const { createServer } = await import('node:http');
+  // 用一张 240×120 的 SVG 柱状图当网页原图，截图里看得出来。
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120"><rect width="240" height="120" fill="#f2f2f2"/><rect x="40" y="20" width="60" height="90" fill="#8a8a8a"/><rect x="140" y="56" width="60" height="54" fill="#4f46e5"/></svg>';
+  const server = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'image/svg+xml' }); res.end(svg); });
+  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+  const src = `http://127.0.0.1:${(server.address() as { port: number }).port}/chart.svg`;
+  try {
+    const session = {
+      ...READY, learning: null,
+      blocks: [...BLOCKS, { id: 'img_0', role: 'image', content: '图上读到（可能有误）：处理时间对比柱状图', headingPath: [] }],
+      pictures: [{ id: 'img_0', url: src, alt: '处理时间对比', anchor: { sessionAnchorId: '', selector: '', exact: 'image:x', prefix: '', suffix: '' } }],
+      imagesAttached: true,
+      chat: [{ ...READY.chat[0]!, answer: '看这张图：\n\n![试点前后的处理时间对比](img:img_0)\n\n新方案那根更短。' }],
+    };
+    const panel = await open(360, 'light', session);
+    const image = panel.getByRole('img', { name: /处理时间对比/ });
+    await expect(image).toBeVisible();
+    await expect.poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(100);
+    await expect(panel.getByRole('button', { name: /连接知识库后收藏/ })).toBeVisible();
+    await noOverflow(panel);
+    await panel.screenshot({ path: `${OUT}/answer-image-360-light.png`, fullPage: true });
+    await panel.close();
+  } finally {
+    server.close();
+  }
+});

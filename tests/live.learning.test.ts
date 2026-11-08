@@ -43,6 +43,11 @@ const cases: { name: string; input: Partial<Input>; actions: LearnOutput['action
       question: open.question, answer: '只试了三个经过培训的团队，观察了四周，不能直接推广。',
       verdict: 'correct', hintUsed: false, target: { blockIds: ['b_1'], focus: '适用范围' }, mastery: 'independent',
     }] }, actions: ['summary'] },
+  // 三期：导师式点评。同一道题答好、答一半、答错、答非所问，回应要明显不同（verdict 和话都不同），且不打分。
+  { name: 'tutor-good', input: { mode: 'respond', userAnswer: '因为只试了三个经过培训的团队、四周，原文明确说不能外推到其他城市。' }, actions: ['feedback'] },
+  { name: 'tutor-half', input: { mode: 'respond', userAnswer: '因为只试了三个团队。' }, actions: ['feedback'] },
+  { name: 'tutor-wrong', input: { mode: 'respond', userAnswer: '因为新方案其实更慢。' }, actions: ['feedback', 'explain'] },
+  { name: 'tutor-off-topic', input: { mode: 'respond', userAnswer: '我喜欢吃火锅。' }, actions: ['feedback', 'hint', 'explain'] },
 ];
 
 for (const id of ['deepseek', 'zhipu'] as const) {
@@ -75,6 +80,10 @@ for (const id of ['deepseek', 'zhipu'] as const) {
         expect((cleaned.value.question.match(/[?？]/g) ?? []).length).toBe(1);
       }
       if (cleaned.value.action === 'quiz') expect(cleaned.value.questions.length).toBe(1);
+      if (sample.name.startsWith('tutor-') && cleaned.value.action === 'feedback') {
+        // 不打分、不给百分比：点评只在话里。
+        expect(cleaned.value.feedback).not.toMatch(/\d+\s*分|%|百分之|满分|评分|得分/);
+      }
     });
   });
 }

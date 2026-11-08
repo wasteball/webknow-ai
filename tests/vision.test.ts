@@ -80,6 +80,6 @@ describe('读图', () => {
     expect(applied.blocks[1]?.content).toContain('看见灵感');
     expect(applied.completeness.images).toEqual({ status: 'partial', found: 2, captured: 1 });
     expect(describeCompleteness(applied.completeness)).toContain('并非作者原话');
-    expect(describeCompleteness(applied.completeness)).toContain('1 张图片未读');
+    expect(describeCompleteness(applied.completeness)).toContain('1 张图片没看清，回答不会用到它们');
   });
 });

@@ -108,3 +108,24 @@ describe('右键“问 WebKnow AI”', () => {
     expect(state.quote?.text).toBe('这一段我看不懂，想问问');
   });
 });
+
+describe('三期：回答里可显示的网页原图', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.reset();
+  });
+
+  it('只公开 AI 读过的那几张，没读过或非网页地址的不公开', async () => {
+    mocks.setSession({
+      id: 's', url: 'https://example.com/article', title: 't', state: 'READY', fingerprint: 'f', chat: [], guide: null,
+      completeness: null, learning: null,
+      blocks: [{ id: 'b_0', role: 'paragraph', content: '正文' }, { id: 'img_0', role: 'image', content: '图上读到（可能有误）：…' }],
+      pictures: [
+        { id: 'img_0', url: 'https://cdn.example.com/a.png', alt: 'a', anchor: {} },
+        { id: 'img_1', url: 'https://cdn.example.com/b.png', alt: 'b', anchor: {} },
+      ],
+    });
+    const state = await buildPanelState(42);
+    expect(state.pictures).toEqual([{ id: 'img_0', src: 'https://cdn.example.com/a.png', alt: 'a' }]);
+  });
+});

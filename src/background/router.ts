@@ -13,7 +13,7 @@ import { BUILTIN_SEARCH_PROVIDERS, searchWithProvider } from '../core/search/reg
 import { DIRECT_READ_VERIFIED } from '../core/search/source-reader';
 import { sameDocument } from '../core/page-drift';
 import { clipQuote, prepareQuote } from '../core/quote';
-import { createSession, emptySession, markStale } from '../core/session';
+import { createSession, emptySession, markStale, type PageSession } from '../core/session';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
 import { assertOutboundConfirmation, listModels, testConnection } from './model';
 import { extractPage, jumpToOriginal, watchPage } from './page';
@@ -77,6 +77,15 @@ export function originOf(url: string): string | null {
 }
 
 /** 拿得到地址，就说明用户打开过产品（工具栏点击留下了记录）或标签页本身可读。 */
+/** 只公开 AI 读过（有 image 块）的那几张图。 */
+function readPictures(session: PageSession | null): { id: string; src: string; alt: string }[] | undefined {
+  if (!session?.pictures?.length) return undefined;
+  const read = new Set(session.blocks.filter((block) => block.role === 'image').map((block) => block.id));
+  const list = session.pictures.filter((picture) => read.has(picture.id) && /^https?:\/\//.test(picture.url))
+    .map((picture) => ({ id: picture.id, src: picture.url, alt: picture.alt }));
+  return list.length ? list : undefined;
+}
+
 function permissionFor(url: string | null): 'granted' | 'missing' | 'unknown' {
   return url ? 'granted' : 'missing';
 }
@@ -157,6 +166,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
     settings,
     outboundConfirmed,
     completeness: session?.completeness ?? null,
+    pictures: readPictures(session),
     guide: session?.guide ?? null,
     chat: session?.chat ?? [],
     sessionId: session?.id ?? null,
@@ -549,15 +559,14 @@ async function dispatch(command: Command, port?: PanelPort): Promise<Reply> {
 
       case 'saveToIma': {
         const session = await getSession(command.tabId);
-        if (!session || session.state !== 'READY') {
+        if (!session || (session.state !== 'READY' && session.state !== 'LEARNING')) {
           return { ok: false, error: appError('STALE_PAGE', '这一页还没有可保存的阅读成果。', true) };
         }
         try {
           const outcome = await saveReadingToIma(session);
-          const parts = [outcome.urlSaved ? '网页已入库' : null, outcome.noteSaved ? '笔记已保存' : null].filter(
-            Boolean,
-          );
-          return { ok: true, message: `已保存：${parts.join('，')}。在 ima 里随时查看。` };
+          const kbName = (await readConfig()).ima?.kbName?.trim() || 'ima 知识库';
+          const parts = [outcome.urlSaved ? '网页' : null, outcome.noteSaved ? '阅读笔记' : null].filter(Boolean);
+          return { ok: true, message: `已存到「${kbName}」：${parts.join('和')}。` };
         } catch (error) {
           return { ok: false, error: fromThrown(error) };
         }

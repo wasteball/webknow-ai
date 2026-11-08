@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { browser } from 'wxt/browser';
 
 import { findProvider } from '../core/model-providers';
@@ -7,6 +7,7 @@ import { activeTabId, createClient, openSettingsTab, type Client } from './api';
 import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
+import { PageImages } from './components/Rich';
 import { Busy, Drafting, ErrorBanner, Notice, Opening, type BannerAction } from './components/bits';
 import { BrandMark, Icon } from './components/Icon';
 import { outboundReceiverLines, outboundConfirmedHint, outboundFeeLine, outboundRetentionLine } from './outbound-copy';
@@ -228,8 +229,18 @@ export function App() {
 
   const thinking = busy !== null;
   const pageTab = state?.tabId ?? null;
+  const pictureList = state?.pictures;
+  // 回答里引用到的网页原图：只认 AI 读过的那几张，点一下回到网页上的位置。
+  const pageImages = useMemo(() => pictureList?.length ? {
+    resolve: (id: string) => {
+      const found = pictureList.find((picture) => picture.id === id);
+      return found ? { src: found.src, alt: found.alt, blockId: found.id } : undefined;
+    },
+    onJump: (blockId: string) => { if (pageTab !== null) void send({ type: 'jump', tabId: pageTab, blockId }); },
+  } : null, [pictureList, pageTab, send]);
 
   return (
+    <PageImages.Provider value={pageImages}>
     <div className={[readyShell ? 'panel ready-chat' : 'panel', state?.settings.fontSize === 'large' ? 'font-large' : ''].join(' ').trim()}>
       <div className="conversation-top">
       <header className="topbar panel-header">
@@ -389,7 +400,7 @@ export function App() {
                 aria-labelledby={tabDomId('qa')}
                 hidden={!readyShell || view !== 'qa'}
               >
-                <Reading state={state} send={send} active={readyShell && view === 'qa'} onSearchSettings={() => openSettings('search')} searchOn={searchOn} onSearchChange={setSearchOn} />
+                <Reading state={state} send={send} active={readyShell && view === 'qa'} onSearchSettings={() => openSettings('search')} onImaSettings={() => openSettings('ima')} searchOn={searchOn} onSearchChange={setSearchOn} />
               </div>
               <div
                 key={`${conversationKey}:learn`}
@@ -405,6 +416,7 @@ export function App() {
         </>
       )}
     </div>
+    </PageImages.Provider>
   );
 }
 

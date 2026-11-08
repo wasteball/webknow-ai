@@ -35,14 +35,14 @@ export function LearningEntry({ entry, diagrams, quizContent }: { entry: LearnEn
             <SearchSources references={entry.supplement.references ?? []} research={entry.supplement.research} />
           </aside>
         )}
-        {entry.role === 'question' && <div className="ask-now"><Rich text={entry.text} diagrams={false} /></div>}
+        {entry.role === 'question' && <div className="ask-now"><Rich text={entry.text} diagrams={false} pictures={false} /></div>}
         {entry.role === 'quiz' && (quizContent ?? <QuizEntryView entry={entry} />)}
         {/* 导师不打分：判定、对几题、掌握标签仍随记录保存，但只用说话的方式表达。 */}
         {entry.role === 'feedback' && <Rich text={entry.text} diagrams={diagrams} />}
         {entry.role === 'hint' && (
           <>
             <span className="tag">提示</span>
-            <Rich text={entry.text} diagrams={false} />
+            <Rich text={entry.text} diagrams={false} pictures={false} />
           </>
         )}
         {entry.role === 'explain' && <Rich text={entry.text} diagrams={diagrams} />}

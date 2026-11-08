@@ -7,7 +7,7 @@ import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { shouldSubmitComposer } from '../composer';
 import { visibleSuggestions } from '../suggest';
-import { Busy, ComposerField, ComposerTextarea, Drafting, Guard, Opening, ScopeLine, SourceTag, SuggestRow, Thinking } from './bits';
+import { Busy, ComposerField, ComposerTextarea, Drafting, Guard, Opening, SaveButton, ScopeLine, SourceTag, SuggestRow, Thinking } from './bits';
 import { Icon } from './Icon';
 import { Rich } from './Rich';
 import { Conversation } from './Conversation';
@@ -25,7 +25,7 @@ const QUOTE_ONLY_QUESTION = '这段是什么意思？';
  *
  * 回答正文走 <Rich>：模型写的是受控 markdown 子集，这里是它唯一的渲染入口。
  */
-export function Reading({ state, send, onSearchSettings, active = true, searchOn, onSearchChange }: { state: PanelState; send: Send; onSearchSettings?: () => void; active?: boolean; searchOn?: boolean; onSearchChange?: (value: boolean) => void }) {
+export function Reading({ state, send, onSearchSettings, onImaSettings, active = true, searchOn, onSearchChange }: { state: PanelState; send: Send; onSearchSettings?: () => void; onImaSettings?: () => void; active?: boolean; searchOn?: boolean; onSearchChange?: (value: boolean) => void }) {
   const [draft, setDraft] = useState('');
   const [localSearchOn, setLocalSearchOn] = useState(false);
   const effectiveSearchOn = searchOn ?? localSearchOn;
@@ -152,6 +152,8 @@ export function Reading({ state, send, onSearchSettings, active = true, searchOn
             <div className="opening-summary said-guide">
               <Thinking text={guide.reasoning ?? ''} />
               <Rich text={guide.summary} diagrams={false} />
+              <SaveButton connected={state.settings.ima.enabled} kbName={state.settings.ima.kbName} tabId={tabId}
+                send={send} onConnect={onImaSettings} disabled={state.busy !== null} />
             </div>
           ) : guideRetryable && tabId !== null ? (
             <p className="opening-note" role="status">

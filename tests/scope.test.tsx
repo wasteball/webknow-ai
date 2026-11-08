@@ -18,7 +18,7 @@ it('说明已加载正文和未读图片，不再让读者猜段落数或全文�
   const { container } = render(<ScopeLine completeness={completeness()} />);
   expect(container.textContent).toContain('当前加载');
   expect(container.textContent).toContain('1860');
-  expect(container.textContent).toMatch(/2.*未读/);
+  expect(container.textContent).toMatch(/2 张图片没看清/);
   expect(container.textContent).not.toMatch(/段文字|文字块|100%|全文已读/);
 });
 

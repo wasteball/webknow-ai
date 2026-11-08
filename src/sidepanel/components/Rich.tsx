@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, type ReactNode } from 'react';
+import { createContext, lazy, Suspense, useContext, useMemo, type ReactNode } from 'react';
 
 import { parseMarkdown, type Block, type Inline } from '../../core/markdown';
 
@@ -16,7 +16,18 @@ const Diagram = lazy(() => import('./Diagram').then((module) => ({ default: modu
 /** 图片 id → 当前页真实 src。只认这张表里的 id，其余一律不渲染（见方案 2.4）。 */
 export type ImageResolver = (id: string) => { src: string; alt: string; blockId?: string } | undefined;
 
+/**
+ * 当前页 AI 读过的图（三期）。由侧栏在顶层提供；正文里 ![](img:id) 只按这里查，查不到就不显示。
+ * 题干、提示等不允许出图的位置传 pictures={false} 关掉。
+ */
+export const PageImages = createContext<{ resolve: ImageResolver; onJump?: (blockId: string) => void } | null>(null);
+
+/** 一条回答里最多显示几张原图：多了就喧宾夺主。 */
+const MAX_IMAGES_PER_MESSAGE = 2;
+
 type RichProps = {
+  /** false：这个位置不允许出图（题干、选项、提示）。 */
+  pictures?: boolean;
   text: string;
   /** 用户设置「不要图」时传 false。 */
   diagrams?: boolean;
@@ -25,9 +36,22 @@ type RichProps = {
   onImageClick?: (blockId: string) => void;
 };
 
-export function Rich({ text, diagrams = true, images, onImageClick }: RichProps) {
+export function Rich({ text, diagrams = true, images, onImageClick, pictures = true }: RichProps) {
   const blocks = useMemo(() => parseMarkdown(text, { diagrams }), [text, diagrams]);
-  return <Blocks blocks={blocks} images={images} onImageClick={onImageClick} />;
+  const page = useContext(PageImages);
+  const resolver = useMemo<ImageResolver | undefined>(() => {
+    const base = images ?? (pictures ? page?.resolve : undefined);
+    if (!base) return undefined;
+    const shown = new Set<string>();
+    return (id) => {
+      const found = base(id);
+      if (!found) return undefined;
+      if (!shown.has(id) && shown.size >= MAX_IMAGES_PER_MESSAGE) return undefined;
+      shown.add(id);
+      return found;
+    };
+  }, [images, pictures, page, text]);
+  return <Blocks blocks={blocks} images={resolver} onImageClick={onImageClick ?? (pictures ? page?.onJump : undefined)} />;
 }
 
 function Blocks({

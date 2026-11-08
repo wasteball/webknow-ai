@@ -1,4 +1,7 @@
-import { HISTORY } from '../history';
+import { condenseHistory, HISTORY } from '../history';
+
+/** 笔记里问答部分的总字数上限。 */
+const NOTE_CHAT_BUDGET = 20_000;
 import type { Bubble, ChatTurn, LearningState } from '../session';
 import { LIMITS } from '../limits';
 
@@ -47,12 +50,14 @@ export function buildReadingNote(input: ReadingNoteInput): { title: string; mark
     }
   }
 
-  const recentChat = input.chat.slice(-3);
-  if (recentChat.length) {
-    parts.push('\n## 问答记录（最近几轮）');
-    for (const turn of recentChat) {
+  // 三期：存全部问答，不只最近几轮；总量有上限，超出时保留每个问题、截短较早的回答。
+  if (input.chat.length) {
+    parts.push('\n## 问答记录');
+    const condensed = condenseHistory(input.chat.map((turn) => ({ question: turn.question, answer: turn.answer })),
+      { recent: 12, earlierAnswerChars: 300, budgetChars: NOTE_CHAT_BUDGET });
+    for (const turn of condensed) {
       parts.push(`**问：${sectionHeading(turn.question, 200)}**`);
-      parts.push(sectionHeading(turn.answer, 800));
+      if (turn.answer) parts.push(sectionHeading(turn.answer, 1_500));
       parts.push('');
     }
   }

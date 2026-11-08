@@ -2251,3 +2251,13 @@ body.sidepanel .panel > .phase { margin: 8px 0 0; padding: 0; background: none; 
 .pending-quote-label { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--ink-3); }
 .pending-quote .hint { font-size: 12.5px; }
 .guard-failed { font-size: 13px; color: var(--ink-3); }
+
+/* 三期：收藏到知识库 */
+.save-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+button.save-btn { min-height: 34px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--ink); background: var(--paper); border: 1px solid var(--line); gap: 6px; }
+button.save-btn:hover:not(:disabled) { background: var(--paper-2); color: var(--ink); }
+.save-done, .save-failed { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.save-done { color: var(--ink-2); }
+.save-failed { color: var(--danger); }
+/* 回答里的网页原图：缩略、可点回原位 */
+.said .rich-img img, .opening-summary .rich-img img { max-height: 220px; width: auto; max-width: 100%; border-radius: var(--r-s); }

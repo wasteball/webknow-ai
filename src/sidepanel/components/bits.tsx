@@ -1,7 +1,8 @@
-import { Component, useEffect, useLayoutEffect, useRef, type ReactNode, type TextareaHTMLAttributes } from 'react';
+import { Component, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type TextareaHTMLAttributes } from 'react';
 
 import { describeCompleteness, type Completeness } from '../../core/blocks';
 import type { AppError } from '../../core/errors';
+import type { Command, Reply } from '../../core/protocol';
 import type { AnswerSource } from '../../core/session';
 import { BrandMark, Icon } from './Icon';
 import { Rich } from './Rich';
@@ -315,4 +316,45 @@ export class Guard extends Component<{ children: ReactNode; whole?: boolean }, {
     }
     return <p className="aside guard-failed" role="status">这一条没能显示出来，其它对话不受影响。</p>;
   }
+}
+
+/**
+ * 收藏到知识库（三期）：一次保存 = 这一页的网址 + 整理好的阅读笔记（摘要、问答、学习小结）。
+ * 已连接时一点即存；没连接时点它去设置里连接。结果就地显示一句话。
+ */
+export function SaveButton({ connected, kbName, tabId, send, onConnect, disabled }: {
+  connected: boolean;
+  kbName: string | null;
+  tabId: number | null;
+  send: (command: Command) => Promise<Reply | undefined>;
+  onConnect?: () => void;
+  disabled?: boolean;
+}) {
+  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (!connected || !kbName) { onConnect?.(); return; }
+    if (tabId === null || saving) return;
+    setSaving(true);
+    setStatus(null);
+    try {
+      const reply = await send({ type: 'saveToIma', tabId });
+      setStatus(reply?.ok ? { ok: true, text: reply.message ?? `已存到「${kbName}」。` }
+        : { ok: false, text: reply && !reply.ok ? reply.error.message : '没有存成，可以再试一次。' });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="save-row">
+      <button type="button" className="save-btn" disabled={disabled || saving} onClick={() => void save()}
+        title={connected && kbName ? `把这一页和阅读笔记存到「${kbName}」` : '先连接知识库'}>
+        <Icon name="shelf" small />
+        {saving ? '正在存…' : connected && kbName ? '收藏到知识库' : '连接知识库后收藏'}
+      </button>
+      {status && <span className={status.ok ? 'save-done' : 'save-failed'} role="status">
+        {status.ok && <Icon name="check" small />}{status.text}
+      </span>}
+    </div>
+  );
 }

@@ -138,7 +138,8 @@ export function describeCompleteness(completeness: Completeness): string {
   const { found, captured } = completeness.images;
   if (found > 0) {
     if (captured > 0) parts.push(`图片已转述 ${captured}/${found} 张（模型转述，可能有误，并非作者原话）`);
-    if (found > captured) parts.push(`${found - captured} 张图片未读`);
+    // 读图失败不再静默（三期）：说清没看清的图不会被用到。
+    if (found > captured) parts.push(`${found - captured} 张图片没看清，回答不会用到它们`);
   }
   const framesUnread = completeness.frames.found - completeness.frames.captured;
   if (framesUnread > 0) parts.push(`${framesUnread} 个跨来源内嵌页面未读取`);
@@ -147,7 +148,7 @@ export function describeCompleteness(completeness: Completeness): string {
   for (const warning of new Set(completeness.warnings)) {
     if (warning === '有的图片没读到。' && found > captured) continue;
     if (completeness.scope === 'page-text' && warning.startsWith('这一页不太像完整文章')) continue;
-    parts.push(warning.replace('当前这家读不了图。', '当前模型不支持读图。'));
+    parts.push(warning.replace('当前这家读不了图。', '当前选的 AI 不读图，回答不会用到图上的内容'));
   }
   return parts.join('；');
 }
