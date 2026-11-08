@@ -79,7 +79,8 @@ export type Config = {
 };
 
 /** 内容脚本被授权注入后记录的当前页信息（一次工具栏点击的结果）。 */
-export type Pending = { url: string; origin: string; at: number };
+/** 工具栏 / 右键菜单留下的当前页地址；右键“问 WebKnow AI”还会带上那段划词，读完这一页后放进输入框。 */
+export type Pending = { url: string; origin: string; at: number; quote?: string };
 
 const CONFIG_KEY: `local:${string}` = 'local:config';
 const sessionKey = (tabId: number): `session:${string}` => `session:sess:${tabId}`;

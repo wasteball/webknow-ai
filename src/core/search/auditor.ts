@@ -1,3 +1,4 @@
+import { HISTORY } from '../history';
 import { z } from 'zod';
 import { buildContext } from '../blocks';
 import { appError } from '../errors';
@@ -104,8 +105,8 @@ function payload(snapshot: AgentSnapshot, ledger: EvidenceLedger) {
   return {
     runId: ledger.runId, question: snapshot.question.slice(0, LIMITS.maxQuestionChars),
     untrustedIntent: {
-      clarifications: (snapshot.clarifications ?? []).slice(-LIMITS.maxChatTurns).map(boundIntent),
-      history: snapshot.history.slice(-LIMITS.maxHistoryTurns).map(boundIntent),
+      clarifications: (snapshot.clarifications ?? []).slice(-20).map(boundIntent),
+      history: snapshot.history.slice(-HISTORY.recent).map(boundIntent),
     },
     article: { title: snapshot.title, blocks: JSON.parse(article.json) as unknown,
       quote: snapshot.quote, disclosure: snapshot.disclosure },

@@ -4,7 +4,7 @@ import { DEFAULT_LEARN_GOAL, usedLearnGoals } from '../../core/learn-policy';
 import type { Command, PanelState, Reply } from '../../core/protocol';
 import type { QuizQuestion } from '../../core/session';
 import { shouldSubmitComposer } from '../composer';
-import { Busy, ComposerField, ComposerTextarea, Drafting, SuggestRow } from './bits';
+import { Busy, ComposerField, ComposerTextarea, Drafting, Guard, SuggestRow } from './bits';
 import { Conversation } from './Conversation';
 import { LearningEntry as Entry } from './LearningEntry';
 import { QuizMessage } from './QuizMessage';
@@ -128,12 +128,12 @@ export function Learning({ state, send, active = true, searchOn = false, onSearc
     <Conversation active={active} updateKey={updateKey} followRequest={followRequest}>
       {(state.learningHistory ?? []).map((past, i) => <div className="learn-past" key={i}>
         <p className="learn-divider">先前聊过：{past.goal}</p>
-        {past.log.map((entry, j) => <Entry key={`${entry.at}-${j}`} entry={entry} diagrams={diagrams} />)}
+        {past.log.map((entry, j) => <Guard key={`${entry.at}-${j}`}><Entry entry={entry} diagrams={diagrams} /></Guard>)}
       </div>)}
       {learning ? <>
         <p className="learn-divider">{inRound ? '围绕' : '聊过'}：{learning.goal}</p>
-        {learning.log.map((entry, i) => <Entry key={`${entry.role}-${entry.at}-${i}`} entry={entry} diagrams={diagrams}
-          quizContent={inRound && quizRecorded && i === lastQuiz ? quizContent : undefined} />)}
+        {learning.log.map((entry, i) => <Guard key={`${entry.role}-${entry.at}-${i}`}><Entry entry={entry} diagrams={diagrams}
+          quizContent={inRound && quizRecorded && i === lastQuiz ? quizContent : undefined} /></Guard>)}
         {inRound && quiz && !quizRecorded && <article className="msg ai"><div className="said">{quizContent}</div></article>}
         {inRound && current?.kind === 'open' && !openRecorded && <article className="msg ai"><div className="said"><div className="ask-now"><Rich text={current.question} diagrams={false} /></div></div></article>}
       </> : <article className="msg ai"><div className="said"><p>我会先问一个问题。你可以用自己的话回答，答不上来也可以要提示或讲解。</p>

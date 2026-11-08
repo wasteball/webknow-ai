@@ -354,3 +354,41 @@ describe('失败分类按供应商错误码', () => {
     await expect(chatJson({ ...base, fetchImpl: sseOk(body) })).resolves.toEqual({ answer: 1 });
   });
 });
+
+describe('无进展超时（二期）', () => {
+  const pieces = ['{"a":', '1,', '"b":2}'];
+  const slow = (gapMs: number, stallAfter?: number): typeof fetch => {
+    const encoder = new TextEncoder();
+    return (async (_url: unknown, init?: RequestInit) => new Response(new ReadableStream({
+      async start(controller) {
+        init?.signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')));
+        for (const [index, piece] of pieces.entries()) {
+          if (index === stallAfter) return; // 卡住：不再发数据也不关闭
+          await new Promise((r) => setTimeout(r, gapMs));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`));
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      },
+    }), { status: 200 })) as typeof fetch;
+  };
+
+  it('一直在写的长回答：总时长超过空闲上限也不打断', async () => {
+    vi.useFakeTimers();
+    try {
+      const done = chatJson({ ...base, fetchImpl: slow(30_000) });
+      await vi.advanceTimersByTimeAsync(100_000);
+      await expect(done).resolves.toEqual({ a: 1, b: 2 });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('卡住不动：到空闲上限就停，说明是卡住了', async () => {
+    vi.useFakeTimers();
+    try {
+      const done = chatJson({ ...base, fetchImpl: slow(1_000, 1) });
+      const settled = expect(done).rejects.toMatchObject({ code: 'TIMEOUT', message: expect.stringContaining('卡住') });
+      await vi.advanceTimersByTimeAsync(LIMITS.idleTimeoutMs + 2_000);
+      await settled;
+    } finally { vi.useRealTimers(); }
+  });
+});

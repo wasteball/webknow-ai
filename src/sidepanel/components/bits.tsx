@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode, type TextareaHTMLAttributes } from 'react';
+import { Component, useEffect, useLayoutEffect, useRef, type ReactNode, type TextareaHTMLAttributes } from 'react';
 
 import { describeCompleteness, type Completeness } from '../../core/blocks';
 import type { AppError } from '../../core/errors';
@@ -287,4 +287,32 @@ export function Section({ title, children }: { title: string; children: ReactNod
       {children}
     </section>
   );
+}
+
+/**
+ * 错误边界（二期）：某一条消息渲染出错，只影响这一条，其它对话照常；
+ * 包在整个面板外时，至少给一句人话和重新载入，而不是白屏。
+ */
+export class Guard extends Component<{ children: ReactNode; whole?: boolean }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  override componentDidCatch(error: unknown) {
+    console.error('[WebKnow AI] 渲染出错', error);
+  }
+  override render() {
+    if (!this.state.failed) return this.props.children;
+    if (this.props.whole) {
+      return (
+        <div className="banner banner-error" role="alert">
+          <p><Icon name="info" small />界面出了点问题，你的对话都还在。</p>
+          <div className="banner-actions">
+            <button type="button" className="small" onClick={() => location.reload()}>重新载入</button>
+          </div>
+        </div>
+      );
+    }
+    return <p className="aside guard-failed" role="status">这一条没能显示出来，其它对话不受影响。</p>;
+  }
 }

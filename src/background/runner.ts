@@ -20,6 +20,7 @@ import { SEARCH_AGENT_VERSION } from '../core/prompts/search-agent';
 import { toResearchAnswer } from '../core/search/answer';
 import { assertResearchCurrent, executeResearch, permissionOrigins, researchModelSelection } from './research';
 import { hasAskedQuestion, newTopicId, startsNewTopic, topicHistory } from '../core/topic';
+import { condenseHistory } from '../core/history';
 import { prepareQuote, type Quote } from '../core/quote';
 import { browser } from 'wxt/browser';
 import { outboundScope, effectiveSettings } from '../core/settings';
@@ -288,15 +289,33 @@ async function writeBack(
   return mutate(fresh);
 }
 
+/** 流式进度节流（二期）：每 100ms 最多推一次给界面，最后一次总会推出去。 */
+export const PROGRESS_INTERVAL_MS = 100;
+
 function watchProgress(hooks: RunnerHooks, tabId: number, blockIds: readonly string[]) {
   let reasoning = '';
+  let last = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let latest: [number, string, string] = [0, '', ''];
+  const flush = () => {
+    timer = undefined;
+    last = Date.now();
+    const [chars, draft, thought] = latest;
+    reasoning = presentReasoning(thought, blockIds);
+    hooks.onProgress(tabId, chars, draft ? omitBlockIds(draft, blockIds) : '', reasoning);
+  };
   return {
     onProgress(chars: number, draft: string, thought = '') {
-      reasoning = presentReasoning(thought, blockIds);
-      hooks.onProgress(tabId, chars, draft ? omitBlockIds(draft, blockIds) : '', reasoning);
+      latest = [chars, draft, thought];
+      if (timer) return;
+      const wait = PROGRESS_INTERVAL_MS - (Date.now() - last);
+      if (wait <= 0) flush();
+      else timer = setTimeout(flush, wait);
     },
     reasoning() {
-      return reasoning;
+      // 调用方在流结束后才取：先把挂着的最后一次推出去，保证界面和记录一致。
+      if (timer) { clearTimeout(timer); flush(); }
+      return presentReasoning(latest[2], blockIds) || reasoning;
     },
   };
 }
@@ -442,7 +461,7 @@ async function runAsk(
           identity: { tabId, sessionId: current.id, runId, url: current.url, fingerprint: current.fingerprint,
             modelProvider: model.modelProvider, modelId: model.modelId }, thinking: model.thinking,
           searchProviderId: config.search?.providerId, outboundScope: outboundScope(config), question, title: current.title, blocks: structuredClone(current.blocks), quote: frozenQuote,
-          history: topicTurns.slice(-LIMITS.maxHistoryTurns).map(turn => ({ question: turn.question, answer: turn.answer })),
+          history: condenseHistory(topicTurns.map(turn => ({ question: turn.question, answer: turn.answer }))),
           topicId,
           disclosure: describeCompleteness(current.completeness), gate, settings,
           policyVersion: SEARCH_AGENT_VERSION, answerPolicy: resolvePolicy('answer', config) ?? ANSWER_DEFAULT_POLICY,
@@ -477,9 +496,7 @@ async function runAsk(
           url: current.url,
           contextJson: ctx.json,
           disclosure: describeCompleteness(current.completeness),
-          history: topicTurns
-            .slice(-LIMITS.maxHistoryTurns)
-            .map((turn) => ({ question: turn.question, answer: turn.answer })),
+          history: condenseHistory(topicTurns.map((turn) => ({ question: turn.question, answer: turn.answer }))),
           question,
           override: resolvePolicy('answer', config),
           networkContext: { gate, scope: 'article' },
@@ -517,7 +534,7 @@ async function runAsk(
             ...(watch.reasoning() ? { reasoning: watch.reasoning() } : {}),
             at: Date.now(),
           },
-        ].slice(-LIMITS.maxChatTurns),
+        ],
         quote: quote && fresh.quote && (fresh.quote.id ?? fresh.quote.text) === (quote.id ?? quote.text)
           ? null : fresh.quote ?? null,
         state: 'READY',
@@ -609,7 +626,7 @@ async function researchStep(session: PageSession, checkpoint: AgentCheckpoint, s
     activeTopicId: checkpoint.snapshot.topicId ?? fresh.activeTopicId,
     chat: [...fresh.chat, { id: newId('t'), question: checkpoint.snapshot.question, ...answer,
       ...(checkpoint.snapshot.topicId ? { topicId: checkpoint.snapshot.topicId } : {}),
-      quote: quote ?? undefined, followUps: [], at: Date.now() }].slice(-LIMITS.maxChatTurns),
+      quote: quote ?? undefined, followUps: [], at: Date.now() }],
     quote: quote && fresh.quote && (fresh.quote.id ?? fresh.quote.text) === (quote.id ?? quote.text) ? null : fresh.quote ?? null,
     state: 'READY', error: null, updatedAt: Date.now() };
 }
@@ -909,7 +926,7 @@ function learnHistory(learning: LearningState): LearnHistoryItem[] {
       last.mastery = entry.mastery;
     }
   }
-  return pairs.slice(-LIMITS.maxHistoryTurns * 2);
+  return condenseHistory(pairs);
 }
 
 async function callLearn(

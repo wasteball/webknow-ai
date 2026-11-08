@@ -53,6 +53,15 @@ describe('划词提问按钮', () => {
     document.getElementById('wka-quote-ask')?.remove();
   });
 
+  it('扩展更新后的旧页面：点引用提问不会卡在“正在引用…”，而是提示刷新页面', () => {
+    sendMessage.mockImplementationOnce(() => { throw new Error('Extension context invalidated.'); });
+    selectParagraph();
+    window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    quoteButton()?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    expect(quoteButton()?.textContent).toBe('刷新页面后可用');
+    expect(quoteButton()?.disabled).toBe(true);
+  });
+
   it('划完一段会出现引用提问', () => {
     selectParagraph();
     window.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
@@ -189,3 +198,4 @@ describe('划词提问按钮', () => {
     expect(quoteButton()?.textContent).toBe('引用提问');
   });
 });
+

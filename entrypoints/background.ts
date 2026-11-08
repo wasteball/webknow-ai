@@ -4,6 +4,7 @@ import { cleanupDiagrams, cleanupNavigatedDiagram } from '../src/background/diag
 
 import {
   onActionClicked,
+  onContextMenuAsk,
   onPageChanged,
   onPermissionsRemoved,
   onQuoteSelected,
@@ -13,6 +14,8 @@ import {
   registerPanelPort,
   resetAfterUpdate,
 } from '../src/background/router';
+
+const CONTEXT_MENU_ID = 'wka-ask-selection';
 
 export default defineBackground(() => {
   // 监听器必须在顶层同步注册，否则后台被回收重启后会漏掉消息（NFR-004）。
@@ -41,6 +44,11 @@ export default defineBackground(() => {
     void onActionClicked(tab);
   });
 
+  // 右键菜单兜底：划词按钮没出现、或浏览器不让自动打开侧栏时，这条路总能用。
+  browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === CONTEXT_MENU_ID && info.selectionText) void onContextMenuAsk(tab, info.selectionText);
+  });
+
   browser.permissions.onRemoved.addListener(() => { void onPermissionsRemoved(); });
 
   browser.tabs.onRemoved.addListener((tabId) => {
@@ -62,5 +70,9 @@ export default defineBackground(() => {
   // 会话数据本来就只服务于当前浏览会话，更新即作废是符合合同的。
   browser.runtime.onInstalled.addListener(() => {
     void resetAfterUpdate();
+    // 菜单项随安装持久存在；重复创建会报错，先清再建。
+    void browser.contextMenus.removeAll().then(() => browser.contextMenus.create({
+      id: CONTEXT_MENU_ID, title: '问 WebKnow AI', contexts: ['selection'],
+    }));
   });
 });

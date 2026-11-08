@@ -35,7 +35,7 @@ describe('思考档位', () => {
 });
 
 describe('思考请求体', () => {
-  it('DeepSeek 关着时关闭思考，不带强度，输出上限仍是 1200', () => {
+  it('DeepSeek 关着时关闭思考，不带强度，输出上限仍是 3000', () => {
     expect(thinkingRequest({ providerId: 'deepseek', modelId: 'deepseek-flash' })).toEqual({
       thinking: { type: 'disabled' },
       maxTokens: LIMITS.maxOutputTokens,

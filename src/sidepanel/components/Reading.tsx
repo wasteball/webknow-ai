@@ -7,7 +7,7 @@ import type { PanelState, Reply } from '../../core/protocol';
 import type { Command } from '../../core/protocol';
 import { shouldSubmitComposer } from '../composer';
 import { visibleSuggestions } from '../suggest';
-import { Busy, ComposerField, ComposerTextarea, Drafting, Opening, ScopeLine, SourceTag, SuggestRow, Thinking } from './bits';
+import { Busy, ComposerField, ComposerTextarea, Drafting, Guard, Opening, ScopeLine, SourceTag, SuggestRow, Thinking } from './bits';
 import { Icon } from './Icon';
 import { Rich } from './Rich';
 import { Conversation } from './Conversation';
@@ -172,7 +172,7 @@ export function Reading({ state, send, onSearchSettings, active = true, searchOn
         )}
 
         {state.chat.map((turn) => (
-          <Turn key={turn.id} turn={turn} tabId={tabId} send={send} diagrams={diagrams} />
+          <Guard key={turn.id}><Turn turn={turn} tabId={tabId} send={send} diagrams={diagrams} /></Guard>
         ))}
         {row.next.length > 0 && (
           <SuggestRow

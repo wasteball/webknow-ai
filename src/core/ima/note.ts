@@ -1,3 +1,4 @@
+import { HISTORY } from '../history';
 import type { Bubble, ChatTurn, LearningState } from '../session';
 import { LIMITS } from '../limits';
 
@@ -64,7 +65,7 @@ export function buildReadingNote(input: ReadingNoteInput): { title: string; mark
     } else {
       const questions = input.learning.log
         .filter((entry) => entry.role === 'question' || entry.role === 'quiz')
-        .slice(-LIMITS.maxHistoryTurns);
+        .slice(-HISTORY.recent);
       for (const question of questions) {
         parts.push(`- ${sectionHeading(question.text.split('\n')[0] ?? '', 200)}`);
       }

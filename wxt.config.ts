@@ -18,7 +18,8 @@ export default defineConfig({
     description: '在公开文章旁提供短摘要和探索话题，支持向 AI 提问或让 AI 提问；需自备模型 API Key。',
     // activeTab：点工具栏图标时把当前标签页地址交给扩展（无安装警告、不读取浏览历史）。
     // 没有它就拿不到网址，也就不知道该向哪个网站申请读取权限——真实故障就是这样发生的。
-    permissions: ['storage', 'sidePanel', 'scripting', 'activeTab'],
+    // contextMenus：右键“问 WebKnow AI”（划词兜底），安装时没有额外警告。
+    permissions: ['storage', 'sidePanel', 'scripting', 'activeTab', 'contextMenus'],
     host_permissions:
       env.mode === 'e2e'
         ? ['https://api.deepseek.com/*', 'https://open.bigmodel.cn/*', E2E_HOST_PERMISSION, 'https://api.bochaai.com/*', 'https://api.firecrawl.dev/*']

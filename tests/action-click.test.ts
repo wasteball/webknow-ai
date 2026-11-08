@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
-  let pending: { url: string; origin: string; at: number } | null = null;
+  let pending: { url: string; origin: string; at: number; quote?: string } | null = null;
   let session: Record<string, unknown> | null = null;
   return {
     openPanel: vi.fn(async () => {}),
@@ -52,7 +52,7 @@ vi.mock('../src/background/ima', () => ({ hasImaCredentials: vi.fn(async () => f
 vi.mock('../src/background/page', () => ({ extractPage: mocks.extractPage }));
 vi.mock('../src/background/runner', () => ({ handleIntent: vi.fn(), abortRun: vi.fn(), recoverInterruptedRun: mocks.getSession }));
 
-import { buildPanelState, onActionClicked } from '../src/background/router';
+import { buildPanelState, onActionClicked, onContextMenuAsk } from '../src/background/router';
 
 describe('工具栏打开侧栏', () => {
   beforeEach(() => {
@@ -90,5 +90,21 @@ describe('工具栏打开侧栏', () => {
     expect(state.permission).toBe('granted');
     expect(state.phase).toBe('STALE');
     expect(mocks.extractPage).not.toHaveBeenCalled();
+  });
+});
+
+describe('右键“问 WebKnow AI”', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.reset();
+  });
+
+  it('还没读这一页：打开侧栏、记下划词，不读取也不发送正文', async () => {
+    await onContextMenuAsk({ id: 42, url: 'https://example.com/article' }, '这一段我看不懂，想问问');
+    expect(mocks.openPanel).toHaveBeenCalledWith({ tabId: 42 });
+    expect(mocks.extractPage).not.toHaveBeenCalled();
+    const state = await buildPanelState(42);
+    expect(state.phase).toBe('READY_TO_START');
+    expect(state.quote?.text).toBe('这一段我看不懂，想问问');
   });
 });

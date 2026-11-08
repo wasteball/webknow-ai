@@ -306,6 +306,14 @@ export function App() {
                   </button>
                 </div>
               ) : (
+                <>
+                {state.quote && (
+                  <blockquote className="pending-quote">
+                    <span className="pending-quote-label"><Icon name="quote" small />你划的这段</span>
+                    {state.quote.text}
+                    <span className="hint">读完这一页后，它会放进输入框，你可以接着问。</span>
+                  </blockquote>
+                )}
                 <PageEntry
                   pageTitle={state.pageTitle}
                   phase={phase}
@@ -314,6 +322,7 @@ export function App() {
                   askHost={needsPageHost(state.permission, state.error?.code ?? null)}
                   onPick={readPage}
                 />
+                </>
               )}
             </Opening>
           )}

@@ -89,7 +89,7 @@ README 的阅读与学习截图使用模拟内容，只展示当前界面。真�
 
 发布构建的 manifest 只声明：
 
-- `permissions`: `storage`、`sidePanel`、`scripting`、`activeTab`
+- `permissions`: `storage`、`sidePanel`、`scripting`、`activeTab`、`contextMenus`（右键“问 WebKnow AI”，安装时无额外警告）
 - `host_permissions`: `https://api.deepseek.com/*`
 - `optional_host_permissions`: `https://*/*`、`http://*/*`（换页后从侧栏直接点击阅读入口、且工具栏的当前页临时授权已失效时，可能请求覆盖全部 HTTP(S) 网页的可选权限；再次点击工具栏可重新取得当前页 `activeTab` 权限，随后仍须点阅读入口才读正文）
 

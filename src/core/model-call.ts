@@ -169,7 +169,16 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
   if (request.reasoningEffort) body.reasoning_effort = request.reasoningEffort;
   else delete body.reasoning_effort;
   const doFetch = options.fetchImpl ?? fetch;
-  const timeout = AbortSignal.timeout(LIMITS.requestTimeoutMs);
+  // 无进展超时：每收到一段数据就重新计时；硬上限只防费用失控。
+  const idle = new AbortController();
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const touch = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => idle.abort(), LIMITS.idleTimeoutMs);
+  };
+  touch();
+  const hard = AbortSignal.timeout(LIMITS.hardTimeoutMs);
+  const timeout = AbortSignal.any([idle.signal, hard]);
   const combined = AbortSignal.any([signal, timeout]);
 
   let response: Response;
@@ -184,6 +193,7 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
       signal: combined,
     });
   } catch {
+    clearTimeout(idleTimer);
     if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
     if (timeout.aborted) {
       throw appError('TIMEOUT', `等太久了，${provider.name} 一直没回话。这次没有结果，可以再试一次。`, true);
@@ -192,9 +202,11 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
   }
 
   if (!response.ok) {
+    clearTimeout(idleTimer);
     throw fromHttpStatus(response.status, await failureHint(response, provider.name));
   }
   if (!response.body) {
+    clearTimeout(idleTimer);
     throw appError('SERVICE', `${provider.name} 没有回任何内容。这次没有结果，可以再试一次。`, true);
   }
 
@@ -227,6 +239,7 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
   };
   try {
     for (;;) {
+      touch();
       const { done, value } = await reader.read();
       if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
       if (timeout.aborted) throw appError('TIMEOUT', '模型回复超过等待上限。', true);
@@ -236,11 +249,15 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
     absorb(sse.flush());
   } catch {
     if (signal.aborted) throw appError('ABORTED', '已经按你的要求停下来了。');
+    if (hard.aborted) {
+      throw appError('TIMEOUT', `${provider.name} 这次写得太久，已经停下。可以换个小一点的问题再试。`, true);
+    }
     if (timeout.aborted) {
-      throw appError('TIMEOUT', `${provider.name} 回到一半断了。这次没有结果，可以再试一次。`, true);
+      throw appError('TIMEOUT', `${provider.name} 有一阵没有新内容了，像是卡住了。这次没有结果，可以再试一次。`, true);
     }
     throw appError('SERVICE', `读 ${provider.name} 的回复时出错了。可以再试一次。`, true);
   } finally {
+    clearTimeout(idleTimer);
     reader.releaseLock();
   }
 
@@ -249,7 +266,7 @@ export async function chatJson(options: ChatOptions): Promise<unknown> {
     // 截断必须如实说明，不能把半截 JSON 当成完整结果（FR-018）。
     throw appError(
       'BAD_OUTPUT',
-      '这一页的内容太多，回答写到一半就到上限了。我们没有把半截内容当成完整结果；换一篇短一点的文章再试。',
+      '这次回答太长，写到一半到了上限，没有把半截内容当成结果。问题还在输入框里，可以直接再发一次，或者问得具体一点。',
       true,
     );
   }

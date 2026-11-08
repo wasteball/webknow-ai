@@ -12,7 +12,7 @@ import { validateCustomSkill } from '../core/skills';
 import { BUILTIN_SEARCH_PROVIDERS, searchWithProvider } from '../core/search/registry';
 import { DIRECT_READ_VERIFIED } from '../core/search/source-reader';
 import { sameDocument } from '../core/page-drift';
-import { prepareQuote } from '../core/quote';
+import { clipQuote, prepareQuote } from '../core/quote';
 import { createSession, emptySession, markStale } from '../core/session';
 import { hasImaCredentials, listImaKnowledgeBases, saveReadingToIma } from './ima';
 import { assertOutboundConfirmation, listModels, testConnection } from './model';
@@ -167,7 +167,7 @@ export async function buildPanelState(tabId: number | null): Promise<PanelState>
         : session.learning.current,
     } : null,
     learningHistory: session?.learningHistory ?? [],
-    quote: session?.quote ?? null,
+    quote: session?.quote ?? (pending?.quote ? { text: pending.quote, blockId: null } : null),
     researchPending: session?.researchPending,
     researchDetails: session?.researchCheckpoint
       ? currentAgentEvent(tabId)?.details ?? researchSummary(session.researchCheckpoint) : undefined,
@@ -633,8 +633,12 @@ async function startSession(tabId: number): Promise<Reply> {
       );
     }
     const payload = await extractPage(tabId);
-    const session = createSession(tabId, payload);
+    const created = createSession(tabId, payload);
+    // 右键“问 WebKnow AI”时先记下的那段划词：读完这一页后才定位并放进输入框。
+    const quote = pending?.quote ? prepareQuote(pending.quote, created.blocks) : null;
+    const session = quote ? { ...created, quote } : created;
     await putSession(session);
+    if (pending?.quote) await setPending(tabId, { url: pending.url, origin: pending.origin, at: pending.at });
     await watchPage(tabId);
     await pushState(tabId);
   } catch (error) {
@@ -721,6 +725,27 @@ export async function onActionClicked(tab: { id?: number; url?: string }): Promi
   const origin = url ? originOf(url) : null;
   if (url && origin) await setPending(tabId, { url, origin, at: Date.now() });
 
+  await pushState(tabId);
+}
+
+/**
+ * 右键“问 WebKnow AI”（二期，划词的兜底）：菜单点击是用户手势，能可靠打开侧栏，
+ * 并像工具栏点击一样给当前页临时读取权。已经读过这一页就直接放进输入框；
+ * 没读过就先记下，等用户点开始阅读（仍走外发确认）后再放进去——不会自动读取或发送。
+ */
+export async function onContextMenuAsk(tab: { id?: number; url?: string } | undefined, text: string): Promise<void> {
+  const tabId = tab?.id;
+  if (tabId === undefined) return;
+  // sidePanel.open 必须在手势里同步调用，前面不能有 await。
+  void browser.sidePanel.open({ tabId }).catch(() => {});
+  const session = await getSession(tabId);
+  if (session && (session.state === 'READY' || session.state === 'LEARNING')) {
+    await saveQuote(tabId, text);
+    return;
+  }
+  const url = tab?.url;
+  const origin = url ? originOf(url) : null;
+  if (url && origin) await setPending(tabId, { url, origin, at: Date.now(), quote: clipQuote(text) });
   await pushState(tabId);
 }
 

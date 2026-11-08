@@ -20,7 +20,8 @@ export const LIMITS = {
   /** 单轮输入输出上限。 */
   maxQuestionChars: 500,
   maxLearningAnswerChars: 1_000,
-  maxOutputTokens: 1_200,
+  /** 二期由 1200 提到 3000：长回答“说到一半断了”的根因是这个上限太小。 */
+  maxOutputTokens: 3_000,
   /**
    * 打开思考后的输出上限。思考文本和最终 JSON 共用这一个数，仍远小于文档里的 64K/128K。
    * 暂定，待真实请求量过再冻；超出后仍按长度截断整段作废。
@@ -30,17 +31,17 @@ export const LIMITS = {
   maxTeachingPromptChars: 8_000,
 
   /**
-   * 一次「AI 问」里最多连着问多少轮。这不是产品设置，是防死循环的护栏：
-   * 每一轮都要等用户先回答，所以真实对话根本碰不到这个数——伴随式的对话
-   * 什么时候结束由用户和内容决定，不由一个「一轮几题」的配额决定。
+   * 一次「AI 问」里最多连着问多少轮：只是防死循环的护栏。每轮都要等用户先回答，
+   * 真实对话碰不到它（二期起由 30 放宽到 200；对话本身不再按轮数截断）。
    */
-  learnRoundsCap: 30,
-  /** 同一标签页会话保留的问答轮数上限（FR-039 硬上限）。 */
-  maxChatTurns: 20,
-  /** 发送给模型的历史轮数（多退少补的上下文窗口，不是留存上限）。 */
-  maxHistoryTurns: 6,
+  learnRoundsCap: 200,
 
-  /** 超时、重试与并发：有限、可见、不允许形成费用失控（FR-035/FR-039）。 */
+  /**
+   * 超时（二期）：按“多久没有新进展”判断，不按整段总时长——长回答一直在写就不打断。
+   * 硬上限只防费用失控。requestTimeoutMs 仍是联网研究各步骤的单步上限。
+   */
+  idleTimeoutMs: 45_000,
+  hardTimeoutMs: 300_000,
   requestTimeoutMs: 90_000,
   maxRetries: 1,
   retryBackoffMs: 1_200,

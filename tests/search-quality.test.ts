@@ -57,7 +57,7 @@ it('keeps exact test origins separate from production fixed permissions', async 
   expect(production.host_permissions).toEqual(['https://api.deepseek.com/*']);
   expect(e2e.host_permissions).toEqual(['https://api.deepseek.com/*', 'https://open.bigmodel.cn/*',
     'http://127.0.0.1/*', 'https://api.bochaai.com/*', 'https://api.firecrawl.dev/*']);
-  expect(production.permissions).toEqual(['storage', 'sidePanel', 'scripting', 'activeTab']);
+  expect(production.permissions).toEqual(['storage', 'sidePanel', 'scripting', 'activeTab', 'contextMenus']);
   expect(e2e.permissions).toEqual(production.permissions);
 });
 

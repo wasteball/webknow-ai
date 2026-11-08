@@ -194,3 +194,19 @@ for (const scheme of ['light', 'dark'] as const) {
     }
   });
 }
+
+test('二期：连续 50 轮对话一条不丢，最新的在底部，接着问仍出现', async () => {
+  await setConfig(true);
+  const chat = Array.from({ length: 50 }, (_, i) => ({
+    id: `t${i}`, question: `第 ${i + 1} 个问题`, answer: `第 ${i + 1} 个回答。`.repeat(6), source: 'original',
+    citations: [], references: [], unanswered: [], at: i,
+    followUps: i === 49 ? [{ id: 'f', question: '最后一轮的接着问', kind: 'reason' }] : [],
+  }));
+  const panel = await open(360, 'light', { ...READY, chat, learning: null });
+  await expect(panel.getByText('第 1 个问题', { exact: true })).toHaveCount(1);
+  await expect(panel.getByText('第 50 个问题', { exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: '最后一轮的接着问' })).toBeVisible();
+  await expect(panel.locator('#mode-panel-qa .msg.user')).toHaveCount(50);
+  await noOverflow(panel);
+  await panel.close();
+});

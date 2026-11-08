@@ -58,13 +58,29 @@ function ask(text: string): void {
     button.title = message;
     (globalThis as typeof globalThis & { [SKIP_KEY]?: number })[SKIP_KEY] = 0;
   };
-  void browser.runtime.sendMessage({ type: 'quoteSelected', text: clipQuote(text) }).then(
+  // 扩展更新或重新加载后，旧页面里的这段脚本已和扩展断开：sendMessage 会同步抛错，
+  // 不处理就会一直停在“正在引用…”。直接告诉用户刷新页面。
+  let sent: Promise<unknown>;
+  try {
+    sent = browser.runtime.sendMessage({ type: 'quoteSelected', text: clipQuote(text) });
+  } catch {
+    stale(button, host);
+    return;
+  }
+  void (sent as Promise<{ ok?: boolean; error?: { message?: string } } | undefined>).then(
     (reply: { ok?: boolean; error?: { message?: string } } | undefined) => {
       if (!reply?.ok) { retry(reply?.error?.message ?? '引用没有加入，请再试一次。'); return; }
       if (document.getElementById(HOST_ID) === host) hide();
     },
-    () => retry('连接暂时不可用，请重试引用。'),
+    (error: unknown) => (String(error).includes('context invalidated') ? stale(button, host) : retry('连接暂时不可用，请重试引用。')),
   );
+}
+
+function stale(button: HTMLButtonElement, host: HTMLElement): void {
+  host.dataset.pending = 'false';
+  button.disabled = true;
+  button.textContent = '刷新页面后可用';
+  button.title = 'WebKnow AI 刚更新过，刷新这个页面后就能继续划词提问；也可以右键选「问 WebKnow AI」。';
 }
 
 function place(host: HTMLElement, rect: DOMRect): void {
