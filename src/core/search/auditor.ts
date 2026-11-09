@@ -53,7 +53,7 @@ const EVIDENCE_SYSTEM = `${COMMON_SYSTEM}
 
 const ANSWER_SYSTEM = `${COMMON_SYSTEM}
 审查 candidate 是否回答当前问题及澄清后的意图，是否遗漏必要信息，是否准确披露冲突、未知日期、旧证据与未回答事项。
-逐条列出每项外部事实 claims，给出实际支持它的 sourceIds；不能略去无依据事实以获得通过。
+逐条列出每项外部事实 claims，给出实际支持它的 sourceIds（只能是 sr_ 开头的来源编号）；不能略去无依据事实以获得通过。文章里写到的事实不放进 claims，它们由 candidate.citations 核对；文章没有写、也没有来源支持的事实，才以空 sourceIds 列入 claims。
 文章事实用 candidate.citations 对应的文章块核对。source=original 不得夹带外部资料或外部事实。
 source=extended 的接受结果必须逐条有外部事实支持，且 sourceIds 出现在 candidate.references 中；引用不能靠删除后继续接受。
 每项外部事实用 temporalScope 标明 requested（当前问题请求的时间/状态范围）或 background（答案明确说明的历史/背景）；省略按 requested 处理。
@@ -62,6 +62,22 @@ source=extended 的接受结果必须逐条有外部事实支持，且 sourceIds
 输出严格结构 {decision:"accept"|"revise"|"research",claims:[{text,sourceIds,temporalScope?:"requested"|"background"}],missing:[string],conflicts:[string],freshness:"verified"|"date_unknown"|"stale"|"not_applicable"}。
 accept 仅限文本支持全部事实且诚实披露局限；可接受明确披露 date_unknown/stale 的部分回答。
 措辞、遗漏或披露问题用 revise；需要新的外部证据用 research。不得用一句通过代替逐条审查，不得输出额外字段。`;
+
+/**
+ * Auditors sometimes list article facts under claims with article block IDs (b_*). Article facts
+ * are checked via candidate.citations, not external sources: drop those claims instead of failing
+ * the whole answer. A claim mixing block IDs and source IDs keeps only its source IDs.
+ */
+function withoutArticleClaims(value: unknown, blockIds: Set<string>): unknown {
+  if (!value || typeof value !== 'object' || !Array.isArray((value as { claims?: unknown }).claims)) return value;
+  const claims = ((value as { claims: unknown[] }).claims).flatMap(claim => {
+    const ids = (claim as { sourceIds?: unknown })?.sourceIds;
+    if (!Array.isArray(ids)) return [claim];
+    const external = ids.filter(id => typeof id !== 'string' || !blockIds.has(id));
+    return ids.length && !external.length ? [] : [{ ...(claim as object), sourceIds: external }];
+  });
+  return { ...value, claims };
+}
 
 function badOutput(): never {
   throw appError('BAD_OUTPUT', '研究审查结果无效，没有采用本轮回答。');
@@ -156,7 +172,7 @@ export async function auditAnswer(input: {
     (candidate.source === 'original' && candidate.references.length > 0)) badOutput();
   const messages: Message[] = [{ role: 'system', content: ANSWER_SYSTEM },
     { role: 'user', content: JSON.stringify({ ...payload(input.snapshot, input.ledger), candidate }) }];
-  const value = await input.callJson(messages, input.signal);
+  const value = withoutArticleClaims(await input.callJson(messages, input.signal), blockIds);
   assertActive(input.signal);
   const parsed = AuditResultSchema.safeParse(value);
   if (!parsed.success) badOutput();
@@ -165,7 +181,9 @@ export async function auditAnswer(input: {
   if (supportingIds.some(id => !sources.has(id) || sources.get(id)!.decision === 'rejected') ||
     (candidate.source === 'original' && supportingIds.length > 0)) badOutput();
   if (result.decision === 'accept') {
-    if (supportingIds.some(id => !candidate.references.includes(id))) badOutput();
+    // Support from adopted sources the answer forgot to reference: ask for a revision, not a hard failure.
+    if (supportingIds.some(id => !candidate.references.includes(id))) return { ...result, decision: 'revise',
+      missing: [...new Set([...result.missing, '回答用到的来源需要写进 references。'])].slice(0, 20) };
     const unsupported = result.claims.some(claim => claim.sourceIds.length === 0) ||
       (candidate.source === 'extended' && result.claims.length === 0);
     const undecided = [...candidate.references, ...supportingIds].some(id => sources.get(id)!.decision !== 'accepted');

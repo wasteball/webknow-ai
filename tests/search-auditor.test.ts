@@ -173,10 +173,16 @@ describe('fixed independent auditors', () => {
     await expect(auditAnswer({ ...input(), candidate, callJson })).rejects.toMatchObject({ code: 'BAD_OUTPUT' });
   });
 
-  it('requires claim support to be cited in the candidate', async () => {
+  it('claim support not cited in the candidate asks for a revision instead of failing the run', async () => {
     const callJson = vi.fn().mockResolvedValue({ ...audit, claims: [{ text: '事实', sourceIds: ['sr_2'] }] });
     await expect(auditAnswer({ ...input(), ledger: ledger([source, { ...source, sourceId: 'sr_2' }]), candidate, callJson }))
-      .rejects.toMatchObject({ code: 'BAD_OUTPUT' });
+      .resolves.toMatchObject({ decision: 'revise' });
+  });
+
+  it('article facts listed with article block IDs are dropped, not a format failure', async () => {
+    const callJson = vi.fn().mockResolvedValue({ ...audit, claims: [{ text: '试点只有三个团队。', sourceIds: ['b_0'] }], freshness: 'not_applicable' });
+    await expect(auditAnswer({ ...input(), candidate: { ...candidate, answer: '试点只有三个团队。', source: 'original', references: [], citations: ['b_0'], freshness: 'not_applicable' }, callJson }))
+      .resolves.toMatchObject({ decision: 'accept', claims: [] });
   });
 
   it.each([

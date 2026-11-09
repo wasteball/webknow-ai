@@ -102,7 +102,7 @@ export function evaluateSearchGate(input: {
   if (article && !explicit) { level = 'not_needed'; reasons.push('本轮只处理文章内容；文中的时间词不是实时检索请求。'); }
   else if (missingEntity) { level = 'ambiguous'; reasons.push('缺少可确定的主体，先澄清实体及必要的地区。'); }
   else if (explicit || live) { level = 'required'; reasons.push(explicit ? '用户明确要求外部查证或检索。' : '本轮需要核验当前或最新事实。'); }
-  else if (/背景|比较|对比|外部|资料|\d{4}\s*年|政策|价格|版本|background|compare/i.test(question)) {
+  else if (/背景|比较|对比|外部|资料|\d{4}\s*年|政策|价格|版本|什么是\s*\S|(?<![这那它])是(?:什么|啥)|的定义|background|compare|what (?:is|are|does) (?!this|that|it)/i.test(question)) {
     level = 'recommended'; reasons.push('问题涉及文章外事实或补充资料。');
   } else { level = 'ambiguous'; reasons.push('无法确定是否只围绕文章，先澄清信息范围。'); }
 
