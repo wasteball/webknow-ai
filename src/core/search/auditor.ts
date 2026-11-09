@@ -61,7 +61,9 @@ source=extended 的接受结果必须逐条有外部事实支持，且 sourceIds
 所有接受答案的外部支持和 references 必须来自 decision=accepted 的已采用来源；candidate 尚待评估，不能当作已核验依据。
 输出严格结构 {decision:"accept"|"revise"|"research",claims:[{text,sourceIds,temporalScope?:"requested"|"background"}],missing:[string],conflicts:[string],freshness:"verified"|"date_unknown"|"stale"|"not_applicable"}。
 accept 仅限文本支持全部事实且诚实披露局限；可接受明确披露 date_unknown/stale 的部分回答。
-措辞、遗漏或披露问题用 revise；需要新的外部证据用 research。不得用一句通过代替逐条审查，不得输出额外字段。`;
+措辞、遗漏或披露问题用 revise；需要新的外部证据用 research。不得用一句通过代替逐条审查，不得输出额外字段。
+每个来源的发布日期、是否读过正文、来源类型由界面在回答下面逐条列出，回答正文不必逐项复述；不要只因这些元信息没写进正文就 revise。
+revise 只用于实质问题：事实没有来源支持、答错或答偏了问题、把网上的话说成作者原话、问“最新”却没说明无法确认最新。`;
 
 /**
  * Auditors sometimes list article facts under claims with article block IDs (b_*). Article facts

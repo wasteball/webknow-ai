@@ -39,5 +39,6 @@ export const AgentActionSchema = z.discriminatedUnion('type', [
     citations: z.array(id).max(LIMITS.maxBlocks), references: sourceIds(0),
     unanswered: z.array(text(500)).max(20),
     freshness: z.enum(['verified', 'date_unknown', 'stale', 'not_applicable']),
+    noSearchReason: text(300).optional(),
   }).strict(),
 ]) satisfies z.ZodType<AgentAction>;

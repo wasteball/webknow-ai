@@ -77,7 +77,7 @@ export function SearchSettings({ state, send }: { state: PanelState; send: Send 
           >
             <strong>
               {provider.name}
-              {!provider.configFields.length ? ' · 免费' : ''}
+              {provider.configFields.every((field) => !field.required) ? ' · 免费' : ''}
             </strong>
             <span>{provider.description}</span>
           </button>
@@ -86,10 +86,10 @@ export function SearchSettings({ state, send }: { state: PanelState; send: Send 
       {selected && (
         <>
           <p className="hint">{selected.description}</p>
-          {!selected.configFields.length && (
+          {selected.configFields.every((field) => !field.required) && (
             <p className="hint">
-              这个不用注册也不用填任何东西。它直接读对方的搜索结果页，所以对方改版时可能失效——
-              真失效了，回答会照实说“这次只依据文章本身”，不会拿别的东西充数。
+              这个不用注册也能用。免费额度用完或对方改版时可能暂时搜不了——
+              那时回答会照实说“这次只依据文章本身”，并告诉你原因，不会拿别的东西充数。
             </p>
           )}
           {selected.configFields.map((field) => (

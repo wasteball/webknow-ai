@@ -17,6 +17,7 @@ const emptyAssessment = { sources: [], missing: ['缺少版本信息'], conflict
 const finish: FinishAction = { type: 'finish_answer', answer: '根据网络资料，Atlas 3 是当前版本。', source: 'extended', citations: [], references: ['sr_r1_1'], unanswered: [], freshness: 'verified' };
 const accept = { decision: 'accept', claims: [{ text: 'Atlas 3 is current.', sourceIds: ['sr_r1_1'] }], missing: [], conflicts: [], freshness: 'verified' };
 const unknown: FinishAction = { type: 'finish_answer', answer: '无法确认最新版本。', source: 'unknown', citations: [], references: [], unanswered: ['最新版本'], freshness: 'not_applicable' };
+const articleOnly: FinishAction = { type: 'finish_answer', answer: '试点只有三个团队。', source: 'original', citations: ['b_0'], references: [], unanswered: [], freshness: 'not_applicable', noSearchReason: '测试脚本：文章已能回答。' };
 const acceptUnknown = { decision: 'accept', claims: [], missing: [], conflicts: [], freshness: 'not_applicable' };
 const run = (deps: AgentDependencies, checkpoint = checkpointFixture(), abortSignal = signal()) => runResearch({ checkpoint, deps, signal: abortSignal });
 
@@ -103,7 +104,7 @@ it.each([['deep', 5, 12, 3], ['quick', 3, 8, 2]] as const)('bounds %s searches, 
   expect(deps.search).toHaveBeenCalledTimes(searches);
   expect(result.checkpoint.actions).toBe(actions);
   const cp = checkpointFixture(); cp.snapshot.settings.depth = depth;
-  const d = scriptedDependencies(Array.from({ length: 10 }, () => [unknown, { ...acceptUnknown, decision: 'revise', missing: ['需要说明限制'] }]).flat());
+  const d = scriptedDependencies(Array.from({ length: 10 }, () => [articleOnly, { ...acceptUnknown, decision: 'revise', missing: ['需要说明限制'] }]).flat());
   const revised = await run(d, cp);
   expect(revised.checkpoint.audits).toBe(audits);
   expect(revised).toMatchObject({ kind: 'finished', degraded: true, answer: { answer: '这次没有核验成功' } });
@@ -242,7 +243,7 @@ it('repairs a finish citing known unadopted evidence without returning its draft
 
 it('retains article-only disclosure when the draft has the maximum allowed length', async () => {
   const cp = checkpointFixture(); cp.waiting = ask as AgentCheckpoint['waiting'];
-  const deps = scriptedDependencies([{ ...unknown, answer: '字'.repeat(8000) }, acceptUnknown]);
+  const deps = scriptedDependencies([{ ...articleOnly, answer: '字'.repeat(8000) }, acceptUnknown]);
   deps.callJson = vi.fn(deps.callJson);
   const result = await runResearch({ checkpoint: cp, deps, signal: signal(), resume: { mode: 'article', text: '只看文章' } });
   expect(result.kind).toBe('finished');
@@ -311,7 +312,7 @@ it('allows a different retrieval dimension after the wording family closes', asy
 
 it('does not return an accepted answer after the final event handler stops the run', async () => {
   const controller = new AbortController();
-  const deps = scriptedDependencies([unknown, acceptUnknown], { onEvent: event => { if (event.reason === 'complete') controller.abort(); } });
+  const deps = scriptedDependencies([articleOnly, acceptUnknown], { onEvent: event => { if (event.reason === 'complete') controller.abort(); } });
   await expect(run(deps, checkpointFixture(), controller.signal)).rejects.toMatchObject({ code: 'ABORTED' });
 });
 
@@ -469,4 +470,35 @@ describe('async boundaries', () => {
     });
     await expect(run(deps)).rejects.toMatchObject({ code: 'STALE_PAGE' });
   });
+});
+
+it('联网打开时，不搜索又不写理由的回答会被退回，不能悄悄不搜', async () => {
+  const silent: FinishAction = { ...articleOnly, noSearchReason: undefined };
+  const checkpoint = checkpointFixture(); checkpoint.snapshot.gate = { ...checkpoint.snapshot.gate, mustSearch: false, level: 'recommended' };
+  const deps = scriptedDependencies([silent, search, assessment, finish, accept], { search: vi.fn(async () => batch) });
+  const result = await run(deps, checkpoint);
+  expect(deps.search).toHaveBeenCalledTimes(1);
+  expect(result.checkpoint.feedback.some(text => text.includes('noSearchReason'))).toBe(true);
+});
+
+it('联网打开、文章已能回答时，写明理由就可以不搜', async () => {
+  const checkpoint = checkpointFixture(); checkpoint.snapshot.gate = { ...checkpoint.snapshot.gate, mustSearch: false, level: 'recommended' };
+  const deps = scriptedDependencies([articleOnly, acceptUnknown], { search: vi.fn(async () => batch) });
+  const result = await run(deps, checkpoint);
+  expect(deps.search).not.toHaveBeenCalled();
+  expect(result).toMatchObject({ kind: 'finished', answer: { noSearchReason: '测试脚本：文章已能回答。' } });
+});
+
+it('没有得到审查通过的回答时标记 failed，交给调用方换成只依据文章的回答', async () => {
+  const cp = checkpointFixture();
+  const d = scriptedDependencies(Array.from({ length: 10 }, () => [articleOnly, { ...acceptUnknown, decision: 'revise', missing: ['需要说明限制'] }]).flat());
+  expect(await run(d, cp)).toMatchObject({ kind: 'finished', failed: true });
+});
+
+it('联网打开时，说“不用搜”却答不出来（unknown）会被退回去搜', async () => {
+  const checkpoint = checkpointFixture(); checkpoint.snapshot.gate = { ...checkpoint.snapshot.gate, mustSearch: false, level: 'ambiguous' };
+  const deps = scriptedDependencies([unknown, search, assessment, finish, accept], { search: vi.fn(async () => batch) });
+  const result = await run(deps, checkpoint);
+  expect(deps.search).toHaveBeenCalledTimes(1);
+  expect(result).toMatchObject({ kind: 'finished', answer: finish });
 });

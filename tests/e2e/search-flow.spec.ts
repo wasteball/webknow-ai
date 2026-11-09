@@ -43,8 +43,9 @@ test('search settings retain tool configuration without research controls', asyn
     await expect(radios.nth(3)).toContainText(/DuckDuckGo/);
     await expect(radios.nth(4)).toContainText(/SearXNG/);
     await radios.nth(1).click();
-    await expect(settings.getByText(/不用注册也不用填任何东西/)).toBeVisible();
-    await expect(settings.getByLabel('API Key', { exact: true })).toBeHidden();
+    await expect(settings.getByText(/不用注册也能用/)).toBeVisible();
+    // Firecrawl 的 Key 是可选的：匿名额度用完时才需要。
+    await expect(settings.getByLabel(/API Key（可选/)).toBeVisible();
     await expect(settings.getByLabel('实例地址')).toBeHidden();
     await expect(settings.getByRole('button', { name: '授权并启用' })).toBeEnabled();
     await settings.getByRole('radio', { name: /Tavily/ }).click();

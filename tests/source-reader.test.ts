@@ -135,7 +135,9 @@ it('Firecrawl content adapter uses the verified fixed endpoint, sanitizes and bo
   expect(fetchImpl).toHaveBeenCalledWith('https://api.firecrawl.dev/v2/scrape', expect.objectContaining({ method: 'POST', credentials: 'omit', redirect: 'error', signal: expect.any(AbortSignal) }));
   const init = fetchImpl.mock.calls[0]?.[1];
   expect(JSON.parse(init?.body as string)).toEqual({ url: 'https://example.com/article', formats: ['markdown'] });
-  expect(JSON.stringify(init)).not.toContain('must-not-send');
+  // 用户填的 Firecrawl Key 只放在发给 Firecrawl 自己的 Authorization 头里，不进请求体（不会转给被读取的网页）。
+  expect(init?.body as string).not.toContain('must-not-send');
+  expect(new Headers(init?.headers).get('authorization')).toBe('Bearer must-not-send');
   expect(result[0]).toMatchObject({ sourceId: 'sr_r1_1', text: 'Public text', publishedAt: null, status: 'read' });
 });
 

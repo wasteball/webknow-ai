@@ -2,6 +2,9 @@ import { condenseHistory, HISTORY } from '../history';
 
 /** 笔记里问答部分的总字数上限。 */
 const NOTE_CHAT_BUDGET = 20_000;
+/** 原文部分的字数上限：长文截断并说明，完整版看原文链接。 */
+const NOTE_ARTICLE_BUDGET = 60_000;
+import type { EvidenceBlock } from '../blocks';
 import type { Bubble, ChatTurn, LearningState } from '../session';
 import { LIMITS } from '../limits';
 
@@ -18,7 +21,25 @@ export type ReadingNoteInput = {
   bubbles: Bubble[];
   chat: ChatTurn[];
   learning: LearningState | null;
+  /** 这一页提取到的正文。原文是原始材料，笔记先放原文，再放读后的衍生内容。 */
+  blocks?: EvidenceBlock[];
 };
+
+/** 把正文块还原成可读的原文：标题、段落、列表。图片转述不是作者原文，不放进来。 */
+export function articleText(blocks: EvidenceBlock[], budget = NOTE_ARTICLE_BUDGET): { text: string; truncated: boolean } {
+  const lines: string[] = [];
+  let used = 0;
+  for (const block of blocks) {
+    if (block.role === 'image') continue;
+    const content = line(block.content).replace(/\n+/g, ' ');
+    if (!content) continue;
+    const text = block.role === 'heading' ? `### ${content}` : block.role === 'list-item' ? `- ${content}` : content;
+    if (used + text.length > budget) return { text: lines.join('\n'), truncated: true };
+    lines.push(text);
+    used += text.length;
+  }
+  return { text: lines.join('\n'), truncated: false };
+}
 
 function line(value: string): string {
   return value.replaceAll('\r', '').trim();
@@ -39,6 +60,14 @@ export function buildReadingNote(input: ReadingNoteInput): { title: string; mark
   parts.push(`# ${title}`);
   parts.push(`> 原文：${input.url}`);
   parts.push(`> 由WebKnow AI保存于 ${stamp}`);
+
+  const article = input.blocks?.length ? articleText(input.blocks) : null;
+  if (article?.text) {
+    parts.push('\n## 原文');
+    parts.push(article.text);
+    if (article.truncated) parts.push('（原文较长，这里只存了前面一部分，完整内容请看上方原文链接。）');
+    parts.push('\n---\n\n# 我的阅读笔记');
+  }
 
   parts.push('\n## 这篇文章讲了什么');
   parts.push(sectionHeading(input.summary, 2_000));

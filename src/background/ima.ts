@@ -93,7 +93,7 @@ async function writeNote(client: ImaClient, session: PageSession): Promise<void>
     summary: session.guide?.summary ?? '',
     bubbles: session.guide?.bubbles ?? [],
     chat: session.chat,
-    learning: session.learning,
+    learning: session.learning, blocks: session.blocks,
   });
   await client.importDoc(title, markdown);
 }

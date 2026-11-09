@@ -174,7 +174,7 @@ it('opening completed research details preserves scroll position, draft and loca
   Object.defineProperties(scroll, { scrollHeight: { value: 2000 }, clientHeight: { value: 400 } });
   scroll.scrollTop = 150;
   fireEvent.scroll(scroll);
-  const summary = screen.getByText('本轮搜索详情');
+  const summary = screen.getByText('查看来源与搜索过程');
   fireEvent.click(summary);
   expect(scroll.scrollTop).toBe(150);
   expect(input.value).toBe('保留草稿');
@@ -201,7 +201,7 @@ it.each([600, 150])('details resize preserves scroll %s while messages and lates
     Object.defineProperties(scroll, { scrollHeight: { get: () => height }, clientHeight: { value: 400 } });
     scroll.scrollTop = position;
     fireEvent.scroll(scroll);
-    const summary = screen.getByText('本轮搜索详情');
+    const summary = screen.getByText('查看来源与搜索过程');
     fireEvent.click(summary);
     height = 1600;
     act(resize);

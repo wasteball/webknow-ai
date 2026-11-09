@@ -38,7 +38,8 @@ export function toResearchAnswer(outcome: Extract<AgentOutcome, { kind: 'finishe
     webReferences.map(reference => ({ ...reference, snippet: '' })));
   if (!cleaned.ok) throw cleaned.error;
   // Audit owns claim-scoped freshness. Historical background must not invalidate requested-time support here.
-  const research = researchSummary(outcome.checkpoint, candidate.freshness, outcome.degraded);
+  const research = { ...researchSummary(outcome.checkpoint, candidate.freshness, outcome.degraded),
+    ...(candidate.noSearchReason && !outcome.checkpoint.ledger.attempts.length ? { noSearchReason: candidate.noSearchReason.trim() } : {}) };
   return { answer: cleaned.value.answer, source: candidate.source, citations: citations.value,
     references, unanswered: cleaned.value.unanswered, webReferences, research };
 }

@@ -39,7 +39,7 @@ export async function saveReadingToFeishu(session: PageSession): Promise<{ space
   const { title, markdown } = buildReadingNote({
     title: session.title, url: session.url, savedAt: Date.now(),
     summary: session.guide?.summary ?? '', bubbles: session.guide?.bubbles ?? [],
-    chat: session.chat, learning: session.learning,
+    chat: session.chat, learning: session.learning, blocks: session.blocks,
   });
   try {
     const { documentId } = await client.createDoc(spaceId, title);

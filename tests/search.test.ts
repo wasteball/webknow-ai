@@ -231,7 +231,21 @@ describe('免 Key 搜索供应商', () => {
       new Response(JSON.stringify({ error: 'rate limited' }), { status: 429 })) as unknown as typeof fetch;
     await expect(
       firecrawl.search({ query: 'q', count: 3, signal, config: {}, fetchImpl }),
-    ).rejects.toThrow(/匿名额度可能已被限流/);
+    ).rejects.toThrow(/额度用完被限流/);
+  });
+
+  it('Firecrawl：填了 Key 才带 Authorization，且只发给 Firecrawl', async () => {
+    const seen: { url: string; auth: string | null }[] = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      seen.push({ url, auth: new Headers(init.headers).get('authorization') });
+      return new Response(JSON.stringify({ data: { web: [] } }), { status: 200 });
+    }) as unknown as typeof fetch;
+    await firecrawl.search({ query: 'q', count: 3, signal, config: {}, fetchImpl });
+    await firecrawl.search({ query: 'q', count: 3, signal, config: { apiKey: ' fc-1 ' }, fetchImpl });
+    expect(seen).toEqual([
+      { url: 'https://api.firecrawl.dev/v2/search', auth: null },
+      { url: 'https://api.firecrawl.dev/v2/search', auth: 'Bearer fc-1' },
+    ]);
   });
 
   it('注册表：免 Key 供应商排在最前，且不需要任何凭证', () => {
@@ -239,7 +253,7 @@ describe('免 Key 搜索供应商', () => {
     const ids = BUILTIN_SEARCH_PROVIDERS.map((provider) => provider.id);
     expect(ids.slice(0, 3)).toEqual(['firecrawl', 'bing', 'duckduckgo']);
     for (const provider of BUILTIN_SEARCH_PROVIDERS.slice(0, 3)) {
-      expect(provider.configFields).toEqual([]);
+      expect(provider.configFields.every(field => !field.required)).toBe(true);
       expect(provider.hosts({}).length).toBeGreaterThan(0);
     }
     // 自备服务的三个仍在，作为备选。

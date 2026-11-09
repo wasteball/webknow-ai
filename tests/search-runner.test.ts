@@ -58,6 +58,22 @@ beforeEach(() => {
 afterEach(async () => { abortRun(7); await recoverInterruptedRun(7); });
 
 describe('research lifecycle through handleIntent', () => {
+  it('联网没得到审查通过的回答时，改用只依据文章的回答，并写明没搜成的原因', async () => {
+    storage.research.mockImplementationOnce(async (checkpoint: AgentCheckpoint) => ({
+      kind: 'finished', degraded: true, failed: true,
+      checkpoint: { ...checkpoint, waiting: null, ledger: { ...checkpoint.ledger, attempts: [{ id: 1, status: 'transient', sourceIds: [],
+        action: { type: 'search_web', query: 'q', purpose: 'background', freshness: 'any', language: 'zh-CN', domains: [], maxResults: 5 },
+        queryKey: 'q', strategyKey: 's', reason: '', retrievedAt: '2026-11-09T00:00:00.000Z' }] } },
+      answer: { type: 'finish_answer', answer: '这次没有核验成功', source: 'unknown', citations: [], references: [], unanswered: [], freshness: 'not_applicable' },
+    } as never));
+    expect(await ask()).toBeNull();
+    const turn = (await storage.get())!.chat.at(-1)!;
+    expect(turn.answer).toBe('只有三个团队。');
+    expect(turn.answer).not.toContain('这次没有核验成功');
+    expect(turn.research?.failure).toContain('暂时不可用');
+    expect(turn.webReferences ?? []).toHaveLength(0);
+  });
+
   it.each(['fingerprint', 'url', 'model', 'provider', 'thinking'] as const)('rejects late results after %s changes', async (change) => {
     let complete!: (value: AgentOutcome) => void;
     let checkpoint!: AgentCheckpoint;

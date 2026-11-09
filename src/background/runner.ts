@@ -12,7 +12,7 @@ import {
   unknownAssistMode,
 } from '../core/learn-policy';
 import { learnMessages, type LearnMode } from '../core/prompts/learn';
-import type { AgentCheckpoint, AgentEvent, AgentResume, NetworkMode, RunIdentity } from '../core/search/agent-types';
+import type { AgentCheckpoint, AgentEvent, AgentOutcome, AgentResume, NetworkMode, RunIdentity } from '../core/search/agent-types';
 import { runtimeAgentSettings } from '../core/search/agent-policy';
 import { initialCheckpoint } from '../core/search/agent-limits';
 import { evaluateSearchGate } from '../core/search/gate';
@@ -620,7 +620,9 @@ async function researchStep(session: PageSession, checkpoint: AgentCheckpoint, s
         status: 'interrupted', clarification: outcome.checkpoint.waiting },
       error: appError('TIMEOUT', '这次澄清等待已过期，请重新提问。', true) };
   }
-  const answer = toResearchAnswer(outcome);
+  const answer = outcome.failed
+    ? await articleFallback(fresh, checkpoint, outcome, signal)
+    : toResearchAnswer(outcome);
   const quote = checkpoint.snapshot.quote;
   return { ...fresh, researchCheckpoint: undefined, researchPending: undefined,
     activeTopicId: checkpoint.snapshot.topicId ?? fresh.activeTopicId,
@@ -629,6 +631,48 @@ async function researchStep(session: PageSession, checkpoint: AgentCheckpoint, s
       quote: quote ?? undefined, followUps: [], at: Date.now() }],
     quote: quote && fresh.quote && (fresh.quote.id ?? fresh.quote.text) === (quote.id ?? quote.text) ? null : fresh.quote ?? null,
     state: 'READY', error: null, updatedAt: Date.now() };
+}
+
+/** 搜索没有得到可用结果时说清原因：限流、超时、没结果、资料不可靠。 */
+function searchFailure(checkpoint: AgentCheckpoint): string {
+  const attempts = checkpoint.ledger.attempts;
+  if (!attempts.length) return '这次没有搜成。';
+  const last = attempts.at(-1)!;
+  const limited = attempts.some(attempt => attempt.reason.includes('search_http_status:429'));
+  if (limited) return '搜索服务的免费额度用完了（被限流）。可以稍后重试，或到设置里换一家搜索、填自己的 Key。';
+  if (last.status === 'transient') return '搜索服务暂时不可用（超时或网络不通）。';
+  if (last.status === 'failed') return '搜索服务出错了。';
+  if (attempts.every(attempt => attempt.status === 'empty')) return '搜了，但没有找到相关资料。';
+  return '搜了，但找到的资料不够可靠，没有采用。';
+}
+
+/**
+ * 联网没有得到经过审查的回答时，不给空话：改用只依据文章的普通回答，并标明未联网和原因。
+ * 走的是关掉联网时的同一条回答路径与校验，不带任何网络资料。
+ */
+async function articleFallback(session: PageSession, checkpoint: AgentCheckpoint,
+  outcome: Extract<AgentOutcome, { kind: 'finished' }>, signal: AbortSignal) {
+  const empty = toResearchAnswer(outcome);
+  const failure = searchFailure(outcome.checkpoint);
+  const research = { ...empty.research, failure };
+  try {
+    const config = await readConfig();
+    const ctx = contextOf(session);
+    const parsed = await callModel(answerMessages({
+      title: session.title, url: session.url, contextJson: ctx.json,
+      disclosure: describeCompleteness(session.completeness),
+      history: checkpoint.snapshot.history, question: checkpoint.snapshot.question,
+      override: resolvePolicy('answer', config), networkContext: { gate: { ...checkpoint.snapshot.gate, canSearch: false, mustSearch: false }, scope: 'article' },
+      topic: { switched: false }, quote: checkpoint.snapshot.quote, diagrams: checkpoint.snapshot.diagrams,
+    }), signal, () => {});
+    const clean = cleanAnswer(parsed, session.blocks);
+    if (!clean.ok || clean.value.source === 'extended') return { ...empty, research };
+    return { answer: clean.value.answer, source: clean.value.source, citations: clean.value.citations,
+      references: [], unanswered: clean.value.unanswered, webReferences: [], research };
+  } catch (error) {
+    if (signal.aborted) throw error;
+    return { ...empty, research };
+  }
 }
 
 /** A reconnect invalidates Agent work; ordinary QA keeps its existing reconnect behavior. */

@@ -101,8 +101,8 @@ describe('layered search gate', () => {
   it('leaves uncertain ordinary questions ambiguous', () => {
     expect(evaluateSearchGate({ ...input, question: '这是什么意思？' }).level).toBe('ambiguous');
   });
-  it.each(['什么是rag', 'RAG 是什么？', 'What is RAG?'])('a concept question recommends search so the article gap can be filled: %s', (question) => {
-    expect(evaluateSearchGate({ ...input, question }).level).toBe('recommended');
+  it.each(['什么是rag', 'RAG 是什么？', 'What is RAG?'])('a concept question requires search so the article gap can be filled: %s', (question) => {
+    expect(evaluateSearchGate({ ...input, question })).toMatchObject({ level: 'required', mustSearch: true });
   });
   it('recommends external background', () => {
     expect(evaluateSearchGate({ ...input, question: '补充上海政策的背景资料' }).level).toBe('recommended');

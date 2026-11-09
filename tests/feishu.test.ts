@@ -53,3 +53,12 @@ describe('阅读笔记 → 飞书文档块', () => {
     expect(JSON.stringify(blocks[4])).toContain('"bold":true');
   });
 });
+
+describe('飞书块：原文与笔记的分隔', () => {
+  it('### 转三级标题、--- 转分割线、正文中间的一级标题保留', async () => {
+    const { noteToBlocks } = await import('../src/core/feishu/client');
+    const blocks = noteToBlocks('# 标题\n## 原文\n### 小节\n段落\n---\n# 我的阅读笔记\n## 这篇文章讲了什么');
+    expect(blocks.map(block => block.block_type)).toEqual([4, 5, 2, 22, 3, 4]);
+  });
+});
+

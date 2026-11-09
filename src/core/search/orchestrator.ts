@@ -15,9 +15,12 @@ const ARTICLE_ONLY = 'article_only_resume';
 const unique = (values: string[]) => [...new Set(values)];
 const badCheckpoint = () => appError('BAD_OUTPUT', '研究检查点无效，请重新开始。');
 
-/** No model-generated draft is adopted on any timeout or exhausted control path. */
+/**
+ * No unaudited web claim is adopted on any timeout or exhausted control path. The answer text is
+ * replaced by the program; the caller may still substitute an article-only answer (see runner).
+ */
 function deadlineFallback(checkpoint: AgentCheckpoint): AgentOutcome {
-  return { kind: 'finished', degraded: true,
+  return { kind: 'finished', degraded: true, failed: true,
     checkpoint: { ...checkpoint, ledger: { ...checkpoint.ledger, sources: checkpoint.ledger.sources.map(({ content: _content, ...source }) => source) } },
     answer: { type: 'finish_answer', answer: '这次没有核验成功', source: 'unknown', citations: [], references: [],
       unanswered: unique([...(checkpoint.ledger.assessment?.missing ?? []), ...checkpoint.feedback,
@@ -258,6 +261,15 @@ export async function runResearch(input: {
         (checkpoint.snapshot.gate.mustSearch && action.freshness === 'verified' && !checkpoint.ledger.attempts.some(attempt => attempt.status === 'ok')) ||
         (articleOnly && (action.source === 'extended' || action.references.length > 0))) {
         feedback('回答缺少已采用的有效来源或必要搜索；请补齐证据或明确降级。'); continue;
+      }
+      const searchAllowed = checkpoint.snapshot.settings.enabled && checkpoint.snapshot.gate.canSearch && !articleOnly;
+      if (searchAllowed && !checkpoint.ledger.attempts.length && !action.noSearchReason?.trim()) {
+        feedback('读者打开了联网搜索：要么先搜索，要么在 noSearchReason 里写明为什么这篇文章已经能完整回答。'); continue;
+      }
+      // 自相矛盾：说“文章已经够了”却答不出来（source=unknown）。文章答不了，就该去查。
+      if (searchAllowed && !checkpoint.ledger.attempts.length && action.source === 'unknown' &&
+        checkpoint.ledger.attempts.length < limits.searches) {
+        feedback('文章答不了这个问题，而读者打开了联网搜索：请先 search_web 再回答，不要以“文章没写”结束。'); continue;
       }
       const citations = validateArticleCitations(action.citations, checkpoint.snapshot.blocks, action.source);
       if (!citations.ok) { feedback('文章引文必须由当前文章正文支持。'); continue; }

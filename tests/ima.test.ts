@@ -133,4 +133,28 @@ describe('阅读笔记构造（K-ima）', () => {
     expect(note.title.length).toBeLessThanOrEqual(121);
     expect(note.markdown).not.toContain('问'.repeat(400));
   });
+
+  it('先存原文（标题、段落、列表），再存阅读笔记；图片转述不算原文', () => {
+    const block = (id: string, role: string, content: string) => ({ id, role, content, headingPath: [],
+      anchor: { sessionAnchorId: id, selector: 'p', exact: content, prefix: '', suffix: '', headingPath: [], fingerprint: 'f' } });
+    const note = buildReadingNote({
+      title: '研究', url: 'https://example.com/a', savedAt: Date.now(), summary: '摘要', bubbles: [], chat: [], learning: null,
+      blocks: [block('b0', 'heading', '主要发现'), block('b1', 'paragraph', '三个团队四周。'),
+        block('b2', 'list-item', '已受培训'), block('b3', 'image', '图上写着八十分钟')] as never,
+    });
+    const md = note.markdown;
+    expect(md.indexOf('## 原文')).toBeLessThan(md.indexOf('# 我的阅读笔记'));
+    expect(md.indexOf('# 我的阅读笔记')).toBeLessThan(md.indexOf('## 这篇文章讲了什么'));
+    expect(md).toContain('### 主要发现\n三个团队四周。\n- 已受培训');
+    expect(md).not.toContain('图上写着八十分钟');
+  });
+
+  it('原文太长时截断并说明去原文链接看全文', () => {
+    const blocks = Array.from({ length: 80 }, (_, i) => ({ id: `b${i}`, role: 'paragraph', content: '字'.repeat(1_000), headingPath: [],
+      anchor: { sessionAnchorId: `b${i}`, selector: 'p', exact: '', prefix: '', suffix: '', headingPath: [], fingerprint: 'f' } }));
+    const md = buildReadingNote({ title: 't', url: 'https://e.com', savedAt: 0, summary: 's', bubbles: [], chat: [], learning: null, blocks: blocks as never }).markdown;
+    expect(md).toContain('原文较长，这里只存了前面一部分');
+    expect(md.length).toBeLessThan(70_000);
+  });
 });
+

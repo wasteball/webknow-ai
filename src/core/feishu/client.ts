@@ -153,7 +153,12 @@ export function noteToBlocks(markdown: string): FeishuBlock[] {
   for (const raw of markdown.split('\n')) {
     const line = raw.trimEnd();
     if (!line.trim()) continue;
-    if (line.startsWith('# ')) continue; // 一级标题就是文档标题，不重复
+    if (line.trim() === '---') { blocks.push({ block_type: 22, divider: {} }); continue; }
+    if (line.startsWith('# ')) {
+      if (blocks.length) blocks.push({ block_type: 3, heading1: textOf(line.slice(2).trim()) });
+      continue; // 开头的一级标题就是文档标题，不重复
+    }
+    if (line.startsWith('### ')) { blocks.push({ block_type: 5, heading3: textOf(line.slice(4).trim()) }); continue; }
     if (line.startsWith('## ')) blocks.push({ block_type: 4, heading2: textOf(line.slice(3).trim()) });
     else if (line.startsWith('> ')) blocks.push({ block_type: 15, quote: textOf(line.slice(2).trim()) });
     else if (line.startsWith('- ')) blocks.push({ block_type: 12, bullet: textOf(line.slice(2).trim()) });

@@ -10,7 +10,7 @@ describe('agent settings', () => {
       enabled: false, freshness: 'auto', depth: 'deep', language: '', region: '',
       preferredDomains: [], sourceReading: 'provider', policy: '',
     });
-    expect(SEARCH_AGENT_VERSION).toBe('2026-10-02.1');
+    expect(SEARCH_AGENT_VERSION).toBe('2026-11-09.1');
     expect(DEFAULT_SEARCH_AGENT_POLICY).toContain('证据充分后再提交 finish_answer');
   });
   it('normalizes only valid known settings and retains an explicit policy reset', () => {

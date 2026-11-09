@@ -28,6 +28,8 @@ export type AskUserAction = {
 export type FinishAction = {
   type: 'finish_answer'; answer: string; source: 'original' | 'extended' | 'unknown';
   citations: string[]; references: string[]; unanswered: string[]; freshness: FinishFreshness;
+  /** 开关打开却没搜时必须写明：文章为什么已经够回答。 */
+  noSearchReason?: string;
 };
 export type AgentAction = SearchAction | ReadAction | AskUserAction | FinishAction;
 export type AgentSettings = {
@@ -70,6 +72,10 @@ export type ChatReference = {
 export type ResearchSummary = {
   sources: Omit<SourceRecord, 'content'>[]; attempts: SearchAttempt[];
   conflicts: EvidenceAssessment['conflicts']; freshness: FinishFreshness; degraded: boolean;
+  /** 没有搜索时的理由，展示为“没有查网：……”。 */
+  noSearchReason?: string;
+  /** 搜索没成功时的原因，展示在回答下面。 */
+  failure?: string;
 };
 export type AgentSnapshot = {
   /** Program-owned receiver frozen by the backend; never supplied by a model action. */
@@ -126,6 +132,8 @@ export type AgentDependencies = {
   onEvent: (event: AgentEvent) => void;
 };
 export type AgentOutcome =
-  | { kind: 'finished'; checkpoint: AgentCheckpoint; answer: FinishAction; degraded: boolean }
+  | { kind: 'finished'; checkpoint: AgentCheckpoint; answer: FinishAction; degraded: boolean;
+      /** 没有得到经过审查的回答；调用方用只依据文章的回答替代，并说明原因。 */
+      failed?: boolean }
   | { kind: 'waiting'; checkpoint: AgentCheckpoint; question: AskUserAction };
 export type AgentResume = { mode: 'continue' | 'article'; text: string };

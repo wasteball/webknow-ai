@@ -294,12 +294,20 @@ function parseDuckDuckGo(html: string, count: number): SearchResult[] {
  * 匿名额度是有限且可能被限流的（实测连打 6 次都正常，但这不是保证），
  * 失败时照常走"只依据文章本身回答"的降级路径。
  */
+/** Anonymous by default; the optional key is sent only to Firecrawl's own endpoints. */
+function firecrawlHeaders(config: Record<string, string> | undefined): Record<string, string> {
+  const apiKey = config?.apiKey?.trim();
+  return { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) };
+}
+
 export const firecrawl: SearchProvider = {
   id: 'firecrawl',
   capabilities: { dateFilter: true, domainFilter: true, publishedAt: false, content: true },
   name: 'Firecrawl',
-  description: '面向 agent 的搜索接口，匿名可用——不用注册、不用填 Key，直接返回结构化结果。',
-  configFields: [],
+  description: '面向 agent 的搜索接口，匿名可用——不用注册、不用填 Key，直接返回结构化结果。匿名额度用完会被限流，可以填一个免费注册的 API Key。',
+  configFields: [
+    { key: 'apiKey', label: 'API Key（可选，匿名被限流时再填）', type: 'password', required: false, placeholder: 'fc-...' },
+  ],
   hosts: () => ['https://api.firecrawl.dev/*'],
   async readSources(input) {
     const results: SourceRead[] = [];
@@ -317,7 +325,7 @@ export const firecrawl: SearchProvider = {
         // Only this anonymous content endpoint/markdown format has been live-verified.
         const response = await (input.fetchImpl ?? fetch)('https://api.firecrawl.dev/v2/scrape', {
           method: 'POST', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer',
-          headers: { 'Content-Type': 'application/json' },
+          headers: firecrawlHeaders(input.config),
           body: JSON.stringify({ url: url.href, formats: ['markdown'] }), signal: input.signal,
         });
         input.signal.throwIfAborted();
@@ -346,7 +354,7 @@ export const firecrawl: SearchProvider = {
     const doFetch = request.fetchImpl ?? fetch;
     const response = await doFetch('https://api.firecrawl.dev/v2/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: firecrawlHeaders(request.config),
       body: JSON.stringify({
         query: siteQuery(request.query, request.domains), limit: request.count,
         ...(!request.time?.from && !request.time?.to && request.freshness && request.freshness !== 'any'
@@ -355,7 +363,7 @@ export const firecrawl: SearchProvider = {
       signal: request.signal,
     });
     if (!response.ok) {
-      throw new SearchProviderFailure(`Firecrawl 返回 ${response.status}（匿名额度可能已被限流）`, 'http', response.status);
+      throw new SearchProviderFailure(`Firecrawl 返回 ${response.status}${response.status === 429 ? '（额度用完被限流）' : ''}`, 'http', response.status);
     }
     const payload: unknown = await response.json();
     const entries = resultEntries(payload, ['data', 'web']);

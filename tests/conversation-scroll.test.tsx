@@ -64,14 +64,14 @@ it('隐藏模式有新回答时，返回后仍能回到最新消息', () => {
 });
 
 it('captures focus movement before detail activation masks the queued scroll, retaining review on updates', () => {
-  const content = <details className="research-details"><summary>本轮搜索详情</summary><p>来源</p></details>;
+  const content = <details className="research-details"><summary>查看来源与搜索过程</summary><p>来源</p></details>;
   const { rerender } = render(<Conversation updateKey="1" followRequest={0}>{content}</Conversation>);
   const area = screen.getByRole('region', { name: '对话记录' });
   Object.defineProperties(area, { scrollHeight: { value: 1000 }, clientHeight: { value: 300 } });
   area.scrollTop = 700; fireEvent.scroll(area);
   // Native focus can move the viewport synchronously before its scroll event runs.
   area.scrollTop = 120;
-  fireEvent.click(screen.getByText('本轮搜索详情'));
+  fireEvent.click(screen.getByText('查看来源与搜索过程'));
   fireEvent.scroll(area);
   expect(screen.queryByRole('button', { name: '回到最新消息' })).not.toBeNull();
   rerender(<Conversation updateKey="2" followRequest={0}>{content}<p>新消息</p></Conversation>);
@@ -80,11 +80,11 @@ it('captures focus movement before detail activation masks the queued scroll, re
 });
 
 it('uses pre-toggle bottom geometry even when an earlier layout left the same saved offset', () => {
-  render(<Conversation updateKey="1" followRequest={0}><details className="research-details"><summary>本轮搜索详情</summary></details></Conversation>);
+  render(<Conversation updateKey="1" followRequest={0}><details className="research-details"><summary>查看来源与搜索过程</summary></details></Conversation>);
   const area = screen.getByRole('region', { name: '对话记录' });
   Object.defineProperties(area, { scrollHeight: { value: 1000, configurable: true }, clientHeight: { value: 300 } });
   area.scrollTop = 700; fireEvent.scroll(area);
   Object.defineProperty(area, 'scrollHeight', { value: 1400 });
-  fireEvent.click(screen.getByText('本轮搜索详情'));
+  fireEvent.click(screen.getByText('查看来源与搜索过程'));
   expect(screen.queryByRole('button', { name: '回到最新消息' })).not.toBeNull();
 });

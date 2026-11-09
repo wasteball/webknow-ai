@@ -36,7 +36,7 @@ it('announces actual actions without exposing reasoning', () => {
 
 it('keeps query/source details collapsed with distinct publication, retrieval, reading and decisions', () => {
   render(<SearchSources references={[]} research={research} />);
-  const summary = screen.getByText('本轮搜索详情');
+  const summary = screen.getByText('查看来源与搜索过程');
   const details = summary.closest('details')!;
   expect(details.open).toBe(false);
   summary.focus();

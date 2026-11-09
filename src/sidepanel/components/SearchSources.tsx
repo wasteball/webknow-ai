@@ -1,3 +1,4 @@
+import type React from 'react';
 import type { ChatReference, ResearchSummary } from '../../core/search/agent-types';
 
 const readLabels: Record<ChatReference['readStatus'], string> = {
@@ -14,8 +15,25 @@ function safeSourceUrl(value: string): string | null {
 }
 
 /** Metadata comes from the backend's content-free allowlist, never a model URL or checkpoint. */
+/** 回答下面固定的一行：搜了什么、用了几条；没搜时写理由；没搜成时写原因。按钮由调用方给。 */
+export function SearchLine({ research, references, actions }: { research?: ResearchSummary; references: ChatReference[]; actions?: React.ReactNode }) {
+  if (!research) return null;
+  const queries = research.attempts.map(attempt => attempt.action.query);
+  const found = research.sources.length;
+  const used = references.length;
+  const text = research.failure ? `未联网：${research.failure} 下面只依据文章回答。`
+    : research.noSearchReason ? `没有查网：${research.noSearchReason}`
+      : queries.length ? `搜了：${queries.map(query => `“${query}”`).join('、')} · 找到 ${found} 条 · 用了 ${used} 条`
+        : null;
+  if (!text) return null;
+  return <p className={research.failure ? 'search-line bad' : 'search-line'} role="note">
+    <span>{text}</span>{actions}
+  </p>;
+}
+
 export function SearchSources({ references, research }: { references: ChatReference[]; research?: ResearchSummary }) {
   if (!research && references.length === 0) return null;
+  if (research && !research.attempts.length && !research.sources.length) return null;
   const accepted = research ? research.sources.filter(source => source.decision === 'accepted') : references;
   const unused = research?.sources.filter(source => source.decision !== 'accepted') ?? [];
   const renderSource = (source: ChatReference) => {
@@ -27,7 +45,7 @@ export function SearchSources({ references, research }: { references: ChatRefere
     </>;
   };
   return <details className="research-details">
-    <summary>本轮搜索详情</summary>
+    <summary>查看来源与搜索过程</summary>
     {research && <>
       <p>搜索 {research.attempts.length} 次 · 来源 {research.sources.length} 个 · {freshnessLabels[research.freshness]}</p>
       {research.degraded && <p>本轮仍有未能确认的部分。</p>}

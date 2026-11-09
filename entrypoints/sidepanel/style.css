@@ -125,6 +125,8 @@ body {
   padding: 0 var(--space-4) 0;
   /* 侧栏宽度由用户拖动浏览器分隔线决定，布局必须适应任意宽度：
      超宽时整体限宽居中，长正文再单独限行宽（见 .summary/.answer/.entry），保证可读性。 */
+  /* 必须写死铺满：flex 列里只有 margin auto 时宽度会缩到内容宽，文字一变（如检查钥匙的结果）整栏就跳。 */
+  width: 100%;
   max-width: 760px;
   margin-inline: auto;
 }
@@ -2288,3 +2290,17 @@ button.next-item:active:not(:disabled), button.method:active:not(:disabled), .me
 /* 焦点环：主色，深浅色都可见；吸顶条不遮焦点 */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chat-scroll { scroll-padding-top: 48px; }
+
+/* 2026-11-09 联网：回答下面固定的一行（搜了什么 / 没查网的理由 / 没搜成的原因）+ 操作 */
+.search-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+.search-line.bad { color: var(--danger); }
+.search-line .link { font-size: 13px; }

@@ -181,7 +181,7 @@ for (const scenario of ['stale', 'conflict', 'empty', 'injection'] as const) {
     try {
       await f.ask('Atlas 今天最新版本是什么？', true); await f.waitFinished();
       const answer = f.panel.locator('#mode-panel-qa .msg.ai .said:not(.said-guide)').last();
-      await expect(answer).toContainText(scenario === 'stale' ? '资料较旧' : scenario === 'conflict' ? '版本冲突' : scenario === 'empty' ? '未找到资料' : '这次没有核验成功');
+      await expect(answer).toContainText(scenario === 'stale' ? '资料较旧' : scenario === 'conflict' ? '版本冲突' : scenario === 'empty' ? '未找到资料' : '下面只依据文章回答');
       await expect(answer).not.toContainText('Atlas 当前版本为 3。');
       expect((await f.records()).every(r => !r.url.includes('untrusted-page-command'))).toBe(true);
       if (scenario === 'injection') expect(f.hits).toHaveLength(0);

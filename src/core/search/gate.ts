@@ -102,7 +102,12 @@ export function evaluateSearchGate(input: {
   if (article && !explicit) { level = 'not_needed'; reasons.push('本轮只处理文章内容；文中的时间词不是实时检索请求。'); }
   else if (missingEntity) { level = 'ambiguous'; reasons.push('缺少可确定的主体，先澄清实体及必要的地区。'); }
   else if (explicit || live) { level = 'required'; reasons.push(explicit ? '用户明确要求外部查证或检索。' : '本轮需要核验当前或最新事实。'); }
-  else if (/背景|比较|对比|外部|资料|\d{4}\s*年|政策|价格|版本|什么是\s*\S|(?<![这那它])是(?:什么|啥)|的定义|background|compare|what (?:is|are|does) (?!this|that|it)/i.test(question)) {
+  // 问一个概念本身（“什么是X”“X 是什么”）：文章顺带用到这个词不等于解释了它，联网时一定要查。
+  else if ((/^\s*(?:请问)?什么(?:是|叫)\s*\S|^[^，,。；;]{1,30}?(?<![这那它])(?:是(?:什么|啥)|的定义)[？?。]?\s*$|^\s*what (?:is|are) (?!this|that|it\b)/i.test(question))
+    && !/政策|价格|版本|最新|现在|今天|当前|\d{4}/.test(question)) {
+    level = 'required'; reasons.push('读者在问一个概念本身，需要文章以外的通用解释。');
+  }
+  else if (/背景|比较|对比|外部|资料|\d{4}\s*年|政策|价格|版本|background|compare/i.test(question)) {
     level = 'recommended'; reasons.push('问题涉及文章外事实或补充资料。');
   } else { level = 'ambiguous'; reasons.push('无法确定是否只围绕文章，先澄清信息范围。'); }
 

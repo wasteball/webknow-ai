@@ -12,7 +12,7 @@ import { Icon } from './Icon';
 import { Rich } from './Rich';
 import { Conversation } from './Conversation';
 import { SearchProgress } from './SearchProgress';
-import { SearchSources } from './SearchSources';
+import { SearchLine, SearchSources } from './SearchSources';
 import { ResearchClarification } from './ResearchClarification';
 
 type Send = (command: Command) => Promise<Reply | undefined>;
@@ -100,7 +100,7 @@ export function Reading({ state, send, onSearchSettings, onImaSettings, active =
     setEffectiveSearchOn(!effectiveSearchOn);
     if (effectiveSearchOn && researching) void stop();
   };
-  const sendQuestion = async (question: string, sentQuote: Quote | null = quote, retry = false) => {
+  const sendQuestion = async (question: string, sentQuote: Quote | null = quote, retry = false, forceSearch = false) => {
     // 有引用时可以不写问题直接发：替用户问最常见的那一句。
     const text = question.trim() || (sentQuote ? QUOTE_ONLY_QUESTION : '');
     if (!tabId || !text || busy || blocked || stopInFlight.current) return;
@@ -111,7 +111,7 @@ export function Reading({ state, send, onSearchSettings, onImaSettings, active =
     if (!retry) setDraft((current) => (current.trim() === text ? '' : current));
     setSubmitting(true);
     setFollowRequest((n) => n + 1);
-    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && effectiveSearchOn, quote: sentQuote?.text ?? null, ...(sentQuote?.id ? { quoteId: sentQuote.id } : {}) }).finally(() => setSubmitting(false));
+    const reply = await send({ type: 'ask', tabId, question: text, search: searchEnabled && (effectiveSearchOn || forceSearch), quote: sentQuote?.text ?? null, ...(sentQuote?.id ? { quoteId: sentQuote.id } : {}) }).finally(() => setSubmitting(false));
     if (reply?.ok) return;
     setConsumedQuote((current) => current === sentQuoteKey ? null : current);
     setPending((current) => (current?.question === text ? null : current));
@@ -119,6 +119,21 @@ export function Reading({ state, send, onSearchSettings, onImaSettings, active =
     if (!retry) setDraft((current) => (current.trim() ? current : text));
   };
   const ask = (question: string) => void sendQuestion(question);
+  // 回答下面的“还是查一下 / 重试 / 联网查一下”：同一个问题这一次一定搜。
+  const askWithSearch = (turn: ChatTurn) => void sendQuestion(turn.question, turn.quote ?? null, true, true);
+  const searchActions = (turn: ChatTurn) => {
+    if (busy || blocked) return null;
+    const research = turn.research;
+    if (!searchEnabled) return onSearchSettings && !research && turn.unanswered.length > 0
+      ? <button type="button" className="link" onClick={onSearchSettings}>打开联网搜索</button> : null;
+    if (research?.failure) return <>
+      <button type="button" className="link" onClick={() => askWithSearch(turn)}>重试</button>
+      {onSearchSettings && <button type="button" className="link" onClick={onSearchSettings}>换一家搜索</button>}
+    </>;
+    if (research?.noSearchReason) return <button type="button" className="link" onClick={() => askWithSearch(turn)}>还是查一下</button>;
+    if (!research && turn.unanswered.length > 0) return <button type="button" className="link" onClick={() => askWithSearch(turn)}>联网查一下</button>;
+    return null;
+  };
   const canSend = Boolean(draft.trim() || quote);
 
   const onComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -178,7 +193,7 @@ export function Reading({ state, send, onSearchSettings, onImaSettings, active =
         )}
 
         {state.chat.map((turn) => (
-          <Guard key={turn.id}><Turn turn={turn} tabId={tabId} send={send} diagrams={diagrams} /></Guard>
+          <Guard key={turn.id}><Turn turn={turn} tabId={tabId} send={send} diagrams={diagrams} searchActions={searchActions(turn)} /></Guard>
         ))}
         {row.next.length > 0 && (
           <SuggestRow
@@ -303,11 +318,13 @@ function Turn({
   tabId,
   send,
   diagrams,
+  searchActions,
 }: {
   turn: ChatTurn;
   tabId: number | null;
   send: Send;
   diagrams: boolean;
+  searchActions?: React.ReactNode;
 }) {
   return (
     <>
@@ -339,6 +356,8 @@ function Turn({
               ))}
             </p>
           )}
+          <SearchLine research={turn.research} references={turn.webReferences ?? []} actions={searchActions} />
+          {!turn.research && searchActions && <p className="search-line">{searchActions}</p>}
           <SearchSources references={turn.webReferences ?? []} research={turn.research} />
           {turn.unanswered.length > 0 && (
             <div className="aside">

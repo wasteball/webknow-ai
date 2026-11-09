@@ -133,6 +133,18 @@ for (const scheme of ['light', 'dark'] as const) {
       await expect(panel.getByRole('link', { name: /打开 DeepSeek 官网/ })).toHaveAttribute('href', /platform\.deepseek\.com/);
       await noOverflow(panel);
       await panel.screenshot({ path: `${OUT}/setup-2-${width}-${scheme}.png` });
+      // 填钥匙、出现检查结果时内容变长：宽度不能因为滚动条出现而跳动。
+      // 栏宽要铺满侧栏，不能随里面的文字长短变化；内容变长出现滚动条时也不跳。
+      const panelWidth = () => panel.locator('.panel').evaluate((node) => node.getBoundingClientRect().width);
+      const contentWidth = () => panel.locator('.onb').evaluate((node) => node.getBoundingClientRect().width);
+      expect(Math.abs(await panelWidth() - Math.min(width, 760))).toBeLessThanOrEqual(0.5);
+      const before = await contentWidth();
+      await panel.locator('.onb').evaluate((node) => {
+        const filler = document.createElement('p');
+        filler.textContent = '这把钥匙可以用。'; filler.style.height = '2000px';
+        node.append(filler);
+      });
+      expect(Math.abs(await contentWidth() - before)).toBeLessThanOrEqual(0.5);
       await panel.close();
     }
   });
