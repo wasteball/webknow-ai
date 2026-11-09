@@ -256,14 +256,14 @@ describe('cleanLearn', () => {
     expect(cleanLearn(graded, 'respond', 'open').ok).toBe(false);
   });
 
-  it('开放问题超过一个问号时判为无效（一次一问）', () => {
-    expect(
-      cleanLearn({ action: 'question', question: '原因是什么？边界在哪？' }, 'ask').ok,
-    ).toBe(false);
+  it('开放问题连问两件事时只留第一问，不让整轮报“格式不对”（一次一问）', () => {
+    const result = cleanLearn({ action: 'question', question: 'JEV 主要承担哪类工作？判断时它需要什么输入？' }, 'ask');
+    expect(result.ok).toBe(true);
+    if (result.ok && result.value.action === 'question') expect(result.value.question).toBe('JEV 主要承担哪类工作？');
     expect(cleanLearn({ action: 'question', question: '原因是什么？' }, 'ask').ok).toBe(true);
   });
 
-  it('下一问若超过一个问号，丢掉下一问，本轮反馈仍保留', () => {
+  it('下一问若超过一个问号，只留第一问，本轮反馈仍保留', () => {
     const result = cleanLearn(
       {
         action: 'feedback',
@@ -277,7 +277,7 @@ describe('cleanLearn', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.action).toBe('feedback');
-    if (result.value.action === 'feedback') expect(result.value.nextQuestion).toBeNull();
+    if (result.value.action === 'feedback') expect(result.value.nextQuestion).toBe('为什么不能外推？');
   });
 
   it('quiz 输出：答案必须是选项之一，重复题目 id 判为无效（F5）', () => {

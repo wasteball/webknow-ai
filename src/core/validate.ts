@@ -20,6 +20,12 @@ export function isSingleQuestion(text: string): boolean {
   return (text.match(/[？?]/g) ?? []).length <= 1;
 }
 
+/** 模型偶尔一句里连问两件事：只留第一问，而不是整轮作废报错。 */
+export function firstQuestion(text: string): string {
+  const end = text.search(/[？?]/);
+  return end < 0 ? text : text.slice(0, end + 1).trim();
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -234,7 +240,7 @@ function cleanQuizQuestions(
   const seenQuestionIds = new Set<string>();
   for (const item of raw) {
     const id = item.id.trim();
-    const text = omitBlockIds(item.text.trim(), blockIds);
+    const text = firstQuestion(omitBlockIds(item.text.trim(), blockIds));
     if (!id || !text || seenQuestionIds.has(id)) return null;
     const choices = item.choices
       .map((choice) => ({ id: choice.id.trim(), label: omitBlockIds(choice.label.trim(), blockIds) }))
@@ -266,14 +272,14 @@ export function cleanLearn(parsed: unknown, mode: LearnMode, currentKind?: 'open
 
   switch (data.action) {
     case 'question': {
-      const question = show(data.question.trim());
+      const question = firstQuestion(show(data.question.trim()));
       const target = cleanTarget(data.target, blockIds);
-      if (!question || !isSingleQuestion(question) || target === null) return { ok: false, error: badOutput('学习反馈') };
+      if (!question || target === null) return { ok: false, error: badOutput('学习反馈') };
       return { ok: true, value: { action: 'question', question, ...(target ? { target } : {}) } };
     }
     case 'quiz': {
       const cleaned = cleanQuizQuestions(data.questions, blockIds);
-      if (!cleaned || cleaned.questions.some(question => !isSingleQuestion(question.text))) return { ok: false, error: badOutput('学习反馈') };
+      if (!cleaned) return { ok: false, error: badOutput('学习反馈') };
       return { ok: true, value: { action: 'quiz', ...cleaned } };
     }
     case 'feedback': {
@@ -282,22 +288,22 @@ export function cleanLearn(parsed: unknown, mode: LearnMode, currentKind?: 'open
       const target = cleanTarget(data.nextQuestionTarget, blockIds);
       const supplement = cleanSupplement(data.supplement);
       if (!feedback || target === null || supplement === null) return { ok: false, error: badOutput('学习反馈') };
-      return { ok: true, value: { action: 'feedback', verdict: data.verdict, feedback, supplement, nextQuestion: next && isSingleQuestion(next) ? next : null, ...(target ? { nextQuestionTarget: target } : {}) } };
+      return { ok: true, value: { action: 'feedback', verdict: data.verdict, feedback, supplement, nextQuestion: next ? firstQuestion(next) : null, ...(target ? { nextQuestionTarget: target } : {}) } };
     }
     case 'graded': {
       const rawNextQuiz = data.nextQuiz ? cleanQuizQuestions(data.nextQuiz.questions, blockIds) : null;
-      const nextQuiz = rawNextQuiz && rawNextQuiz.questions.every(question => isSingleQuestion(question.text)) ? rawNextQuiz : null;
+      const nextQuiz = rawNextQuiz;
       const analysis = show(data.analysis.trim());
       const next = show(data.nextQuestion?.trim() || '') || null;
       const target = cleanTarget(data.nextQuestionTarget, blockIds);
       const supplement = cleanSupplement(data.supplement);
       if (!analysis || target === null || supplement === null) return { ok: false, error: badOutput('学习反馈') };
-      return { ok: true, value: { action: 'graded', analysis, supplement, notes: data.notes.map(note => ({ questionId: note.questionId.trim(), note: show(note.note.trim()) })).filter(note => note.questionId && note.note), nextQuestion: next && isSingleQuestion(next) ? next : null, ...(target ? { nextQuestionTarget: target } : {}), nextQuiz } };
+      return { ok: true, value: { action: 'graded', analysis, supplement, notes: data.notes.map(note => ({ questionId: note.questionId.trim(), note: show(note.note.trim()) })).filter(note => note.questionId && note.note), nextQuestion: next ? firstQuestion(next) : null, ...(target ? { nextQuestionTarget: target } : {}), nextQuiz } };
     }
     case 'hint': {
-      const question = show(data.question.trim());
+      const question = firstQuestion(show(data.question.trim()));
       const hint = show(data.hint.trim());
-      if (!hint || !question || !isSingleQuestion(question)) return { ok: false, error: badOutput('学习反馈') };
+      if (!hint || !question) return { ok: false, error: badOutput('学习反馈') };
       return { ok: true, value: { action: 'hint', hint, question } };
     }
     case 'explain': {
@@ -306,7 +312,7 @@ export function cleanLearn(parsed: unknown, mode: LearnMode, currentKind?: 'open
       const target = cleanTarget(data.nextQuestionTarget, blockIds);
       const supplement = cleanSupplement(data.supplement);
       if (!explanation || target === null || supplement === null) return { ok: false, error: badOutput('学习反馈') };
-      return { ok: true, value: { action: 'explain', explanation, supplement, nextQuestion: next && isSingleQuestion(next) ? next : null, ...(target ? { nextQuestionTarget: target } : {}) } };
+      return { ok: true, value: { action: 'explain', explanation, supplement, nextQuestion: next ? firstQuestion(next) : null, ...(target ? { nextQuestionTarget: target } : {}) } };
     }
     case 'summary': {
       const summary = show(data.summary.trim());
