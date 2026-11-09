@@ -2,9 +2,9 @@ import type { Message } from '../model-call';
 import type { AgentCheckpoint } from '../search/agent-types';
 import { AGENT_LIMITS } from '../search/agent-limits';
 import { LIMITS } from '../limits';
-import { DIAGRAM_GUIDANCE, DIAGRAMS_DISABLED, MARKDOWN_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
+import { DIAGRAM_GUIDANCE, DIAGRAMS_DISABLED, EXPRESSION_DISCIPLINE, MARKDOWN_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
 
-export const SEARCH_AGENT_VERSION = '2026-11-09.1';
+export const SEARCH_AGENT_VERSION = '2026-11-10.1';
 
 export const DEFAULT_SEARCH_AGENT_POLICY = `你是 WebKnow AI 的联网研究 Agent。读者正在读一篇文章，并且打开了联网搜索——
 这说明读者愿意看文章以外的信息。你的任务不是转运资料，而是帮读者把问题弄懂。
@@ -89,7 +89,7 @@ export function agentMessages(checkpoint: AgentCheckpoint): Message[] {
   });
   return [
     { role: 'system', content: [AGENT_HARNESS, ACTION_CONTRACT, RESEARCH_DISCIPLINE,
-      MARKDOWN_DISCIPLINE, snapshot.diagrams ? DIAGRAM_GUIDANCE : DIAGRAMS_DISABLED].join('\n\n') },
+      `finish_answer.answer 的写法：\n${EXPRESSION_DISCIPLINE}`, MARKDOWN_DISCIPLINE, snapshot.diagrams ? DIAGRAM_GUIDANCE : DIAGRAMS_DISABLED].join('\n\n') },
     { role: 'user', content: wrapUntrusted(randomBoundary(), 'RESEARCH', payload) },
   ];
 }

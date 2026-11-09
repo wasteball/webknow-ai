@@ -20,13 +20,16 @@ export const LIMITS = {
   /** 单轮输入输出上限。 */
   maxQuestionChars: 500,
   maxLearningAnswerChars: 1_000,
-  /** 二期由 1200 提到 3000：长回答“说到一半断了”的根因是这个上限太小。 */
-  maxOutputTokens: 3_000,
+  /**
+   * 2026-11-10 由 3000 提到 6000：回答目标改为“讲明白就停”，不再按字数收；
+   * 这个数只防失控，不该让一个需要展开的回答写到一半被截断。
+   */
+  maxOutputTokens: 6_000,
   /**
    * 打开思考后的输出上限。思考文本和最终 JSON 共用这一个数，仍远小于文档里的 64K/128K。
    * 暂定，待真实请求量过再冻；超出后仍按长度截断整段作废。
    */
-  maxOutputTokensThinking: 8_000,
+  maxOutputTokensThinking: 12_000,
   /** 教学提示词覆盖的保存上限（FR-028 校验的一部分）。 */
   maxTeachingPromptChars: 8_000,
 
@@ -65,8 +68,9 @@ export type Limits = typeof LIMITS;
 /** 摘要长度偏好（产品化改造 F2）：设置里选档，程序换算成字数写进策略提示词。 */
 export type SummaryLength = 'short' | 'medium' | 'long';
 
+/** 摘要详略的参考篇幅（给模型的大致目标，不是硬上限）。 */
 export const SUMMARY_LENGTH_CHARS: Record<SummaryLength, number> = {
-  short: 120,
-  medium: 240,
-  long: 400,
+  short: 160,
+  medium: 300,
+  long: 500,
 };

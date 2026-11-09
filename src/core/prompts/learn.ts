@@ -1,13 +1,13 @@
 import { z } from 'zod';
 
-import { DIAGRAM_GUIDANCE, DIAGRAMS_DISABLED, HARNESS_RULES, MARKDOWN_DISCIPLINE, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted } from './harness';
+import { DIAGRAM_GUIDANCE, DIAGRAMS_DISABLED, HARNESS_RULES, MARKDOWN_DISCIPLINE, SOURCE_DISCIPLINE, randomBoundary, wrapUntrusted, EXPRESSION_DISCIPLINE } from './harness';
 import type { CurrentRound, QuestionTarget, QuizChoice } from '../session';
 
 /**
  * 策略三：引导学习（“AI 问我”）。
  * 用户只能覆盖策略段；harness、来源纪律和输出契约仍由代码掌握。
  */
-export const LEARN_VERSION = '2026-10-05.2';
+export const LEARN_VERSION = '2026-11-10.1';
 export const VERDICTS = ['correct', 'partial', 'misconception', 'unknown', 'objection'] as const;
 
 const ChoiceSchema: z.ZodType<QuizChoice> = z.object({
@@ -75,7 +75,7 @@ export const LEARN_DEFAULT_POLICY = [
   '只问凭当前原文就能回答的问题：让读者用自己的话解释文中的概念、理由、步骤、已给出的例子或限制。沿用原文称呼，不另造术语，不编新情境，不考外部知识。',
   '出题前先在原文中确认答案依据，再写问题；找不到依据就换一个点或停止追问。难度来自理解原文的关系，不来自陌生概念或刁钻设问。',
   '由浅到深：先问“文章说了什么”，再问“为什么”，最后问“文中的条件变了，结论还成立吗”（只用原文写到的条件）。读者答得吃力就退回上一层。',
-  '回应读者时像好老师那样用一两句话说清楚，而不是只说对或错：',
+  '回应读者时像好老师那样把话说清楚，而不是只说对或错。反馈按“你对在哪 → 还差什么 → 下一步”的顺序，一般两三句；需要讲解时讲到他能明白为止：',
   '- 先具体说出他对在哪（例如“对，你抓到了核心——新方案更快”）；',
   '- 再只点出最要紧的一个问题，一次只抓一个：说错了（“这里和原文不一样，原文说的是……”）、漏了（“还差一点：作者特别提到了一个前提，你想想是什么？”）、只有结论没有理由（“为什么会更快呢？”），或不会用（“文中的条件换一下，这个结论还成立吗？”）；',
   '- 不直接给答案，先引导他自己补上；他还是想不出来、或说“直接告诉我”时，就讲清楚，并说明依据在原文哪一段（程序会给出“看原文”）。',
@@ -85,7 +85,7 @@ export const LEARN_DEFAULT_POLICY = [
   '必要时只在反馈、讲解或小结中给一段简短的“补充说明”，帮助理解文章的前置概念；补充说明不是文章内容，不计入掌握度，也不能替代文章依据。不要把补充知识写进 question、choices 或 answer。',
   '不要把“与 AI 表述一致”“无法反驳”或单次答对当作掌握；不要用连续追问施压，不要连续否定。',
   '收束时用几句人话总结：已经弄懂了哪些、还差一点的是哪些、这次没聊到哪些、可以接着看哪里。只说本轮实际问过、验证过的内容，不打分、不给百分比、不说读懂了全文。',
-  '反馈与收束使用简体中文，语气自然、简短，只描述本轮实际出现的证据。',
+  '反馈与收束使用简体中文，语气自然，不说套话，只描述本轮实际出现的证据。讲解遵守表达规范：先给结论，再按问题类型展开。',
 ].join('\n');
 
 const OPEN_ONLY = '出题方式（程序指定）：本轮只能提出开放问题（action=question），不要返回选择题。';
@@ -133,6 +133,7 @@ export function learnSystem(override: string | undefined, style: 'mixed' | 'quiz
     override?.trim() ? override.trim() : LEARN_DEFAULT_POLICY,
     SOURCE_DISCIPLINE,
     styleDirective(style),
+    EXPRESSION_DISCIPLINE,
     MARKDOWN_DISCIPLINE,
     diagrams ? DIAGRAM_GUIDANCE : DIAGRAMS_DISABLED,
     LEARN_CONTRACT,
