@@ -56,6 +56,8 @@ export function handleContentRequest(request: ContentRequest): ContentReply {
       startWatching();
       startQuoteAsk();
       return { ok: true, data: null };
+    case 'overlay':
+      return { ok: false, error: appError('INTERNAL', '浮层请求由入口直接处理。') };
     default:
       return { ok: false, error: appError('INTERNAL', '内容脚本收到未知请求。') };
   }

@@ -3,7 +3,7 @@ import { browser } from 'wxt/browser';
 
 import { findProvider } from '../core/model-providers';
 import type { Command, PanelState, Reply } from '../core/protocol';
-import { activeTabId, createClient, openSettingsTab, type Client } from './api';
+import { activeTabId, collapseOverlay, createClient, openSettingsTab, overlayTabId, type Client } from './api';
 import { Learning } from './components/Learning';
 import { Reading } from './components/Reading';
 import { Setup } from './components/Setup';
@@ -88,9 +88,12 @@ export function App() {
     return () => client.dispose();
   }, []);
 
+  const overlayTab = useMemo(() => overlayTabId(), []);
   useEffect(() => {
     const refresh = async () => setTabId(await activeTabId());
     void refresh();
+    // 浮层属于自己的标签页：不跟着别的标签页切换。
+    if (overlayTab !== null) return;
     const onChange = () => void refresh();
     browser.tabs.onActivated.addListener(onChange);
     browser.tabs.onUpdated.addListener(onChange);
@@ -249,6 +252,12 @@ export function App() {
         {modeTabs || (state?.pageTitle && !onboarding && phase !== 'UNCONFIGURED'
           ? <p className="topbar-title" title={state.pageTitle}>{state.pageTitle}</p>
           : <span className="topbar-spacer" />)}
+        {overlayTab !== null && (
+          <button type="button" className="icon-btn" aria-label="收起面板" title="收起（点工具栏图标或右边的小把手再打开）"
+            onClick={() => collapseOverlay(overlayTab)}>
+            <Icon name="collapse" />
+          </button>
+        )}
         <div className="menu-wrap">
           <button type="button" className="icon-btn" aria-label="更多" title="更多" aria-haspopup="menu" aria-expanded={menu}
             onClick={() => { setMenu((open) => !open); setConfirmClear(false); }}>

@@ -57,6 +57,7 @@ type BaseIconName =
   | 'puzzle'
   | 'grid'
   | 'more'
+  | 'collapse'
   | 'trash'
   | 'help'
   | 'back'
@@ -177,6 +178,7 @@ const PATHS: Record<BaseIconName, ReactNode> = {
       <circle cx="19" cy="12" r="1.4" fill="currentColor" />
     </>
   ),
+  collapse: <path d="M13 6l6 6-6 6M5 6l6 6-6 6" />,
   trash: <path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />,
   help: (
     <>

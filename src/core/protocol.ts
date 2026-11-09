@@ -144,7 +144,8 @@ export type ContentRequest =
   | { type: 'fingerprint' }
   | { type: 'watch' }
   | { type: 'jump'; anchor: DomAnchor }
-  | { type: 'captureImage'; url: string };
+  | { type: 'captureImage'; url: string }
+  | { type: 'overlay'; action: 'open' | 'toggle' | 'close'; tabId: number };
 
 export type ContentReply =
   | { ok: true; data: unknown }

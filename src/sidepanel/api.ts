@@ -134,8 +134,27 @@ function sameRun(left: RunIdentity, right: RunIdentity): boolean {
     left.modelProvider === right.modelProvider && left.modelId === right.modelId;
 }
 
+/** 装在网页浮层里时（sidepanel.html?host=overlay&tab=N）：面板固定属于那个标签页。 */
+export function overlayTabId(href = globalThis.location?.href ?? ''): number | null {
+  try {
+    const url = new URL(href);
+    if (url.searchParams.get('host') !== 'overlay') return null;
+    const id = Number(url.searchParams.get('tab'));
+    return Number.isSafeInteger(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 收起页内浮层：直接告诉那个标签页的内容脚本，不经过网页本身。 */
+export function collapseOverlay(tabId: number): void {
+  void browser.tabs.sendMessage(tabId, { type: 'overlay', action: 'close', tabId }).catch(() => {});
+}
+
 /** 当前阅读标签页；从文章打开的设置页继续关联来源文章。 */
 export async function activeTabId(): Promise<number | null> {
+  const fixed = overlayTabId();
+  if (fixed !== null) return fixed;
   let [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   if (tab?.id === undefined) {
     [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });

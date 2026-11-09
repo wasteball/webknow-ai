@@ -32,7 +32,7 @@ export default defineBackground(() => {
       void onPageChanged(tabId, data.url ?? '');
     }
     if (data?.type === 'quoteSelected' && tabId !== undefined && typeof data.text === 'string') {
-      void onQuoteSelected(tabId, data.text).then(
+      void onQuoteSelected(tabId, data.text, sender.tab?.url ?? sender.url).then(
         // 稍等侧栏连上再回答“开没开”，页面上的小卡片才说得准。
         (error) => error ? sendResponse({ ok: false, error })
           : setTimeout(() => sendResponse({ ok: true, panelOpen: panelOpenFor(tabId) }), 600),

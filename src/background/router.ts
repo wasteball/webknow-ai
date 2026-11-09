@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { overlayCapable, sendOverlay } from './overlay';
 
 import { appError, fromThrown, type AppError } from '../core/errors';
 import { derivePhase } from '../core/phase';
@@ -272,17 +273,21 @@ async function saveQuote(tabId: number, text: string): Promise<AppError | null> 
   return null;
 }
 
-/** 这个标签页现在有没有侧栏连着：页面上的小卡片据此说“已放进侧栏”还是“点图标打开”。 */
+/** 这个标签页现在有没有面板（浮层或侧栏）连着：页面上的小卡片据此说“已放进面板”还是“点图标打开”。 */
 export function panelOpenFor(tabId: number): boolean {
   return [...ports].some((port) => port.tabId === tabId);
 }
 
 /** 内容脚本在用户点「引用提问」时上报。先开侧栏（赶在手势消失前），再写入划词。 */
-export async function onQuoteSelected(tabId: number, text: string): Promise<AppError | null> {
-  try {
-    void browser.sidePanel.open({ tabId }).catch(() => {});
-  } catch {
-    // 侧栏已经开着，或这一次没赶上用户手势：划词仍会写进状态，打开侧栏就能接着问。
+export async function onQuoteSelected(tabId: number, text: string, url?: string): Promise<AppError | null> {
+  // 划词来自网页本身：能放浮层就在页内打开（不依赖手势）；否则尽量开 Chrome 侧栏。
+  if (overlayCapable(url)) void sendOverlay(tabId, 'open');
+  else {
+    try {
+      void browser.sidePanel.open({ tabId }).catch(() => {});
+    } catch {
+      // 侧栏已经开着，或这一次没赶上用户手势：划词仍会写进状态，打开侧栏就能接着问。
+    }
   }
   const error = await saveQuote(tabId, text);
   if (error) {
@@ -789,11 +794,15 @@ export async function onTabRemoved(tabId: number): Promise<void> {
 export async function onActionClicked(tab: { id?: number; url?: string }): Promise<void> {
   const tabId = tab.id;
   if (tabId === undefined) return;
-  // sidePanel.open 必须在用户手势里同步调用，前面不能有任何 await。
-  void browser.sidePanel.open({ tabId });
+  // 能放进网页就用页内浮层（点图标开 / 关）；放不进的页面用 Chrome 侧栏。
+  // sidePanel.open 必须在用户手势里同步调用，所以只按地址同步判断，前面不能有任何 await。
+  const overlay = overlayCapable(tab.url);
+  if (!overlay) void browser.sidePanel.open({ tabId }).catch(() => {});
   const url = tab.url;
   const origin = url ? originOf(url) : null;
   if (url && origin) await setPending(tabId, { url, origin, at: Date.now() });
+  // 注入失败（网站的安全策略不允许等）时这次点击已过了手势，开不了侧栏：下次点击会再试一次。
+  if (overlay) await sendOverlay(tabId, 'toggle');
 
   await pushState(tabId);
 }
@@ -807,7 +816,8 @@ export async function onContextMenuAsk(tab: { id?: number; url?: string } | unde
   const tabId = tab?.id;
   if (tabId === undefined) return;
   // sidePanel.open 必须在手势里同步调用，前面不能有 await。
-  void browser.sidePanel.open({ tabId }).catch(() => {});
+  if (overlayCapable(tab?.url)) void sendOverlay(tabId, 'open');
+  else void browser.sidePanel.open({ tabId }).catch(() => {});
   const session = await getSession(tabId);
   if (session && (session.state === 'READY' || session.state === 'LEARNING')) {
     await saveQuote(tabId, text);

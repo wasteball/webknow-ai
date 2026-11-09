@@ -87,7 +87,7 @@ function confirmed(host: HTMLElement, panelOpen: boolean): void {
   host.dataset.pending = 'false';
   button.disabled = true;
   button.classList.add('done');
-  button.textContent = panelOpen ? '已放进侧栏，去那边接着问' : '已记下。点右上角 WebKnow AI 图标打开侧栏查看';
+  button.textContent = panelOpen ? '已放进 WebKnow AI 面板，去那边接着问' : '已记下。点右上角 WebKnow AI 图标打开面板查看';
   setTimeout(() => { if (document.getElementById(HOST_ID) === host) hide(); }, panelOpen ? 2_000 : 5_000);
 }
 

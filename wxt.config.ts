@@ -25,6 +25,13 @@ export default defineConfig({
         ? ['https://api.deepseek.com/*', 'https://open.bigmodel.cn/*', E2E_HOST_PERMISSION, 'https://api.bochaai.com/*', 'https://api.firecrawl.dev/*']
         : ['https://api.deepseek.com/*'],
     optional_host_permissions: ['https://*/*', 'http://*/*'],
+    // 页内浮层：网页里的 iframe 装的就是面板页本身。只有面板页允许被网页加载；
+    // 网页脚本只能把它嵌进来，读不到里面的内容（跨源）。use_dynamic_url 防止网站探测是否装了本扩展。
+    web_accessible_resources: [{
+      resources: ['sidepanel.html'],
+      matches: ['https://*/*', 'http://*/*'],
+      use_dynamic_url: true,
+    }],
     // 工具栏图标必须显式声明：默认的灰色拼图块会让试用者认不出哪个是本插件。
     action: {
       default_icon: {

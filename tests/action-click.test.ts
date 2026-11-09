@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => {
   let session: Record<string, unknown> | null = null;
   return {
     openPanel: vi.fn(async () => {}),
+    executeScript: vi.fn(async () => []),
+    sendTab: vi.fn(async () => ({ ok: true })),
     extractPage: vi.fn(async () => {
       throw new Error('正文不应在打开侧栏时读取');
     }),
@@ -29,7 +31,8 @@ const mocks = vi.hoisted(() => {
 vi.mock('wxt/browser', () => ({
   browser: {
     sidePanel: { open: mocks.openPanel },
-    tabs: { get: vi.fn(async () => ({ url: 'https://example.com/article' })) },
+    scripting: { executeScript: mocks.executeScript },
+    tabs: { get: vi.fn(async () => ({ url: 'https://example.com/article' })), sendMessage: mocks.sendTab },
   },
 }));
 
@@ -59,7 +62,15 @@ vi.mock('../src/background/runner', () => ({ handleIntent: vi.fn(), abortRun: vi
 
 import { buildPanelState, onActionClicked, onContextMenuAsk } from '../src/background/router';
 
-describe('工具栏打开侧栏', () => {
+describe('工具栏打开面板', () => {
+  it('放不进网页的页面（chrome:// 等）改用 Chrome 侧栏，而且是在点击里同步打开', async () => {
+    vi.clearAllMocks(); mocks.reset();
+    const pending = onActionClicked({ id: 42, url: 'chrome://extensions' });
+    expect(mocks.openPanel).toHaveBeenCalledWith({ tabId: 42 });
+    await pending;
+    expect(mocks.sendTab).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.reset();
@@ -68,7 +79,9 @@ describe('工具栏打开侧栏', () => {
   it('已有 Key 和外发确认时，也等用户点阅读入口才提取正文', async () => {
     await onActionClicked({ id: 42, url: 'https://example.com/article' });
 
-    expect(mocks.openPanel).toHaveBeenCalledWith({ tabId: 42 });
+    // 普通网页：在页内打开浮层，不打开 Chrome 侧栏。
+    expect(mocks.openPanel).not.toHaveBeenCalled();
+    expect(mocks.sendTab).toHaveBeenCalledWith(42, { type: 'overlay', action: 'toggle', tabId: 42 });
     expect(mocks.setPending).toHaveBeenCalledWith(42, expect.objectContaining({
       url: 'https://example.com/article',
       origin: 'https://example.com',
@@ -104,9 +117,10 @@ describe('右键“问 WebKnow AI”', () => {
     mocks.reset();
   });
 
-  it('还没读这一页：打开侧栏、记下划词，不读取也不发送正文', async () => {
+  it('还没读这一页：打开页内面板、记下划词，不读取也不发送正文', async () => {
     await onContextMenuAsk({ id: 42, url: 'https://example.com/article' }, '这一段我看不懂，想问问');
-    expect(mocks.openPanel).toHaveBeenCalledWith({ tabId: 42 });
+    await vi.waitFor(() => expect(mocks.sendTab).toHaveBeenCalledWith(42, { type: 'overlay', action: 'open', tabId: 42 }));
+    expect(mocks.openPanel).not.toHaveBeenCalled();
     expect(mocks.extractPage).not.toHaveBeenCalled();
     const state = await buildPanelState(42);
     expect(state.phase).toBe('READY_TO_START');
